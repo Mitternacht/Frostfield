@@ -1,0 +1,14 @@
+{
+  "originHash" : "a6ed63405a319ec99e8cd3312d5956ca4687a637ec74c40d7102d8b1c61ebc19",
+  "pins" : [
+    {
+      "identity" : "satin",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Fabric-Project/Satin.git",
+      "state" : {
+        "revision" : "ff825e4945ca19277355eda69831b9b19aad1533"
+      }
+    }
+  ],
+  "version" : 3
+}

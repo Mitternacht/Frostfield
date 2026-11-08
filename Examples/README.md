@@ -49,6 +49,9 @@ Frostfield API and are not linked into the package or the lab app. The
 [Metal 4 comparison](Experiments/Metal4Comparison/README.md) (FF-04) builds through the
 two `Metal4*` schemes above; its targets sit in `FrostfieldLab.xcodeproj` and compile
 sources from that folder.
+The [Satin comparison](Experiments/SatinComparison/README.md) (FF-05) is an
+isolated SwiftPM package with its own `Package.resolved`; it is not part of the
+workspace and is built with `swift build` in its folder.
 
 The executable work and acceptance gates are listed in [the backlog](../tasks/todo.md).
 Simulator runs are integration smoke checks, not GPU or performance evidence.

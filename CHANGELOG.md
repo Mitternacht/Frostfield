@@ -20,6 +20,10 @@
   (`Examples/Experiments/Metal4Comparison`, not shipped) and the
   [Metal backend decision](docs/decisions/metal-backend.md): conventional Metal stays
   the production path.
+- FF-05 experiment comparing a Satin-backed render of an indexed mesh with a
+  minimal renderer (`Examples/Experiments/SatinComparison`, an isolated package, not
+  shipped) and the [renderer foundation decision](docs/decisions/renderer-foundation.md):
+  keep the minimal renderer.
 
 No stable public API or release is available yet. Physical-device rendering has not
 been verified.

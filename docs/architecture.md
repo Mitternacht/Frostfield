@@ -31,6 +31,13 @@ measurements are missing. See [the Metal backend decision](decisions/metal-backe
 
 Compare Satin with the minimal implementation in an isolated, bounded experiment. Examine shader escape hatches, resource ownership, dependency cost, licenses, and same-scene timings. The experimental common interface must not freeze the public architecture before either implementation has proven useful. The original [Hi-Rez/Satin](https://github.com/Hi-Rez/Satin) repository was archived on April 15, 2025; [Fabric-Project/Satin](https://github.com/Fabric-Project/Satin) is a candidate to revalidate, not a dependency already selected. Its inspected manifest uses tools 6.2, Swift 5 language mode, C++17, and no declared external package dependencies; its MIT license retains Hi-Rez copyright. Test integration with a Swift 6 consumer and record the exact evaluated revision. See [research spikes](research-spikes.md).
 
+FF-05 result: keep the minimal renderer. At revision `ff825e49`, Satin built in a
+clean Swift 6 consumer, with no plugins or binary artifacts, and rendered a
+byte-identical image of the indexed-mesh fixture. It cost about 2.2 times the CPU
+encode time for one mesh, did not throw on shader-compilation failure, and adds
+roughly 60,000 lines of dependency. See
+[the renderer foundation decision](decisions/renderer-foundation.md).
+
 The first renderer needs ordered passes, not a general-purpose render-graph compiler. Add offscreen scene output and one post-process when required by a fixture. Consider more elaborate scheduling only when measured dependencies and reuse warrant it.
 
 ## State, threading, and lifetime
