@@ -13,9 +13,13 @@ let package = Package(
         .library(name: "Frostfield", targets: ["Frostfield"]),
     ],
     targets: [
+        // C declarations of CPU/GPU records, imported by Swift and included by
+        // the Metal shaders so both compilers see one byte layout.
+        .target(name: "FrostfieldShaderTypes"),
         // Core: Metal and simd only. Must not import UIKit or SwiftUI.
-        .target(name: "Frostfield"),
-        .testTarget(name: "FrostfieldTests", dependencies: ["Frostfield"]),
+        // Xcode compiles Shaders/*.metal into the target's resource bundle.
+        .target(name: "Frostfield", dependencies: ["FrostfieldShaderTypes"]),
+        .testTarget(name: "FrostfieldTests", dependencies: ["Frostfield", "FrostfieldShaderTypes"]),
     ],
     swiftLanguageModes: [.v6]
 )

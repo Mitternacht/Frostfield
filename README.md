@@ -8,10 +8,12 @@ core will be independent of SwiftUI, with native presentation adapters added whe
 
 ## Status
 
-**Planning stage; implementation has not started.** This repository contains the
-architecture, implementation backlog, validation criteria, and a handoff for Claude.
-There is no package manifest, source implementation, test suite, sample app, or release
-yet. All framework capabilities described below are planned work.
+**Early implementation; no release.** The package currently contains a GPU capability
+survey and an experimental diagnostic-triangle renderer with focused tests, and
+[`Examples/`](Examples/README.md) holds a UIKit `MTKView` lab app. These are rendering
+fixtures, not a scene API; physical-device behavior has not been verified. All framework
+capabilities described below remain planned work. Progress and evidence are tracked in
+[the task list](tasks/todo.md).
 
 ## Direction
 
@@ -49,7 +51,7 @@ experiments rather than selected project dependencies.
 Start implementation from [HANDOFF.md](HANDOFF.md). The first implementation task
 will create the Swift package and establish native Xcode builds. Add focused tests
 with testable behavior and a runnable reference example with the rendering milestone.
-No build or runtime checks can be reported for this documentation-only repository.
+Recorded build and test results live in [`docs/evidence/`](docs/evidence/).
 
 The OS baseline is a project choice. Metal 4 capability will be checked independently
 of OS availability when a backend is implemented.

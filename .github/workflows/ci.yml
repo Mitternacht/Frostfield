@@ -40,14 +40,23 @@ jobs:
             fi
           done
 
+      # The combined workspace holds the package (shared scheme `Frostfield`)
+      # and the FrostfieldLab example app. Package tests run on macOS because
+      # they render off-screen on the runner's GPU; the shared scheme sets
+      # MTL_DEBUG_LAYER=1 so Metal API validation wraps the device.
       - name: Build package (macOS Debug)
-        run: xcodebuild build -scheme Frostfield -destination 'generic/platform=macOS' -configuration Debug CODE_SIGNING_ALLOWED=NO
+        run: xcodebuild build -workspace Examples/Frostfield.xcworkspace -scheme Frostfield -destination 'generic/platform=macOS' -configuration Debug CODE_SIGNING_ALLOWED=NO
 
       - name: Build package (macOS Release)
-        run: xcodebuild build -scheme Frostfield -destination 'generic/platform=macOS' -configuration Release CODE_SIGNING_ALLOWED=NO
+        run: xcodebuild build -workspace Examples/Frostfield.xcworkspace -scheme Frostfield -destination 'generic/platform=macOS' -configuration Release CODE_SIGNING_ALLOWED=NO
 
       - name: Build package (iOS Simulator Release)
-        run: xcodebuild build -scheme Frostfield -destination 'generic/platform=iOS Simulator' -configuration Release CODE_SIGNING_ALLOWED=NO
+        run: xcodebuild build -workspace Examples/Frostfield.xcworkspace -scheme Frostfield -destination 'generic/platform=iOS Simulator' -configuration Release CODE_SIGNING_ALLOWED=NO
 
       - name: Test package (macOS)
-        run: xcodebuild test -scheme Frostfield -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+        run: xcodebuild test -workspace Examples/Frostfield.xcworkspace -scheme Frostfield -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+
+      # Builds the example app and its UI tests without running them; UI tests
+      # need a booted simulator and are run locally through Xcode.
+      - name: Build lab app and UI tests (iOS Simulator)
+        run: xcodebuild build-for-testing -workspace Examples/Frostfield.xcworkspace -scheme FrostfieldLab -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
