@@ -1,0 +1,57 @@
+import Metal
+import Testing
+@testable import Frostfield
+
+/// A CPU-readable BGRA8 render target cleared to opaque black.
+struct OffscreenTarget {
+    struct Pixel: CustomStringConvertible {
+        enum Channel: Sendable { case red, green, blue }
+
+        var blue: UInt8, green: UInt8, red: UInt8, alpha: UInt8
+        var isClear: Bool { red < 8 && green < 8 && blue < 8 }
+        var description: String { "rgba(\(red), \(green), \(blue), \(alpha))" }
+
+        /// The channel that is bright and clearly stronger than the other two,
+        /// or `nil` for clear or mixed pixels.
+        var dominantChannel: Channel? {
+            let values: [(Channel, Int)] = [(.red, Int(red)), (.green, Int(green)), (.blue, Int(blue))]
+            let sorted = values.sorted { $0.1 > $1.1 }
+            guard sorted[0].1 >= 120, sorted[0].1 - sorted[1].1 >= 60 else { return nil }
+            return sorted[0].0
+        }
+    }
+
+    let texture: any MTLTexture
+
+    init(device: any MTLDevice, width: Int, height: Int) throws {
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false
+        )
+        descriptor.usage = .renderTarget
+        descriptor.storageMode = .shared
+        texture = try #require(device.makeTexture(descriptor: descriptor))
+    }
+
+    var frameTarget: FrameTarget {
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = texture
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].storeAction = .store
+        pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        return FrameTarget(passDescriptor: pass, drawable: nil)
+    }
+
+    /// The pixel containing a normalized-device-coordinate point.
+    func pixel(at ndc: SIMD2<Float>) -> Pixel {
+        pixel(clipX: ndc.x, clipY: ndc.y)
+    }
+
+    /// The pixel containing a clip-space point (y up, as in the shader).
+    func pixel(clipX: Float, clipY: Float) -> Pixel {
+        let x = min(texture.width - 1, Int((clipX + 1) / 2 * Float(texture.width)))
+        let y = min(texture.height - 1, Int((1 - clipY) / 2 * Float(texture.height)))
+        var bytes = [UInt8](repeating: 0, count: 4)
+        texture.getBytes(&bytes, bytesPerRow: 4, from: MTLRegionMake2D(x, y, 1, 1), mipmapLevel: 0)
+        return Pixel(blue: bytes[0], green: bytes[1], red: bytes[2], alpha: bytes[3])
+    }
+}

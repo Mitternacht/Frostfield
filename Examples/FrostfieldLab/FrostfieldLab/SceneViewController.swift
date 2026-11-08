@@ -5,6 +5,9 @@ import UIKit
 /// One window scene's render host: a ``SceneRenderView`` driven by the
 /// package's `TriangleRenderer` and paced by a `RenderSchedule`.
 ///
+/// The host draws one ``LabFixture`` at a time: the clip-space diagnostic
+/// triangle used by the lifecycle tests, or the ``CameraFixture``.
+///
 /// Each scene creates its own controller, renderer, schedule, and view. The
 /// host reports facts from its own context to the schedule (the scene's
 /// activity from its scene delegate, visibility, and the view's bounds and
@@ -17,11 +20,15 @@ final class SceneViewController: UIViewController {
     private var renderer: TriangleRenderer?
     private var renderView: SceneRenderView?
     private var schedule = RenderSchedule(mode: .requested)
+    private var fixture = LabLaunchOptions.fixture
+    private let cameraFixture = CameraFixture(pose: LabLaunchOptions.cameraPose)
     private var counters = HostCounters()
     private var isAppeared = false
     private var displayScale: CGFloat = 0
 
     private let statusLabel = UILabel()
+    private let fixtureControl = UISegmentedControl(items: LabFixture.allCases.map(\.title))
+    private var cameraControls: UIView?
     private let modeControl = UISegmentedControl(items: ["Requested", "Continuous"])
     private let redrawButton = UIButton(configuration: .gray())
     private let visibilityButton = UIButton(configuration: .gray())
@@ -131,6 +138,16 @@ final class SceneViewController: UIViewController {
     // MARK: Controls
 
     private func installControls() {
+        fixtureControl.selectedSegmentIndex = LabFixture.allCases.firstIndex(of: fixture) ?? 0
+        fixtureControl.accessibilityIdentifier = "fixture"
+        fixtureControl.accessibilityLabel = "Fixture"
+        fixtureControl.addAction(UIAction { [weak self] _ in self?.fixtureChanged() }, for: .valueChanged)
+
+        let cameraControls = cameraFixture.makeControls()
+        cameraFixture.onChange = { [weak self] in self?.redraw() }
+        self.cameraControls = cameraControls
+        updateFixtureControls()
+
         modeControl.selectedSegmentIndex = 0
         modeControl.accessibilityIdentifier = "drawingMode"
         modeControl.addAction(UIAction { [weak self] _ in self?.modeChanged() }, for: .valueChanged)
@@ -161,7 +178,7 @@ final class SceneViewController: UIViewController {
         buttons.spacing = 8
         buttons.distribution = .fillProportionally
 
-        let panel = UIStackView(arrangedSubviews: [statusLabel, modeControl, buttons])
+        let panel = UIStackView(arrangedSubviews: [statusLabel, fixtureControl, cameraControls, modeControl, buttons])
         panel.axis = .vertical
         panel.spacing = 8
         panel.isLayoutMarginsRelativeArrangement = true
@@ -177,6 +194,16 @@ final class SceneViewController: UIViewController {
             panel.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -12),
             panel.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -12),
         ])
+    }
+
+    private func fixtureChanged() {
+        fixture = LabFixture.allCases[fixtureControl.selectedSegmentIndex]
+        updateFixtureControls()
+        redraw()
+    }
+
+    private func updateFixtureControls() {
+        cameraControls?.isHidden = fixture != .camera
     }
 
     private func modeChanged() {
@@ -212,6 +239,7 @@ final class SceneViewController: UIViewController {
     private func updateStatus() {
         guard let renderer else { return }
         let statistics = renderer.statistics
+        let resources = renderer.resourceStatistics
         let size = schedule.drawableSize.map { "\(Int($0.width))x\(Int($0.height))" } ?? "none"
         statusLabel.text = """
             \(schedule.mode) · \(schedule.activity) · \(schedule.pacing) · \(size) px @\(displayScale.formatted())x
@@ -219,8 +247,11 @@ final class SceneViewController: UIViewController {
             skipped \(statistics.skippedNoSlot) slot / \(statistics.skippedNoTarget) drawable
             callbacks \(counters.callbacks) · refused \(counters.refused) · \
             while not active \(counters.callbacksWhileNotActive) / \(counters.submittedWhileNotActive)
+            created \(resources.renderPipelinesCreated) pipelines · \(resources.buffersAllocated) buffers \
+            (\(resources.bufferBytesAllocated) B)
             """
-        let fields: [(String, String)] = [
+        var fields: [(String, String)] = [
+            ("fixture", fixture.rawValue),
             ("mode", "\(schedule.mode)"),
             ("activity", "\(schedule.activity)"),
             ("pacing", "\(schedule.pacing)"),
@@ -236,7 +267,13 @@ final class SceneViewController: UIViewController {
             ("submittedWhileNotActive", "\(counters.submittedWhileNotActive)"),
             ("longestDrawableWaitMicroseconds", "\(counters.longestDrawableWaitMicroseconds)"),
             ("longestDrawableWaitWhileNotActiveMicroseconds", "\(counters.longestDrawableWaitWhileNotActiveMicroseconds)"),
+            ("pipelinesCreated", "\(resources.renderPipelinesCreated)"),
+            ("buffersAllocated", "\(resources.buffersAllocated)"),
+            ("bufferBytesAllocated", "\(resources.bufferBytesAllocated)"),
         ]
+        if fixture == .camera {
+            fields += cameraFixture.statusFields
+        }
         statusLabel.accessibilityValue = fields.map { "\($0)=\($1)" }.joined(separator: ";")
     }
 
@@ -280,15 +317,25 @@ extension SceneViewController: MTKViewDelegate {
             updateStatus()
             return
         }
-        let outcome = renderer.drawFrame(rotation: Float(animationTime) * Self.rotationSpeed) {
-            // The renderer asks for a target only after it holds a free frame
-            // slot, so a drawable is never held while every slot is busy.
+        // The renderer asks for a target only after it holds a free frame
+        // slot, so a drawable is never held while every slot is busy.
+        let target = { [self] () -> FrameTarget? in
             let start = ContinuousClock.now
             let pass = view.currentRenderPassDescriptor
             let drawable = view.currentDrawable
             counters.recordDrawableWait(start.duration(to: .now), sceneIsActive: isActive)
             guard let pass, let drawable else { return nil }
             return FrameTarget(passDescriptor: pass, drawable: drawable)
+        }
+        let outcome = switch fixture {
+        case .triangle:
+            renderer.drawFrame(rotation: Float(animationTime) * Self.rotationSpeed, target: target)
+        case .camera:
+            renderer.drawFrame(
+                transform: cameraFixture.transform(animationTime: animationTime),
+                camera: cameraFixture.camera,
+                target: target
+            )
         }
         if case .submitted = outcome, !isActive {
             counters.submittedWhileNotActive += 1
@@ -326,8 +373,41 @@ struct HostCounters {
     }
 }
 
+/// What a scene's host draws.
+enum LabFixture: String, CaseIterable {
+    /// The clip-space diagnostic triangle (FF-02/FF-03 host fixture).
+    case triangle
+    /// The triangle placed by a transform under a perspective camera (FF-06).
+    case camera
+
+    var title: String {
+        switch self {
+        case .triangle: "Triangle"
+        case .camera: "Camera"
+        }
+    }
+}
+
 /// Launch arguments that select lab fixtures.
 enum LabLaunchOptions {
+    /// `-FrostfieldLabFixture <name>` starts with that ``LabFixture``
+    /// (`triangle` by default).
+    static var fixture: LabFixture {
+        value(after: "-FrostfieldLabFixture").flatMap(LabFixture.init(rawValue:)) ?? .triangle
+    }
+
+    /// `-FrostfieldLabCameraPose <name>` starts the camera fixture in that
+    /// pose (`rest` by default).
+    static var cameraPose: CameraFixture.Pose {
+        value(after: "-FrostfieldLabCameraPose").flatMap(CameraFixture.Pose.init(rawValue:)) ?? .rest
+    }
+
+    private static func value(after flag: String) -> String? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: flag), arguments.indices.contains(index + 1) else { return nil }
+        return arguments[index + 1]
+    }
+
     /// `-FrostfieldLabSimulateMissingDevice` hands the renderer no Metal device,
     /// so the failure state can be inspected on hardware that has one.
     static var simulatesMissingDevice: Bool {

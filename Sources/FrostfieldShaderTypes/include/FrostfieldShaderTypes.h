@@ -13,9 +13,11 @@
 #ifdef __METAL_VERSION__
 #include <metal_stdlib>
 typedef metal::float2 FFFloat2;
+typedef metal::float4x4 FFFloat4x4;
 #else
 #include <simd/simd.h>
 typedef simd_float2 FFFloat2;
+typedef simd_float4x4 FFFloat4x4;
 #endif
 
 /// Vertex buffer index of `FFTriangleUniforms` in `ff_triangle_vertex`.
@@ -32,5 +34,21 @@ typedef struct FFTriangleUniforms {
     /// Explicit padding to the 8-byte alignment of `scale`. Byte offset 12.
     float padding;
 } FFTriangleUniforms;
+
+/// Vertex buffer index of `FFTransformUniforms`.
+#define FF_TRANSFORM_UNIFORMS_BUFFER_INDEX 0
+
+/// Per-draw transform for geometry placed by a model transform and viewed
+/// through a perspective camera. 64 bytes, 16-byte aligned.
+///
+/// Matrices are column-major and multiply column vectors on the right, so
+/// `clip = modelViewProjection * float4(position, 1)`. Swift's
+/// `simd_float4x4.columns.N` and MSL's `float4x4[N]` name the same 16 bytes.
+typedef struct FFTransformUniforms {
+    /// `projection * view * model`. Maps model-space positions to Metal clip
+    /// space, whose visible depth range after the perspective divide is
+    /// [0, 1] (near to far). Byte offset 0; column N at byte offset 16 * N.
+    FFFloat4x4 modelViewProjection;
+} FFTransformUniforms;
 
 #endif

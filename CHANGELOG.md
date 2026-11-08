@@ -24,6 +24,12 @@
   minimal renderer (`Examples/Experiments/SatinComparison`, an isolated package, not
   shipped) and the [renderer foundation decision](docs/decisions/renderer-foundation.md):
   keep the minimal renderer.
+- Experimental `Transform`, `PerspectiveProjection`, and `Camera` with documented
+  [coordinate conventions](docs/coordinates.md) (right-handed, column-major column
+  vectors, Metal depth [0, 1], validated projection inputs with `ProjectionError`),
+  `TriangleRenderer.drawFrame(transform:camera:target:)`, the shared
+  `FFTransformUniforms` record, `ResourceStatistics`, and the lab's camera fixture
+  (FF-06).
 
 No stable public API or release is available yet. Physical-device rendering has not
 been verified.

@@ -9,3 +9,7 @@ _Static_assert(_Alignof(FFTriangleUniforms) == 8, "FFTriangleUniforms must be 8-
 _Static_assert(offsetof(FFTriangleUniforms, scale) == 0, "scale must be at offset 0");
 _Static_assert(offsetof(FFTriangleUniforms, rotation) == 8, "rotation must be at offset 8");
 _Static_assert(offsetof(FFTriangleUniforms, padding) == 12, "padding must be at offset 12");
+
+_Static_assert(sizeof(FFTransformUniforms) == 64, "FFTransformUniforms must be 64 bytes");
+_Static_assert(_Alignof(FFTransformUniforms) == 16, "FFTransformUniforms must be 16-byte aligned");
+_Static_assert(offsetof(FFTransformUniforms, modelViewProjection) == 0, "modelViewProjection must be at offset 0");

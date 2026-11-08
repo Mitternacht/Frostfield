@@ -60,6 +60,13 @@ The UIKit host still acquires drawables synchronously on the main thread through
 ([evidence](evidence/checkpoint-a-host.md)). A physical-device measurement
 decides whether that justifies deferring acquisition or a `CAMetalLayer` host.
 
+Current state (FF-06, experimental): `Transform`, `PerspectiveProjection`, and
+`Camera` are core value types; the app owns them and passes them to each draw.
+`TriangleRenderer.drawFrame(transform:camera:target:)` writes
+`projection * view * model` into the frame slot's existing uniform buffer, so a
+camera or transform change creates no GPU object (`ResourceStatistics`). The
+conventions are in [coordinate conventions](coordinates.md).
+
 ## Creative API progression
 
 The first composition path is a camera plus transformed indexed geometry and a prepared material. Expose a documented shader binding contract so app authors can invent materials without waiting for a catalogue of effects. Add one directional Lambert light, one bounded particle emitter, and one full-screen post-process as separate slices.

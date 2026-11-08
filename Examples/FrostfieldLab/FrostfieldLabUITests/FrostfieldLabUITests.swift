@@ -153,6 +153,52 @@ final class FrostfieldLabUITests: XCTestCase {
         XCTAssertEqual(landscapeSize.height, portraitSize.width)
     }
 
+    /// FF-06: the camera fixture's pose and field of view are app state. Each
+    /// change draws one frame, and neither the changes, the fixture switch,
+    /// nor continuous animation creates a pipeline or a buffer.
+    @MainActor
+    func testCameraFixtureUpdatesCreateNoGPUResources() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let triangle = try waitForSettledCounters(in: app)
+        XCTAssertEqual(triangle.text("fixture"), "triangle")
+
+        app.segmentedControls["fixture"].buttons["Camera"].tap()
+        let start = try waitForCounters(in: app) {
+            $0.text("fixture") == "camera" && $0["completed"] == triangle["submitted"] + 1
+        }
+        XCTAssertEqual(start.text("pose"), "rest")
+        XCTAssertEqual(start.text("fieldOfView"), "60")
+
+        var previous = start
+        for pose in ["Moved", "Turned", "Scaled", "Rest"] {
+            app.segmentedControls["cameraPose"].buttons[pose].tap()
+            let drawn = try waitForCounters(in: app) {
+                $0.text("pose") == pose.lowercased() && $0["completed"] == previous["submitted"] + 1
+            }
+            XCTAssertEqual(drawn["submitted"], previous["submitted"] + 1, "one pose change, one frame")
+            previous = drawn
+        }
+
+        app.sliders["fieldOfView"].adjust(toNormalizedSliderPosition: 0.9)
+        let widened = try waitForSettledCounters(in: app)
+        let fieldOfView = try XCTUnwrap(widened.text("fieldOfView").flatMap(Int.init))
+        XCTAssertGreaterThan(fieldOfView, 80)
+        XCTAssertGreaterThan(widened["submitted"], previous["submitted"], "the new field of view was drawn")
+
+        app.segmentedControls["drawingMode"].buttons["Continuous"].tap()
+        let animated = try waitForCounters(in: app) { $0["submitted"] >= widened["submitted"] + 60 }
+        record("camera fixture: \(triangle) -> \(animated)")
+
+        for counters in [start, previous, widened, animated] {
+            XCTAssertEqual(counters["pipelinesCreated"], triangle["pipelinesCreated"])
+            XCTAssertEqual(counters["buffersAllocated"], triangle["buffersAllocated"])
+            XCTAssertEqual(counters["bufferBytesAllocated"], triangle["bufferBytesAllocated"])
+        }
+        XCTAssertEqual(triangle["pipelinesCreated"], 2)
+        XCTAssertEqual(triangle["buffersAllocated"], 2)
+    }
+
     // MARK: Helpers
 
     /// Writes measured counters into the test log as an activity.

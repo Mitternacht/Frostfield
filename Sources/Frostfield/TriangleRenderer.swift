@@ -73,17 +73,36 @@ public struct FrameCompletion: Sendable, Equatable {
 /// Renders Frostfield's diagnostic triangle through a conventional Metal
 /// command queue with a bounded number of frames in flight.
 ///
-/// The renderer owns its command queue, pipeline, and one uniform buffer per
-/// frame slot. A frame writes only to a slot whose previous frame the GPU has
-/// completed. When every slot is busy, ``drawFrame(rotation:target:)`` returns
-/// ``FrameOutcome/skippedNoSlot`` immediately instead of waiting.
+/// The triangle can be drawn two ways:
+///
+/// - ``drawFrame(rotation:target:)`` rotates it in clip space and keeps its
+///   shape in any aspect ratio. The host lifecycle fixtures use this.
+/// - ``drawFrame(transform:camera:target:)`` treats it as model-space geometry
+///   in the z = 0 plane, places it with a ``Transform``, and projects it
+///   through a perspective ``Camera``.
+///
+/// The renderer owns its command queue, both pipelines, and one uniform buffer
+/// per frame slot, all created by the initializer. Drawing writes the frame's
+/// values into its slot's buffer and creates no GPU object, so
+/// ``resourceStatistics`` stays constant while transforms and cameras change.
+/// A frame writes only to a slot whose previous frame the GPU has completed.
+/// When every slot is busy, drawing returns ``FrameOutcome/skippedNoSlot``
+/// immediately instead of waiting.
 ///
 /// Use one renderer from one thread or actor at a time. Completion reports
 /// arrive on a Metal-owned thread.
 public final class TriangleRenderer {
     /// Names of the packaged shader functions.
     static let vertexFunctionName = "ff_triangle_vertex"
+    static let cameraVertexFunctionName = "ff_triangle_camera_vertex"
     static let fragmentFunctionName = "ff_triangle_fragment"
+
+    /// The length of each per-slot uniform buffer: large enough for the
+    /// record of either drawing path, written at offset 0.
+    static let uniformBufferLength = max(
+        MemoryLayout<FFTriangleUniforms>.stride,
+        MemoryLayout<FFTransformUniforms>.stride
+    )
 
     /// The bundle that holds the package's compiled `default.metallib`.
     static var shaderBundle: Bundle { .module }
@@ -96,10 +115,14 @@ public final class TriangleRenderer {
     public var maxFramesInFlight: Int { slots.capacity }
     /// Counters for submitted, completed, and skipped frames.
     public var statistics: FrameStatistics { slots.statistics }
+    /// Counters for the pipelines and buffers this renderer created.
+    public private(set) var resourceStatistics = ResourceStatistics()
 
     private let commandQueue: any MTLCommandQueue
     private let pipeline: any MTLRenderPipelineState
-    private let uniformBuffers: [any MTLBuffer]
+    private let cameraPipeline: any MTLRenderPipelineState
+    /// One uniform buffer per frame slot, indexed by slot.
+    let uniformBuffers: [any MTLBuffer]
     private let slots: FrameSlots
     private let onFrameCompleted: @Sendable (FrameCompletion) -> Void
 
@@ -138,6 +161,7 @@ public final class TriangleRenderer {
         colorPixelFormat: MTLPixelFormat,
         maxFramesInFlight: Int,
         vertexFunctionName: String,
+        cameraVertexFunctionName: String = TriangleRenderer.cameraVertexFunctionName,
         fragmentFunctionName: String,
         onFrameCompleted: @escaping @Sendable (FrameCompletion) -> Void
     ) throws(RendererError) {
@@ -150,29 +174,40 @@ public final class TriangleRenderer {
         guard let vertexFunction = library.makeFunction(name: vertexFunctionName) else {
             throw .shaderFunctionMissing(name: vertexFunctionName)
         }
+        guard let cameraVertexFunction = library.makeFunction(name: cameraVertexFunctionName) else {
+            throw .shaderFunctionMissing(name: cameraVertexFunctionName)
+        }
         guard let fragmentFunction = library.makeFunction(name: fragmentFunctionName) else {
             throw .shaderFunctionMissing(name: fragmentFunctionName)
         }
 
-        let descriptor = MTLRenderPipelineDescriptor()
-        descriptor.label = "Frostfield.Triangle"
-        descriptor.vertexFunction = vertexFunction
-        descriptor.fragmentFunction = fragmentFunction
-        descriptor.colorAttachments[0].pixelFormat = colorPixelFormat
-        let pipeline: any MTLRenderPipelineState
-        do {
-            pipeline = try device.makeRenderPipelineState(descriptor: descriptor)
-        } catch {
-            throw .pipelineCreationFailed(reason: String(describing: error))
+        var resources = ResourceStatistics()
+        func makePipeline(label: String, vertexFunction: any MTLFunction) throws(RendererError) -> any MTLRenderPipelineState {
+            let descriptor = MTLRenderPipelineDescriptor()
+            descriptor.label = label
+            descriptor.vertexFunction = vertexFunction
+            descriptor.fragmentFunction = fragmentFunction
+            descriptor.colorAttachments[0].pixelFormat = colorPixelFormat
+            do {
+                let pipeline = try device.makeRenderPipelineState(descriptor: descriptor)
+                resources.renderPipelinesCreated += 1
+                return pipeline
+            } catch {
+                throw .pipelineCreationFailed(reason: String(describing: error))
+            }
         }
+        let pipeline = try makePipeline(label: "Frostfield.Triangle", vertexFunction: vertexFunction)
+        let cameraPipeline = try makePipeline(label: "Frostfield.TriangleCamera", vertexFunction: cameraVertexFunction)
 
         var uniformBuffers: [any MTLBuffer] = []
         for slot in 0..<maxFramesInFlight {
             guard let buffer = device.makeBuffer(
-                length: MemoryLayout<FFTriangleUniforms>.stride,
+                length: Self.uniformBufferLength,
                 options: .storageModeShared
             ) else { throw .bufferAllocationFailed }
             buffer.label = "Frostfield.TriangleUniforms[\(slot)]"
+            resources.buffersAllocated += 1
+            resources.bufferBytesAllocated += buffer.length
             uniformBuffers.append(buffer)
         }
 
@@ -180,7 +215,9 @@ public final class TriangleRenderer {
         self.colorPixelFormat = colorPixelFormat
         self.commandQueue = commandQueue
         self.pipeline = pipeline
+        self.cameraPipeline = cameraPipeline
         self.uniformBuffers = uniformBuffers
+        self.resourceStatistics = resources
         self.slots = FrameSlots(capacity: maxFramesInFlight)
         self.onFrameCompleted = onFrameCompleted
     }
@@ -205,7 +242,8 @@ public final class TriangleRenderer {
         }
     }
 
-    /// Encodes and commits one frame, or reports why it did not.
+    /// Encodes and commits one frame of the clip-space triangle, or reports
+    /// why it did not.
     ///
     /// The renderer first claims a free frame slot without waiting. Only then
     /// does it call `target`, so a host can fetch its drawable as late as
@@ -216,6 +254,51 @@ public final class TriangleRenderer {
     ///   - rotation: Counter-clockwise rotation of the triangle in radians.
     ///   - target: Supplies the render pass and drawable for this frame.
     public func drawFrame(rotation: Float, target: () -> FrameTarget?) -> FrameOutcome {
+        encodeFrame(label: "Frostfield.TriangleFrame", target: target) { encoder, uniformBuffer, colorTexture in
+            let uniforms = FFTriangleUniforms(
+                scale: Self.aspectScale(width: colorTexture.width, height: colorTexture.height),
+                rotation: rotation,
+                padding: 0
+            )
+            uniformBuffer.contents().storeBytes(of: uniforms, as: FFTriangleUniforms.self)
+            encoder.setRenderPipelineState(pipeline)
+            encoder.setVertexBuffer(uniformBuffer, offset: 0, index: Int(FF_TRIANGLE_UNIFORMS_BUFFER_INDEX))
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        }
+    }
+
+    /// Encodes and commits one frame of the triangle placed by `transform`
+    /// and viewed through `camera`, or reports why it did not.
+    ///
+    /// The triangle's model-space corners lie in the z = 0 plane, centred on
+    /// the origin with a circumradius of 0.75: a red apex at (0, 0.75) and
+    /// green and blue corners at (∓0.65, -0.375). The renderer computes
+    /// `projection * view * model` for the target's aspect ratio and writes it
+    /// into the frame slot's existing uniform buffer. Faces are not culled, so
+    /// the triangle is visible from both sides.
+    ///
+    /// Slots and targets behave as in ``drawFrame(rotation:target:)``.
+    public func drawFrame(transform: Transform, camera: Camera, target: () -> FrameTarget?) -> FrameOutcome {
+        encodeFrame(label: "Frostfield.TriangleCameraFrame", target: target) { encoder, uniformBuffer, colorTexture in
+            // The target is non-empty, so the ratio is finite and positive.
+            let aspectRatio = Float(colorTexture.width) / Float(colorTexture.height)
+            let uniforms = FFTransformUniforms(
+                modelViewProjection: camera.uncheckedViewProjectionMatrix(aspectRatio: aspectRatio) * transform.matrix
+            )
+            uniformBuffer.contents().storeBytes(of: uniforms, as: FFTransformUniforms.self)
+            encoder.setRenderPipelineState(cameraPipeline)
+            encoder.setVertexBuffer(uniformBuffer, offset: 0, index: Int(FF_TRANSFORM_UNIFORMS_BUFFER_INDEX))
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        }
+    }
+
+    /// Claims a slot, asks for the target, lets `encode` record the draw into
+    /// the slot's uniform buffer, and commits.
+    private func encodeFrame(
+        label: String,
+        target: () -> FrameTarget?,
+        encode: (_ encoder: any MTLRenderCommandEncoder, _ uniformBuffer: any MTLBuffer, _ colorTexture: any MTLTexture) -> Void
+    ) -> FrameOutcome {
         guard let slot = slots.acquire() else { return .skippedNoSlot }
 
         guard let target = target(),
@@ -236,21 +319,11 @@ public final class TriangleRenderer {
             slots.releaseUnusedForEncodingFailure(slot)
             return .encodingFailed
         }
-        commandBuffer.label = "Frostfield.TriangleFrame"
+        commandBuffer.label = label
 
         // The slot's previous frame has completed, so the GPU no longer reads
         // this buffer.
-        let uniforms = FFTriangleUniforms(
-            scale: Self.aspectScale(width: colorTexture.width, height: colorTexture.height),
-            rotation: rotation,
-            padding: 0
-        )
-        let uniformBuffer = uniformBuffers[slot]
-        uniformBuffer.contents().storeBytes(of: uniforms, as: FFTriangleUniforms.self)
-
-        encoder.setRenderPipelineState(pipeline)
-        encoder.setVertexBuffer(uniformBuffer, offset: 0, index: Int(FF_TRIANGLE_UNIFORMS_BUFFER_INDEX))
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encode(encoder, uniformBuffers[slot], colorTexture)
         encoder.endEncoding()
 
         if let drawable = target.drawable {

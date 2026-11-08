@@ -34,6 +34,21 @@ draw-callback counters, including callbacks and frames while the scene was not
 active. Its accessibility value carries the same counters as `key=value` pairs for
 the UI tests.
 
+The fixture switch at the top of the panel chooses what the scene draws:
+
+- **Triangle**: the clip-space diagnostic triangle above. The lifecycle UI tests use
+  it, and it is the default.
+- **Camera** (FF-06): the same triangle as model geometry, placed by an app-supplied
+  `Transform` and viewed through a perspective `Camera` at (0, -0.5, 4.5). The pose
+  buttons show one part of the transform each (Rest, Moved, Turned 60° about y,
+  Scaled), and the slider sets the vertical field of view. In continuous mode the
+  triangle also spins about its own y axis. Each change only rewrites the
+  renderer's per-frame uniforms; the status text shows the pipelines and buffers the
+  renderer created, which stay at 2 and 2.
+
+Launch with `-FrostfieldLabFixture camera` to start in the camera fixture, and with
+`-FrostfieldLabCameraPose <rest|moved|turned|scaled>` to choose its first pose.
+
 The drawable size is set from the view's own bounds and
 `traitCollection.displayScale` in `layoutSubviews`; nothing reads a screen-wide
 value.
