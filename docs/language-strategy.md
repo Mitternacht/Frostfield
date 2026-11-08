@@ -62,3 +62,12 @@ RealityKit's new low-level renderer is worth a bounded Frostfield comparison if 
 ## Integration into the task list
 
 The existing task checklist remains authoritative. Package-baseline tasks pin the toolchain. The first real buffer/material tasks add CPU/GPU layout evidence. Device qualification records allocation/copy behavior as well as timing. The Satin experiment checks consumer interop and copies. Any new language requires the gate above; no separate rewrite milestone is presumed.
+
+## Recorded toolchain (FF-01)
+
+Recorded 2026-11-08 while creating the package; see
+[the build baseline](evidence/build-baseline.md) for the full record. Xcode 27.2
+(27B52), Apple Swift 6.4.2, iOS/macOS 27.2 SDKs, tools version 6.2, Swift 6
+language mode, iOS/macOS 26.0 floors, nonisolated package default isolation, and
+the compiler-default MSL dialect for the 26.0 target (`__METAL_VERSION__ == 400`
+on this toolchain). Example apps set `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`.

@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Package and lab builds
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Record toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          xcodebuild -showsdks | grep -E "macosx|iphonesimulator"
+
+      - name: Require SDKs for the declared platforms
+        run: |
+          # Package.swift declares iOS 26 and macOS 26. Fail clearly when the
+          # selected Xcode cannot build for them instead of failing mid-build.
+          for sdk in macosx iphonesimulator; do
+            version="$(xcrun --sdk "$sdk" --show-sdk-version)"
+            major="${version%%.*}"
+            echo "$sdk SDK $version"
+            if [ "$major" -lt 26 ]; then
+              echo "::error::$sdk SDK $version is older than the declared 26 minimum"
+              exit 1
+            fi
+          done
+
+      - name: Build package (macOS Debug)
+        run: xcodebuild build -scheme Frostfield -destination 'generic/platform=macOS' -configuration Debug CODE_SIGNING_ALLOWED=NO
+
+      - name: Build package (macOS Release)
+        run: xcodebuild build -scheme Frostfield -destination 'generic/platform=macOS' -configuration Release CODE_SIGNING_ALLOWED=NO
+
+      - name: Build package (iOS Simulator Release)
+        run: xcodebuild build -scheme Frostfield -destination 'generic/platform=iOS Simulator' -configuration Release CODE_SIGNING_ALLOWED=NO
+
