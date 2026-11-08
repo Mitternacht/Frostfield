@@ -61,3 +61,12 @@ The first physical test-device models, absolute CPU/GPU/memory budgets, supporte
 ## Collaboration
 
 One agent owns renderer lifetime and shared resource changes at a time. Another can maintain deterministic fixtures and profiling records; a third can work on an adapter or independent effect after the input/output contract is established. Use file ownership and focused diffs. Build, render, inspect, profile, and revise each slice through the project's Apple-tool workflow before checking it off. Documentation, research, and fixture design may proceed while the GlassWeave implementation is being validated.
+
+## Language decision
+
+Use Swift for CPU implementation and native APIs, MSL for custom GPU work, and a
+small verified C-compatible data-layout boundary when needed. The proposed
+manifest baseline is Swift tools 6.2 with Swift 6 language mode. See the
+[language strategy](../docs/language-strategy.md)
+for toolchain distinctions, layout tests, ownership rules, foreign-language
+admission gates, and conditional backend alternatives.

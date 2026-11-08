@@ -7,11 +7,11 @@ All tasks below are planned. This planning repository contains no package manife
 Create the Swift package during implementation. The current repository is documentation only; do not mistake this task for work already completed.
 
 **Acceptance criteria**
-- [ ] `Package.swift` declares tools version 6.0, Swift 6 language mode, iOS 26 and macOS 26, and one initial `Frostfield` library product with no GlassWeave dependency.
+- [ ] `Package.swift` declares tools version 6.2, Swift 6 language mode, iOS 26 and macOS 26, and one initial `Frostfield` library product with no GlassWeave dependency.
 - [ ] A minimal source file gives the target a buildable module without speculative public APIs, fake renderer behavior, or meaningless placeholder tests.
 - [ ] The chosen Xcode/SDK and an actual successful package build are recorded; a compatible macOS CI build checks compilation without claiming GPU validation.
 
-**Verification:** Use Xcode MCP to open/build the package on an available destination, inspect diagnostics, and record toolchain/version. Verify manifest platform parsing with that toolchain. CI must choose an Xcode version supporting the declared SDKs, fail clearly when unavailable, and avoid claiming device performance. Add tests when real behavior exists.
+**Verification:** Use Xcode MCP to open/build the package on an available destination, inspect diagnostics, and record toolchain/version. Verify manifest platform parsing with that toolchain. Record compiler version, SDK, Swift language mode, default actor isolation, and the selected MSL dialect separately; follow `docs/language-strategy.md`. CI must choose an Xcode version supporting the declared SDKs, fail clearly when unavailable, and avoid claiming device performance. Add tests when real behavior exists.
 
 **Dependencies:** None. **Scope:** M, four files.
 **Likely files:** `Package.swift`, `Sources/Frostfield/Frostfield.swift`, `.github/workflows/ci.yml`, `docs/evidence/build-baseline.md`.
@@ -89,7 +89,7 @@ Add only the transform and camera data needed to position the existing primitive
 - [ ] Coordinate handedness, matrix order, depth range, and near/far validation are documented.
 - [ ] Camera or transform updates do not reconstruct stable GPU resources or require SwiftUI.
 
-**Verification:** Xcode build/run of deterministic poses; focused Swift Testing cases for transform composition and invalid projection inputs; compare known screen positions.
+**Verification:** Xcode build/run of deterministic poses; focused Swift Testing cases for transform composition and invalid projection inputs; compare known screen positions. Verify the first uploaded transform record with host size/alignment/offset/stride assertions and a distinctive-value GPU round-trip; split this into a prerequisite subtask if packaging the shared layout exceeds this slice.
 
 **Dependencies:** Checkpoint B. **Scope:** M, five files.
 **Likely files:** `Sources/Frostfield/Transform.swift`, `Sources/Frostfield/Camera.swift`, `Sources/Frostfield/Renderer.swift`, `Tests/FrostfieldTests/TransformTests.swift`, `Examples/FrostfieldLab/CameraFixture.swift`.

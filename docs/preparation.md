@@ -34,4 +34,6 @@ Checked on 2026-11-08:
 - No implementation files, package manifest, or active CI workflow remain.
 - Public documents contain no machine-specific personal paths.
 
-Publication verification is recorded after the public repositories are created.
+Public GitHub visibility and the `main` branch were verified on 2026-11-08.
+The initial local commits matched `origin/main`. The final language-decision
+update is verified again when pushed.

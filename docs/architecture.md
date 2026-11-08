@@ -82,3 +82,12 @@ Before extraction, record two concrete consumers, an acyclic dependency graph, o
 Apple's documented `UIGlassEffect` controls material configuration and interactivity. `UIGlassContainerEffect` combines views using that effect. These interfaces do not document injecting Frostfield or GlassWeave shaders into the native glass renderer. Custom merging requires custom-rendered participants; native controls can remain above them. [UIGlassEffect](https://developer.apple.com/documentation/uikit/uiglasseffect), [UIGlassContainerEffect](https://developer.apple.com/documentation/uikit/uiglasscontainereffect).
 
 The integration target is a coherent native app with programmable graphics and custom surfaces alongside system glass, with explicit cost and lifecycle behavior.
+
+## Language decision
+
+Use Swift for CPU implementation and native APIs, MSL for custom GPU work, and a
+small verified C-compatible data-layout boundary when needed. The proposed
+manifest baseline is Swift tools 6.2 with Swift 6 language mode. See the
+[language strategy](language-strategy.md)
+for toolchain distinctions, layout tests, ownership rules, foreign-language
+admission gates, and conditional backend alternatives.

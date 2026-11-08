@@ -101,3 +101,12 @@ Apply this checklist to the limited v0.1 after FF-08, with the scoped Checkpoint
 - [ ] README/API docs describe actual capabilities, failure behavior, thread/lifetime rules, color conventions, and performance limitations.
 - [ ] Dependency versions and license obligations are recorded; experimental dependencies do not leak into shipping products.
 - [ ] Release notes link the evidence and retain unimplemented features as roadmap items.
+
+## Language and data-layout evidence
+
+Follow [the language strategy](language-strategy.md). With the first actual GPU
+records, verify host size/alignment/offsets/stride and a shader round-trip with
+distinctive values. Record allocations, copied bytes where measurable, and
+retain/release hotspots during state updates, resize, and steady rendering.
+For foreign kernels, include conversion and FFI cost and a clean Swift consumer
+build; do not infer a whole-app benefit from an isolated microbenchmark.

@@ -31,6 +31,7 @@ experiments rather than selected project dependencies.
 - [Implementation plan](tasks/plan.md)
 - [Ordered tasks and acceptance criteria](tasks/todo.md)
 - [Architecture](docs/architecture.md)
+- [Language strategy](docs/language-strategy.md)
 - [Validation and performance protocol](docs/validation.md)
 - [Contributing](CONTRIBUTING.md)
 
@@ -38,7 +39,7 @@ experiments rather than selected project dependencies.
 
 | Area | Initial choice |
 | --- | --- |
-| Language | Swift 6 mode; Swift tools version 6.0 |
+| Language | Swift 6 mode; Swift tools version 6.2 |
 | First UI target | iOS and iPadOS 26 or later |
 | macOS | macOS 26 core build checks; a native macOS UI adapter is future work |
 | Local agent workflow | Xcode 27 skills and the native Xcode MCP server |

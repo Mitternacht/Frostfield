@@ -13,6 +13,10 @@ The user deliberately reserved implementation for Claude.
 5. [Verification and performance protocol](docs/validation.md).
 6. [Ordered implementation tasks](tasks/todo.md) — the only completion checklist.
 
+Read the [language strategy](docs/language-strategy.md) before creating the package.
+It specifies Swift CPU code, MSL shaders, a verified data-layout boundary, and gates
+for adding C/C++ or Rust.
+
 ## Product intent
 
 Build a Swift and Metal creative-graphics framework with programmable scenes,
