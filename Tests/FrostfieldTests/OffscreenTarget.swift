@@ -2,7 +2,8 @@ import Metal
 import Testing
 @testable import Frostfield
 
-/// A CPU-readable BGRA8 render target cleared to opaque black.
+/// A CPU-readable BGRA8 render target cleared to opaque black, optionally
+/// with a depth attachment cleared to 1.
 struct OffscreenTarget {
     struct Pixel: CustomStringConvertible {
         enum Channel: Sendable { case red, green, blue }
@@ -22,14 +23,28 @@ struct OffscreenTarget {
     }
 
     let texture: any MTLTexture
+    /// A private depth texture, kept after the pass so tests can copy it out.
+    let depthTexture: (any MTLTexture)?
 
-    init(device: any MTLDevice, width: Int, height: Int) throws {
+    init(device: any MTLDevice, width: Int, height: Int, depthPixelFormat: MTLPixelFormat? = nil) throws {
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false
         )
         descriptor.usage = .renderTarget
         descriptor.storageMode = .shared
         texture = try #require(device.makeTexture(descriptor: descriptor))
+
+        if let depthPixelFormat {
+            let depthDescriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: depthPixelFormat, width: width, height: height, mipmapped: false
+            )
+            depthDescriptor.usage = .renderTarget
+            depthDescriptor.storageMode = .private
+            let depthTexture: any MTLTexture = try #require(device.makeTexture(descriptor: depthDescriptor))
+            self.depthTexture = depthTexture
+        } else {
+            depthTexture = nil
+        }
     }
 
     var frameTarget: FrameTarget {
@@ -38,7 +53,54 @@ struct OffscreenTarget {
         pass.colorAttachments[0].loadAction = .clear
         pass.colorAttachments[0].storeAction = .store
         pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        if let depthTexture {
+            pass.depthAttachment.texture = depthTexture
+            pass.depthAttachment.loadAction = .clear
+            pass.depthAttachment.storeAction = .store
+            pass.depthAttachment.clearDepth = 1
+        }
         return FrameTarget(passDescriptor: pass, drawable: nil)
+    }
+
+    /// The pixel position of a normalized-device-coordinate point.
+    func pixelPosition(ndc: SIMD2<Float>) -> (x: Int, y: Int) {
+        let x = min(texture.width - 1, Int((ndc.x + 1) / 2 * Float(texture.width)))
+        let y = min(texture.height - 1, Int((1 - ndc.y) / 2 * Float(texture.height)))
+        return (x, y)
+    }
+
+    /// The NDC point at the centre of a pixel.
+    func ndc(x: Int, y: Int) -> SIMD2<Float> {
+        SIMD2(
+            (Float(x) + 0.5) / Float(texture.width) * 2 - 1,
+            1 - (Float(y) + 0.5) / Float(texture.height) * 2
+        )
+    }
+
+    /// Copies a `depth32Float` attachment into a shared buffer on the GPU and
+    /// returns its values in row-major order, top row first.
+    func depthValues(queue: any MTLCommandQueue) async throws -> [Float] {
+        let depthTexture = try #require(depthTexture)
+        try #require(depthTexture.pixelFormat == .depth32Float)
+        let bytesPerRow = depthTexture.width * MemoryLayout<Float>.stride
+        let length = bytesPerRow * depthTexture.height
+        let buffer = try #require(queue.device.makeBuffer(length: length, options: .storageModeShared))
+        let commandBuffer = try #require(queue.makeCommandBuffer())
+        let blit = try #require(commandBuffer.makeBlitCommandEncoder())
+        blit.copy(
+            from: depthTexture, sourceSlice: 0, sourceLevel: 0,
+            sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+            sourceSize: MTLSize(width: depthTexture.width, height: depthTexture.height, depth: 1),
+            to: buffer, destinationOffset: 0,
+            destinationBytesPerRow: bytesPerRow, destinationBytesPerImage: length
+        )
+        blit.endEncoding()
+        let status = await commitAndWait(commandBuffer)
+        try #require(status == .completed)
+        return Array(UnsafeBufferPointer(
+            start: buffer.contents().assumingMemoryBound(to: Float.self),
+            count: depthTexture.width * depthTexture.height
+        ))
     }
 
     /// The pixel containing a normalized-device-coordinate point.
@@ -48,8 +110,11 @@ struct OffscreenTarget {
 
     /// The pixel containing a clip-space point (y up, as in the shader).
     func pixel(clipX: Float, clipY: Float) -> Pixel {
-        let x = min(texture.width - 1, Int((clipX + 1) / 2 * Float(texture.width)))
-        let y = min(texture.height - 1, Int((1 - clipY) / 2 * Float(texture.height)))
+        let (x, y) = pixelPosition(ndc: SIMD2(clipX, clipY))
+        return pixel(x: x, y: y)
+    }
+
+    func pixel(x: Int, y: Int) -> Pixel {
         var bytes = [UInt8](repeating: 0, count: 4)
         texture.getBytes(&bytes, bytesPerRow: 4, from: MTLRegionMake2D(x, y, 1, 1), mipmapLevel: 0)
         return Pixel(blue: bytes[0], green: bytes[1], red: bytes[2], alpha: bytes[3])

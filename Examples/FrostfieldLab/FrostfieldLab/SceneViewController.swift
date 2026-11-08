@@ -3,10 +3,12 @@ import MetalKit
 import UIKit
 
 /// One window scene's render host: a ``SceneRenderView`` driven by the
-/// package's `TriangleRenderer` and paced by a `RenderSchedule`.
+/// package's renderers and paced by a `RenderSchedule`.
 ///
 /// The host draws one ``LabFixture`` at a time: the clip-space diagnostic
-/// triangle used by the lifecycle tests, or the ``CameraFixture``.
+/// triangle used by the lifecycle tests and the ``CameraFixture`` (both
+/// through `TriangleRenderer`), or the ``GeometryFixture`` (through
+/// `MeshRenderer`, with a depth buffer).
 ///
 /// Each scene creates its own controller, renderer, schedule, and view. The
 /// host reports facts from its own context to the schedule (the scene's
@@ -16,8 +18,17 @@ import UIKit
 final class SceneViewController: UIViewController {
     /// Radians of triangle rotation per second of animation time.
     private static let rotationSpeed: Float = 0.8
+    /// The depth format of the cube fixture's view and pipeline.
+    private static let depthPixelFormat = MTLPixelFormat.depth32Float
 
-    private var renderer: TriangleRenderer?
+    /// The renderers and the cube mesh, created together when the view loads.
+    private struct Renderers {
+        let triangle: TriangleRenderer
+        let mesh: MeshRenderer
+        let geometryFixture: GeometryFixture
+    }
+
+    private var renderers: Renderers?
     private var renderView: SceneRenderView?
     private var schedule = RenderSchedule(mode: .requested)
     private var fixture = LabLaunchOptions.fixture
@@ -29,6 +40,7 @@ final class SceneViewController: UIViewController {
     private let statusLabel = UILabel()
     private let fixtureControl = UISegmentedControl(items: LabFixture.allCases.map(\.title))
     private var cameraControls: UIView?
+    private var cubeControls: UIView?
     private let modeControl = UISegmentedControl(items: ["Requested", "Continuous"])
     private let redrawButton = UIButton(configuration: .gray())
     private let visibilityButton = UIButton(configuration: .gray())
@@ -40,13 +52,26 @@ final class SceneViewController: UIViewController {
 
         let device = LabLaunchOptions.simulatesMissingDevice ? nil : MTLCreateSystemDefaultDevice()
         let renderView = SceneRenderView(frame: view.bounds, device: device)
+        let onFrameCompleted: @Sendable (FrameCompletion) -> Void = { [weak self] _ in
+            Task { @MainActor in self?.frameDidComplete() }
+        }
         do {
-            renderer = try TriangleRenderer(
+            // Pipelines and the cube's buffers are created here, before any
+            // interaction; drawing creates nothing.
+            let mesh = try MeshRenderer(
                 device: device,
                 colorPixelFormat: renderView.colorPixelFormat,
-                onFrameCompleted: { [weak self] _ in
-                    Task { @MainActor in self?.frameDidComplete() }
-                }
+                depthPixelFormat: Self.depthPixelFormat,
+                onFrameCompleted: onFrameCompleted
+            )
+            renderers = Renderers(
+                triangle: try TriangleRenderer(
+                    device: device,
+                    colorPixelFormat: renderView.colorPixelFormat,
+                    onFrameCompleted: onFrameCompleted
+                ),
+                mesh: mesh,
+                geometryFixture: try GeometryFixture(renderer: mesh, pose: LabLaunchOptions.cubePose)
             )
         } catch {
             showFailure(error)
@@ -146,7 +171,10 @@ final class SceneViewController: UIViewController {
         let cameraControls = cameraFixture.makeControls()
         cameraFixture.onChange = { [weak self] in self?.redraw() }
         self.cameraControls = cameraControls
-        updateFixtureControls()
+        let cubeControls = renderers?.geometryFixture.makeControls() ?? UIView()
+        renderers?.geometryFixture.onChange = { [weak self] in self?.redraw() }
+        self.cubeControls = cubeControls
+        applyFixture()
 
         modeControl.selectedSegmentIndex = 0
         modeControl.accessibilityIdentifier = "drawingMode"
@@ -178,7 +206,7 @@ final class SceneViewController: UIViewController {
         buttons.spacing = 8
         buttons.distribution = .fillProportionally
 
-        let panel = UIStackView(arrangedSubviews: [statusLabel, fixtureControl, cameraControls, modeControl, buttons])
+        let panel = UIStackView(arrangedSubviews: [statusLabel, fixtureControl, cameraControls, cubeControls, modeControl, buttons])
         panel.axis = .vertical
         panel.spacing = 8
         panel.isLayoutMarginsRelativeArrangement = true
@@ -198,12 +226,16 @@ final class SceneViewController: UIViewController {
 
     private func fixtureChanged() {
         fixture = LabFixture.allCases[fixtureControl.selectedSegmentIndex]
-        updateFixtureControls()
+        applyFixture()
         redraw()
     }
 
-    private func updateFixtureControls() {
+    /// Shows the fixture's controls and gives the view a depth buffer only
+    /// for the fixture whose pipeline tests depth.
+    private func applyFixture() {
         cameraControls?.isHidden = fixture != .camera
+        cubeControls?.isHidden = fixture != .geometry
+        renderView?.depthStencilPixelFormat = fixture == .geometry ? Self.depthPixelFormat : .invalid
     }
 
     private func modeChanged() {
@@ -237,9 +269,11 @@ final class SceneViewController: UIViewController {
     // MARK: Status
 
     private func updateStatus() {
-        guard let renderer else { return }
-        let statistics = renderer.statistics
-        let resources = renderer.resourceStatistics
+        guard let renderers else { return }
+        let (statistics, resources) = switch fixture {
+        case .triangle, .camera: (renderers.triangle.statistics, renderers.triangle.resourceStatistics)
+        case .geometry: (renderers.mesh.statistics, renderers.mesh.resourceStatistics)
+        }
         let size = schedule.drawableSize.map { "\(Int($0.width))x\(Int($0.height))" } ?? "none"
         statusLabel.text = """
             \(schedule.mode) · \(schedule.activity) · \(schedule.pacing) · \(size) px @\(displayScale.formatted())x
@@ -247,8 +281,8 @@ final class SceneViewController: UIViewController {
             skipped \(statistics.skippedNoSlot) slot / \(statistics.skippedNoTarget) drawable
             callbacks \(counters.callbacks) · refused \(counters.refused) · \
             while not active \(counters.callbacksWhileNotActive) / \(counters.submittedWhileNotActive)
-            created \(resources.renderPipelinesCreated) pipelines · \(resources.buffersAllocated) buffers \
-            (\(resources.bufferBytesAllocated) B)
+            created \(resources.renderPipelinesCreated) pipelines · \(resources.depthStencilStatesCreated) depth · \
+            \(resources.buffersAllocated) buffers (\(resources.bufferBytesAllocated) B)
             """
         var fields: [(String, String)] = [
             ("fixture", fixture.rawValue),
@@ -268,11 +302,14 @@ final class SceneViewController: UIViewController {
             ("longestDrawableWaitMicroseconds", "\(counters.longestDrawableWaitMicroseconds)"),
             ("longestDrawableWaitWhileNotActiveMicroseconds", "\(counters.longestDrawableWaitWhileNotActiveMicroseconds)"),
             ("pipelinesCreated", "\(resources.renderPipelinesCreated)"),
+            ("depthStatesCreated", "\(resources.depthStencilStatesCreated)"),
             ("buffersAllocated", "\(resources.buffersAllocated)"),
             ("bufferBytesAllocated", "\(resources.bufferBytesAllocated)"),
         ]
-        if fixture == .camera {
-            fields += cameraFixture.statusFields
+        switch fixture {
+        case .triangle: break
+        case .camera: fields += cameraFixture.statusFields
+        case .geometry: fields += renderers.geometryFixture.statusFields
         }
         statusLabel.accessibilityValue = fields.map { "\($0)=\($1)" }.joined(separator: ";")
     }
@@ -307,7 +344,7 @@ extension SceneViewController: MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
-        guard let renderer else { return }
+        guard let renderers else { return }
         let isActive = schedule.activity == .active
         counters.callbacks += 1
         if !isActive { counters.callbacksWhileNotActive += 1 }
@@ -329,11 +366,18 @@ extension SceneViewController: MTKViewDelegate {
         }
         let outcome = switch fixture {
         case .triangle:
-            renderer.drawFrame(rotation: Float(animationTime) * Self.rotationSpeed, target: target)
+            renderers.triangle.drawFrame(rotation: Float(animationTime) * Self.rotationSpeed, target: target)
         case .camera:
-            renderer.drawFrame(
+            renderers.triangle.drawFrame(
                 transform: cameraFixture.transform(animationTime: animationTime),
                 camera: cameraFixture.camera,
+                target: target
+            )
+        case .geometry:
+            renderers.mesh.drawFrame(
+                mesh: renderers.geometryFixture.mesh,
+                transform: renderers.geometryFixture.transform(animationTime: animationTime),
+                camera: renderers.geometryFixture.camera,
                 target: target
             )
         }
@@ -379,11 +423,14 @@ enum LabFixture: String, CaseIterable {
     case triangle
     /// The triangle placed by a transform under a perspective camera (FF-06).
     case camera
+    /// The indexed procedural cube with depth and culling (FF-07).
+    case geometry
 
     var title: String {
         switch self {
         case .triangle: "Triangle"
         case .camera: "Camera"
+        case .geometry: "Cube"
         }
     }
 }
@@ -400,6 +447,12 @@ enum LabLaunchOptions {
     /// pose (`rest` by default).
     static var cameraPose: CameraFixture.Pose {
         value(after: "-FrostfieldLabCameraPose").flatMap(CameraFixture.Pose.init(rawValue:)) ?? .rest
+    }
+
+    /// `-FrostfieldLabCubePose <name>` starts the cube fixture in that pose
+    /// (`front` by default).
+    static var cubePose: GeometryFixture.Pose {
+        value(after: "-FrostfieldLabCubePose").flatMap(GeometryFixture.Pose.init(rawValue:)) ?? .front
     }
 
     private static func value(after flag: String) -> String? {

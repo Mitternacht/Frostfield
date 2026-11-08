@@ -46,8 +46,19 @@ The fixture switch at the top of the panel chooses what the scene draws:
   renderer's per-frame uniforms; the status text shows the pipelines and buffers the
   renderer created, which stay at 2 and 2.
 
-Launch with `-FrostfieldLabFixture camera` to start in the camera fixture, and with
-`-FrostfieldLabCameraPose <rest|moved|turned|scaled>` to choose its first pose.
+- **Cube** (FF-07): the procedural cube as one indexed mesh, drawn by `MeshRenderer`
+  with a depth buffer and back-face culling. Each face shows its model-space normal
+  as a color: +x reddish, -x teal, +y light green, -y purple, +z lavender, -z olive.
+  The pose buttons choose Front, Corner (-x, +y, and +z visible), or Stretched, and
+  continuous mode spins the cube. The mesh is uploaded once when the scene loads;
+  the status text shows 1 pipeline, 1 depth state, and 5 buffers (two per-frame
+  uniform buffers and the cube's position, normal, and index buffers) however long
+  it animates. The view has a depth buffer only while this fixture is shown.
+
+Launch with `-FrostfieldLabFixture <triangle|camera|geometry>` to choose the first
+fixture, `-FrostfieldLabCameraPose <rest|moved|turned|scaled>` for the camera
+fixture's first pose, and `-FrostfieldLabCubePose <front|corner|stretched>` for the
+cube's.
 
 The drawable size is set from the view's own bounds and
 `traitCollection.displayScale` in `layoutSubviews`; nothing reads a screen-wide

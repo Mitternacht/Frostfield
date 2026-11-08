@@ -67,6 +67,14 @@ Current state (FF-06, experimental): `Transform`, `PerspectiveProjection`, and
 camera or transform change creates no GPU object (`ResourceStatistics`). The
 conventions are in [coordinate conventions](coordinates.md).
 
+Current state (FF-07, experimental): `IndexedGeometry` validates indexed
+triangle data when it is created, and `MeshRenderer.makeMesh(_:)` uploads it once
+into position, normal, and index buffers. `MeshRenderer` draws one mesh per
+frame with counter-clockwise front faces, back-face culling, and a `less` depth
+test, and colors fragments by their model-space normals. Both renderers share one
+internal frame loop (`FrameSubmitter`): bounded slots, late target acquisition,
+and per-slot uniform buffers reused only after GPU completion.
+
 ## Creative API progression
 
 The first composition path is a camera plus transformed indexed geometry and a prepared material. Expose a documented shader binding contract so app authors can invent materials without waiting for a catalogue of effects. Add one directional Lambert light, one bounded particle emitter, and one full-screen post-process as separate slices.

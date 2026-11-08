@@ -30,6 +30,10 @@
   `TriangleRenderer.drawFrame(transform:camera:target:)`, the shared
   `FFTransformUniforms` record, `ResourceStatistics`, and the lab's camera fixture
   (FF-06).
+- Experimental `IndexedGeometry` with creation-time validation (`GeometryError`), the
+  procedural `IndexedGeometry.cube(size:)`, and `MeshRenderer`/`Mesh`: indexed meshes
+  uploaded once and drawn with depth testing, back-face culling, and normal
+  diagnostic coloring; the lab's cube fixture (FF-07).
 
 No stable public API or release is available yet. Physical-device rendering has not
 been verified.

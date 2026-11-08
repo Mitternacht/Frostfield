@@ -1,8 +1,9 @@
 # Coordinate conventions
 
 Status: implemented for FF-06 (`Transform`, `Camera`, `PerspectiveProjection`,
-`TriangleRenderer.drawFrame(transform:camera:target:)`). Every Frostfield type
-that places geometry uses these rules. Tests that check them are named below.
+`TriangleRenderer.drawFrame(transform:camera:target:)`) and FF-07
+(`IndexedGeometry`, `MeshRenderer`). Every Frostfield type that places geometry
+uses these rules. Tests that check them are named below.
 
 ## Spaces and handedness
 
@@ -67,12 +68,38 @@ The renderer computes the aspect ratio from the target's pixel size and draws
 nothing for an empty target, so it never builds a projection from an invalid
 ratio.
 
-## Winding
+## Winding, culling, and depth testing
+
+A triangle is **front-facing when its indices run counter-clockwise on screen**,
+that is, counter-clockwise seen from the side its normals point to.
+`IndexedGeometry.cube(size:)` follows this rule on every face, with outward
+normals. `MeshRenderer` encodes `setFrontFacing(.counterClockwise)` and culls
+back faces, and its depth test keeps the nearest fragment (`less`, depth cleared
+to 1, depth writes on). A mirroring transform (an odd number of negative scale
+factors) reverses on-screen winding, so such a mesh shows its back faces; supply
+geometry wound for the mirrored result if you need that.
 
 The diagnostic triangle's corners (red apex, green lower left, blue lower right)
-run counter-clockwise seen from +z. `drawFrame(transform:camera:target:)` does
-not cull faces, so the triangle is visible from both sides. Front-face winding
-and culling for closed meshes are defined with the indexed geometry in FF-07.
+also run counter-clockwise seen from +z, but
+`TriangleRenderer.drawFrame(transform:camera:target:)` does not cull, so the
+triangle is visible from both sides.
+
+## Mesh vertex layout
+
+`IndexedGeometry` holds model-space positions and normals (`SIMD3<Float>`, one
+per vertex) and `UInt32` indices, three per triangle. Its initializer rejects,
+with a `GeometryError` naming the offending element: no vertices, no indices, an
+index count that is not a multiple of 3, an index at or beyond the vertex count,
+a normal count that differs from the position count, NaN or infinite values,
+and zero-length normals. A geometry value is therefore always safe to upload.
+
+`MeshRenderer.makeMesh(_:)` uploads it once into three buffers. The pipeline
+reads positions (attribute `FF_MESH_ATTRIBUTE_POSITION`, buffer
+`FF_MESH_POSITION_BUFFER_INDEX`) and normals (attribute `FF_MESH_ATTRIBUTE_NORMAL`,
+buffer `FF_MESH_NORMAL_BUFFER_INDEX`) as `float3` with a 16-byte stride, the
+stride of `SIMD3<Float>`; buffer 0 holds `FFTransformUniforms`. Every target
+needs a depth attachment in the renderer's `depthPixelFormat`; drawing into a
+pass without one stops with a precondition message before any draw is encoded.
 
 ## Evidence
 
@@ -92,3 +119,11 @@ Package tests on My Mac (Apple M5 GPU) with Metal API validation, scheme
   read back at corner positions computed by hand, geometry just inside and just
   outside the near and far planes, and resource counters that stay constant over
   60 camera and transform updates.
+- `CubeGeometryTests` and `GeometryValidationTests`: every cube triangle's edge
+  cross product matches its outward vertex normals, and each invalid input
+  produces its `GeometryError`.
+- `MeshRenderingTests`: every pixel of six cube views (including a camera behind
+  the cube and a non-uniform scale) matches a CPU ray-cast reference; an
+  inside-out cube shows its far face; the nearer of two overlapping quads wins in
+  either draw order; the depth attachment holds the projection's depth (0.9697
+  at distance 2.5 with near 0.1 and far 10) and 1 where nothing was drawn.

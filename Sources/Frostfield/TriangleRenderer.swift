@@ -2,7 +2,8 @@ import Foundation
 import Metal
 internal import FrostfieldShaderTypes
 
-/// Why a ``TriangleRenderer`` could not be created.
+/// Why a ``TriangleRenderer`` or ``MeshRenderer`` could not be created, or
+/// why a renderer could not create a resource.
 public enum RendererError: Error, Equatable, Sendable, CustomStringConvertible {
     /// No Metal device was supplied, for example because
     /// `MTLCreateSystemDefaultDevice()` returned `nil`.
@@ -16,8 +17,10 @@ public enum RendererError: Error, Equatable, Sendable, CustomStringConvertible {
     case shaderFunctionMissing(name: String)
     /// Metal rejected the render pipeline description.
     case pipelineCreationFailed(reason: String)
-    /// The device could not allocate a per-frame buffer.
+    /// The device could not allocate a per-frame or mesh buffer.
     case bufferAllocationFailed
+    /// The device could not create a depth-stencil state.
+    case depthStencilStateUnavailable
 
     public var description: String {
         switch self {
@@ -32,7 +35,9 @@ public enum RendererError: Error, Equatable, Sendable, CustomStringConvertible {
         case .pipelineCreationFailed(let reason):
             "The render pipeline could not be created: \(reason)"
         case .bufferAllocationFailed:
-            "The Metal device could not allocate a per-frame buffer."
+            "The Metal device could not allocate a buffer."
+        case .depthStencilStateUnavailable:
+            "The Metal device could not create a depth-stencil state."
         }
     }
 }
@@ -112,19 +117,17 @@ public final class TriangleRenderer {
     /// The color format the pipeline renders; targets must match it.
     public let colorPixelFormat: MTLPixelFormat
     /// The maximum number of frames that may be in flight at once.
-    public var maxFramesInFlight: Int { slots.capacity }
+    public var maxFramesInFlight: Int { submitter.slots.capacity }
     /// Counters for submitted, completed, and skipped frames.
-    public var statistics: FrameStatistics { slots.statistics }
+    public var statistics: FrameStatistics { submitter.slots.statistics }
     /// Counters for the pipelines and buffers this renderer created.
-    public private(set) var resourceStatistics = ResourceStatistics()
+    public let resourceStatistics: ResourceStatistics
 
-    private let commandQueue: any MTLCommandQueue
+    private let submitter: FrameSubmitter
     private let pipeline: any MTLRenderPipelineState
     private let cameraPipeline: any MTLRenderPipelineState
     /// One uniform buffer per frame slot, indexed by slot.
-    let uniformBuffers: [any MTLBuffer]
-    private let slots: FrameSlots
-    private let onFrameCompleted: @Sendable (FrameCompletion) -> Void
+    var uniformBuffers: [any MTLBuffer] { submitter.uniformBuffers }
 
     /// Creates the queue, pipeline, and per-frame buffers.
     ///
@@ -165,10 +168,17 @@ public final class TriangleRenderer {
         fragmentFunctionName: String,
         onFrameCompleted: @escaping @Sendable (FrameCompletion) -> Void
     ) throws(RendererError) {
-        precondition((1...3).contains(maxFramesInFlight), "maxFramesInFlight must be 1, 2, or 3")
         guard let device else { throw .noMetalDevice }
-        guard let commandQueue = device.makeCommandQueue() else { throw .commandQueueUnavailable }
-        commandQueue.label = "Frostfield.TriangleRenderer"
+        var resources = ResourceStatistics()
+        let submitter = try FrameSubmitter(
+            device: device,
+            label: "Frostfield.TriangleRenderer",
+            colorPixelFormat: colorPixelFormat,
+            maxFramesInFlight: maxFramesInFlight,
+            uniformBufferLength: Self.uniformBufferLength,
+            resources: &resources,
+            onFrameCompleted: onFrameCompleted
+        )
 
         let library = try Self.makeShaderLibrary(device: device)
         guard let vertexFunction = library.makeFunction(name: vertexFunctionName) else {
@@ -181,7 +191,6 @@ public final class TriangleRenderer {
             throw .shaderFunctionMissing(name: fragmentFunctionName)
         }
 
-        var resources = ResourceStatistics()
         func makePipeline(label: String, vertexFunction: any MTLFunction) throws(RendererError) -> any MTLRenderPipelineState {
             let descriptor = MTLRenderPipelineDescriptor()
             descriptor.label = label
@@ -199,27 +208,12 @@ public final class TriangleRenderer {
         let pipeline = try makePipeline(label: "Frostfield.Triangle", vertexFunction: vertexFunction)
         let cameraPipeline = try makePipeline(label: "Frostfield.TriangleCamera", vertexFunction: cameraVertexFunction)
 
-        var uniformBuffers: [any MTLBuffer] = []
-        for slot in 0..<maxFramesInFlight {
-            guard let buffer = device.makeBuffer(
-                length: Self.uniformBufferLength,
-                options: .storageModeShared
-            ) else { throw .bufferAllocationFailed }
-            buffer.label = "Frostfield.TriangleUniforms[\(slot)]"
-            resources.buffersAllocated += 1
-            resources.bufferBytesAllocated += buffer.length
-            uniformBuffers.append(buffer)
-        }
-
         self.device = device
         self.colorPixelFormat = colorPixelFormat
-        self.commandQueue = commandQueue
+        self.submitter = submitter
         self.pipeline = pipeline
         self.cameraPipeline = cameraPipeline
-        self.uniformBuffers = uniformBuffers
         self.resourceStatistics = resources
-        self.slots = FrameSlots(capacity: maxFramesInFlight)
-        self.onFrameCompleted = onFrameCompleted
     }
 
     /// Loads the library Xcode compiles from `Sources/Frostfield/Shaders` into
@@ -254,7 +248,7 @@ public final class TriangleRenderer {
     ///   - rotation: Counter-clockwise rotation of the triangle in radians.
     ///   - target: Supplies the render pass and drawable for this frame.
     public func drawFrame(rotation: Float, target: () -> FrameTarget?) -> FrameOutcome {
-        encodeFrame(label: "Frostfield.TriangleFrame", target: target) { encoder, uniformBuffer, colorTexture in
+        submitter.submit(label: "Frostfield.TriangleFrame", target: target) { encoder, uniformBuffer, _, colorTexture in
             let uniforms = FFTriangleUniforms(
                 scale: Self.aspectScale(width: colorTexture.width, height: colorTexture.height),
                 rotation: rotation,
@@ -279,7 +273,7 @@ public final class TriangleRenderer {
     ///
     /// Slots and targets behave as in ``drawFrame(rotation:target:)``.
     public func drawFrame(transform: Transform, camera: Camera, target: () -> FrameTarget?) -> FrameOutcome {
-        encodeFrame(label: "Frostfield.TriangleCameraFrame", target: target) { encoder, uniformBuffer, colorTexture in
+        submitter.submit(label: "Frostfield.TriangleCameraFrame", target: target) { encoder, uniformBuffer, _, colorTexture in
             // The target is non-empty, so the ratio is finite and positive.
             let aspectRatio = Float(colorTexture.width) / Float(colorTexture.height)
             let uniforms = FFTransformUniforms(
@@ -290,55 +284,5 @@ public final class TriangleRenderer {
             encoder.setVertexBuffer(uniformBuffer, offset: 0, index: Int(FF_TRANSFORM_UNIFORMS_BUFFER_INDEX))
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         }
-    }
-
-    /// Claims a slot, asks for the target, lets `encode` record the draw into
-    /// the slot's uniform buffer, and commits.
-    private func encodeFrame(
-        label: String,
-        target: () -> FrameTarget?,
-        encode: (_ encoder: any MTLRenderCommandEncoder, _ uniformBuffer: any MTLBuffer, _ colorTexture: any MTLTexture) -> Void
-    ) -> FrameOutcome {
-        guard let slot = slots.acquire() else { return .skippedNoSlot }
-
-        guard let target = target(),
-              let colorTexture = target.passDescriptor.colorAttachments[0].texture,
-              colorTexture.width > 0, colorTexture.height > 0
-        else {
-            slots.releaseUnusedForMissingTarget(slot)
-            return .skippedNoTarget
-        }
-        precondition(
-            colorTexture.pixelFormat == colorPixelFormat,
-            "Target pixel format \(colorTexture.pixelFormat.rawValue) does not match the pipeline's \(colorPixelFormat.rawValue)"
-        )
-
-        guard let commandBuffer = commandQueue.makeCommandBuffer(),
-              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: target.passDescriptor)
-        else {
-            slots.releaseUnusedForEncodingFailure(slot)
-            return .encodingFailed
-        }
-        commandBuffer.label = label
-
-        // The slot's previous frame has completed, so the GPU no longer reads
-        // this buffer.
-        encode(encoder, uniformBuffers[slot], colorTexture)
-        encoder.endEncoding()
-
-        if let drawable = target.drawable {
-            commandBuffer.present(drawable)
-        }
-
-        let frame = slots.markSubmitted(slot)
-        let slots = self.slots
-        let onFrameCompleted = self.onFrameCompleted
-        commandBuffer.addCompletedHandler { buffer in
-            let succeeded = buffer.status == .completed
-            slots.complete(slot, failed: !succeeded)
-            onFrameCompleted(FrameCompletion(frame: frame, succeeded: succeeded))
-        }
-        commandBuffer.commit()
-        return .submitted(frame: frame)
     }
 }

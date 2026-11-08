@@ -51,4 +51,20 @@ typedef struct FFTransformUniforms {
     FFFloat4x4 modelViewProjection;
 } FFTransformUniforms;
 
+// Indexed meshes (`ff_mesh_vertex`). Positions and normals are separate
+// vertex streams of three floats each, read with a 16-byte stride (the stride
+// of Swift's SIMD3<Float>); the renderer's vertex descriptor states the same
+// layout. Buffer index 0 holds `FFTransformUniforms`.
+
+/// Stage-in attribute index of the model-space position.
+#define FF_MESH_ATTRIBUTE_POSITION 0
+/// Stage-in attribute index of the model-space normal.
+#define FF_MESH_ATTRIBUTE_NORMAL 1
+/// Vertex buffer index of the position stream.
+#define FF_MESH_POSITION_BUFFER_INDEX 1
+/// Vertex buffer index of the normal stream.
+#define FF_MESH_NORMAL_BUFFER_INDEX 2
+/// Byte stride of both vertex streams.
+#define FF_MESH_VERTEX_STREAM_STRIDE 16
+
 #endif

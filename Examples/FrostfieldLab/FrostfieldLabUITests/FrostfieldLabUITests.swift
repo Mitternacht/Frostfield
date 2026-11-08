@@ -199,6 +199,61 @@ final class FrostfieldLabUITests: XCTestCase {
         XCTAssertEqual(triangle["buffersAllocated"], 2)
     }
 
+    /// FF-07: the cube fixture uploads its mesh once when the view loads.
+    /// Pose changes and continuous animation change only the transform, so
+    /// the mesh renderer's pipeline, depth-state, and buffer counters stay
+    /// constant. The app runs with Metal API validation, and switching to a
+    /// fixture without a depth buffer and back must not trip it.
+    @MainActor
+    func testCubeFixtureReusesMeshBuffers() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-FrostfieldLabFixture", "geometry"]
+        app.launchEnvironment["MTL_DEBUG_LAYER"] = "1"
+        app.launch()
+        let start = try waitForSettledCounters(in: app)
+        XCTAssertEqual(start.text("fixture"), "geometry")
+        XCTAssertEqual(start.text("pose"), "front")
+        XCTAssertEqual(start["meshVertices"], 24)
+        XCTAssertEqual(start["meshIndices"], 36)
+        XCTAssertEqual(start["pipelinesCreated"], 1)
+        XCTAssertEqual(start["depthStatesCreated"], 1)
+        // Two per-frame uniform buffers plus the cube's position, normal, and
+        // index buffers: 2 × 64 + 24 × 16 × 2 + 36 × 4 bytes.
+        XCTAssertEqual(start["buffersAllocated"], 5)
+        XCTAssertEqual(start["bufferBytesAllocated"], 1040)
+
+        var previous = start
+        for pose in ["Corner", "Stretched", "Front"] {
+            app.segmentedControls["cubePose"].buttons[pose].tap()
+            let drawn = try waitForCounters(in: app) {
+                $0.text("pose") == pose.lowercased() && $0["completed"] == previous["submitted"] + 1
+            }
+            XCTAssertEqual(drawn["submitted"], previous["submitted"] + 1, "one pose change, one frame")
+            previous = drawn
+        }
+
+        app.segmentedControls["drawingMode"].buttons["Continuous"].tap()
+        let animated = try waitForCounters(in: app) { $0["submitted"] >= previous["submitted"] + 120 }
+        record("cube fixture: \(start) -> \(animated)")
+        for counters in [previous, animated] {
+            for key in ["pipelinesCreated", "depthStatesCreated", "buffersAllocated", "bufferBytesAllocated"] {
+                XCTAssertEqual(counters[key], start[key], key)
+            }
+        }
+
+        // The triangle fixture's pipeline has no depth attachment; the view
+        // drops its depth buffer for it and restores it for the cube.
+        app.segmentedControls["drawingMode"].buttons["Requested"].tap()
+        app.segmentedControls["fixture"].buttons["Triangle"].tap()
+        let triangle = try waitForCounters(in: app) { $0.text("fixture") == "triangle" && $0["completed"] >= 1 }
+        app.segmentedControls["fixture"].buttons["Cube"].tap()
+        let cubeAgain = try waitForCounters(in: app) {
+            $0.text("fixture") == "geometry" && $0["completed"] == $0["submitted"] && $0["submitted"] > animated["submitted"]
+        }
+        XCTAssertEqual(cubeAgain["buffersAllocated"], start["buffersAllocated"])
+        XCTAssertEqual(triangle["buffersAllocated"], 2)
+    }
+
     // MARK: Helpers
 
     /// Writes measured counters into the test log as an activity.
