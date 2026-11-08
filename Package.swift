@@ -15,6 +15,7 @@ let package = Package(
     targets: [
         // Core: Metal and simd only. Must not import UIKit or SwiftUI.
         .target(name: "Frostfield"),
+        .testTarget(name: "FrostfieldTests", dependencies: ["Frostfield"]),
     ],
     swiftLanguageModes: [.v6]
 )

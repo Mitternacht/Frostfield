@@ -49,3 +49,5 @@ jobs:
       - name: Build package (iOS Simulator Release)
         run: xcodebuild build -scheme Frostfield -destination 'generic/platform=iOS Simulator' -configuration Release CODE_SIGNING_ALLOWED=NO
 
+      - name: Test package (macOS)
+        run: xcodebuild test -scheme Frostfield -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
