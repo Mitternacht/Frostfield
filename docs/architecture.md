@@ -22,6 +22,13 @@ Start with a conventional `MTLCommandQueue` triangle and a bounded number of fra
 
 Metal 4 supports A14/M1 and later hardware, but support for the API does not mean every optional feature has the same limits. In particular, do not infer device support from the package's iOS 26 deployment target. [Apple's Metal 4 overview](https://developer.apple.com/videos/play/wwdc2025/205/), [feature tables](https://developer.apple.com/metal/capabilities/).
 
+FF-04 result: conventional Metal remains the only production path. On an Apple M5,
+the Metal 4 variant rendered byte-identical images with overlapping CPU and GPU
+timings, but it adds allocator, residency, hazard, and lifetime ownership. That
+lifetime ownership cannot be expressed under Swift 6 `Sendable` rules without a
+dedicated owner. The iOS Simulator SDK has no Metal 4 API. Physical-device
+measurements are missing. See [the Metal backend decision](decisions/metal-backend.md).
+
 Compare Satin with the minimal implementation in an isolated, bounded experiment. Examine shader escape hatches, resource ownership, dependency cost, licenses, and same-scene timings. The experimental common interface must not freeze the public architecture before either implementation has proven useful. The original [Hi-Rez/Satin](https://github.com/Hi-Rez/Satin) repository was archived on April 15, 2025; [Fabric-Project/Satin](https://github.com/Fabric-Project/Satin) is a candidate to revalidate, not a dependency already selected. Its inspected manifest uses tools 6.2, Swift 5 language mode, C++17, and no declared external package dependencies; its MIT license retains Hi-Rez copyright. Test integration with a Swift 6 consumer and record the exact evaluated revision. See [research spikes](research-spikes.md).
 
 The first renderer needs ordered passes, not a general-purpose render-graph compiler. Add offscreen scene output and one post-process when required by a fixture. Consider more elaborate scheduling only when measured dependencies and reuse warrant it.

@@ -56,6 +56,14 @@ jobs:
       - name: Test package (macOS)
         run: xcodebuild test -workspace Examples/Frostfield.xcworkspace -scheme Frostfield -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
 
+      # FF-04 experiment (not shipped): conventional versus Metal 4 output and
+      # lifetime tests. Metal 4 cases skip on a GPU without the Metal 4 family.
+      - name: Test Metal 4 experiment (macOS)
+        run: xcodebuild test -workspace Examples/Frostfield.xcworkspace -scheme Metal4ComparisonTests -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+
+      - name: Build Metal 4 benchmark tool (macOS)
+        run: xcodebuild build -workspace Examples/Frostfield.xcworkspace -scheme Metal4Benchmark -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+
       # Builds the example app and its UI tests without running them; UI tests
       # need a booted simulator and are run locally through Xcode.
       - name: Build lab app and UI tests (iOS Simulator)

@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		3030CA43B78636C1813BD329 /* Frostfield in Frameworks */ = {isa = PBXBuildFile; productRef = A736436B6AA6386438E397CA /* Frostfield */; };
+		0AE23A9F4CA6BDFBCF0A0FAB /* Frostfield in Frameworks */ = {isa = PBXBuildFile; productRef = 75F0850F00279351F6D5787C /* Frostfield */; };
+		176F8F9572D3E8D8325067C7 /* Frostfield in Frameworks */ = {isa = PBXBuildFile; productRef = F4298121B55BBCAB864D4BE6 /* Frostfield */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -23,6 +25,8 @@
 /* Begin PBXFileReference section */
 		C3BB4C3769C5D638E1E605A1 /* FrostfieldLabUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FrostfieldLabUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DEA93A3E0415584FFF89CC6A /* FrostfieldLab.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FrostfieldLab.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA33D5DF791E502195508313 /* Metal4ComparisonTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Metal4ComparisonTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		78297F87423D3CED98C587BB /* Metal4Benchmark */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = Metal4Benchmark; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -49,6 +53,24 @@
 			path = FrostfieldLabUITests;
 			sourceTree = "<group>";
 		};
+		C3835B66EF304E38496C9E5D /* Metal4Comparison Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			name = "Metal4Comparison Shared";
+			path = ../Experiments/Metal4Comparison/Shared;
+			sourceTree = "<group>";
+		};
+		A79FEB7EE0A4BE647B3DAD1E /* Metal4Benchmark */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			name = Metal4Benchmark;
+			path = ../Experiments/Metal4Comparison/Metal4Benchmark;
+			sourceTree = "<group>";
+		};
+		3E08BA1AA76976E66A91FB2B /* Metal4ComparisonTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			name = Metal4ComparisonTests;
+			path = ../Experiments/Metal4Comparison/Metal4ComparisonTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -67,6 +89,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		47F2646D349DF8AABBBDCC7A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0AE23A9F4CA6BDFBCF0A0FAB /* Frostfield in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		46D6037A6C59790AF1B48091 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				176F8F9572D3E8D8325067C7 /* Frostfield in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -75,6 +113,9 @@
 			children = (
 				78535159742826EF15967C94 /* FrostfieldLab */,
 				8FDBA2CA43A4507097B6E29C /* FrostfieldLabUITests */,
+				C3835B66EF304E38496C9E5D /* Metal4Comparison Shared */,
+				A79FEB7EE0A4BE647B3DAD1E /* Metal4Benchmark */,
+				3E08BA1AA76976E66A91FB2B /* Metal4ComparisonTests */,
 				641BEB7CE1787866A8C0FF75 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -84,6 +125,8 @@
 			children = (
 				DEA93A3E0415584FFF89CC6A /* FrostfieldLab.app */,
 				C3BB4C3769C5D638E1E605A1 /* FrostfieldLabUITests.xctest */,
+				AA33D5DF791E502195508313 /* Metal4ComparisonTests.xctest */,
+				78297F87423D3CED98C587BB /* Metal4Benchmark */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -137,6 +180,53 @@
 			productReference = DEA93A3E0415584FFF89CC6A /* FrostfieldLab.app */;
 			productType = "com.apple.product-type.application";
 		};
+		CD5EEE1274D97A28D468FED5 /* Metal4Benchmark */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 974CF5165FCA3F9D61C0D079 /* Build configuration list for PBXNativeTarget "Metal4Benchmark" */;
+			buildPhases = (
+				9C14A72B25212FE5F165330F /* Sources */,
+				46D6037A6C59790AF1B48091 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				C3835B66EF304E38496C9E5D /* Metal4Comparison Shared */,
+				A79FEB7EE0A4BE647B3DAD1E /* Metal4Benchmark */,
+			);
+			name = Metal4Benchmark;
+			packageProductDependencies = (
+				F4298121B55BBCAB864D4BE6 /* Frostfield */,
+			);
+			productName = Metal4Benchmark;
+			productReference = 78297F87423D3CED98C587BB /* Metal4Benchmark */;
+			productType = "com.apple.product-type.tool";
+		};
+		0F0A066FABB9FADA39990A24 /* Metal4ComparisonTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 689A0B7C6077A8AA3070F13B /* Build configuration list for PBXNativeTarget "Metal4ComparisonTests" */;
+			buildPhases = (
+				2B67F61BF9AD6701A9EC28A9 /* Sources */,
+				47F2646D349DF8AABBBDCC7A /* Frameworks */,
+				6ED44078C92A197A73342A1C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				C3835B66EF304E38496C9E5D /* Metal4Comparison Shared */,
+				3E08BA1AA76976E66A91FB2B /* Metal4ComparisonTests */,
+			);
+			name = Metal4ComparisonTests;
+			packageProductDependencies = (
+				75F0850F00279351F6D5787C /* Frostfield */,
+			);
+			productName = Metal4ComparisonTests;
+			productReference = AA33D5DF791E502195508313 /* Metal4ComparisonTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -152,6 +242,12 @@
 						TestTargetID = DA0AEA0704208F47847C7605;
 					};
 					DA0AEA0704208F47847C7605 = {
+						CreatedOnToolsVersion = 27.2;
+					};
+					CD5EEE1274D97A28D468FED5 = {
+						CreatedOnToolsVersion = 27.2;
+					};
+					0F0A066FABB9FADA39990A24 = {
 						CreatedOnToolsVersion = 27.2;
 					};
 				};
@@ -175,6 +271,8 @@
 			targets = (
 				DA0AEA0704208F47847C7605 /* FrostfieldLab */,
 				509EB3DB1D4E07DC645D4DDA /* FrostfieldLabUITests */,
+				0F0A066FABB9FADA39990A24 /* Metal4ComparisonTests */,
+				CD5EEE1274D97A28D468FED5 /* Metal4Benchmark */,
 			);
 		};
 /* End PBXProject section */
@@ -194,6 +292,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		6ED44078C92A197A73342A1C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -205,6 +310,20 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		F7F7EAF0BB74069F48659A6B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2B67F61BF9AD6701A9EC28A9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9C14A72B25212FE5F165330F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -403,6 +522,66 @@
 			};
 			name = Debug;
 		};
+		A9995FCE11DBB54B16394D65 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.frostfield.experiments.Metal4ComparisonTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		8D6C984EF1F0394E51C90950 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.frostfield.experiments.Metal4ComparisonTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A893C2EEE5C2FBE6F871CB78 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				ENABLE_HARDENED_RUNTIME = NO;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+			};
+			name = Debug;
+		};
+		0682AA4084D8F22E82E98969 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				ENABLE_HARDENED_RUNTIME = NO;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -433,6 +612,24 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		689A0B7C6077A8AA3070F13B /* Build configuration list for PBXNativeTarget "Metal4ComparisonTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A9995FCE11DBB54B16394D65 /* Debug */,
+				8D6C984EF1F0394E51C90950 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		974CF5165FCA3F9D61C0D079 /* Build configuration list for PBXNativeTarget "Metal4Benchmark" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A893C2EEE5C2FBE6F871CB78 /* Debug */,
+				0682AA4084D8F22E82E98969 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -444,6 +641,14 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		A736436B6AA6386438E397CA /* Frostfield */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Frostfield;
+		};
+		75F0850F00279351F6D5787C /* Frostfield */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Frostfield;
+		};
+		F4298121B55BBCAB864D4BE6 /* Frostfield */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Frostfield;
 		};

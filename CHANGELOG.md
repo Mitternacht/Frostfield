@@ -16,6 +16,10 @@
   pause while inactive, hidden, or in the background, redraw only after
   invalidation, slot and drawable backpressure without waiting, and drawable size
   from local bounds and display scale (FF-03).
+- FF-04 experiment comparing conventional Metal with the Metal 4 command path
+  (`Examples/Experiments/Metal4Comparison`, not shipped) and the
+  [Metal backend decision](docs/decisions/metal-backend.md): conventional Metal stays
+  the production path.
 
 No stable public API or release is available yet. Physical-device rendering has not
 been verified.
