@@ -1,0 +1,30 @@
+name: Bug report
+description: Report a reproducible problem in the package, documentation, or build.
+title: "[Bug] "
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and observed behavior
+      description: Explain what you expected and what happened.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include steps and a small example, or identify the incorrect documentation.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include the commit or version, Xcode and OS versions, device model, and whether it was a simulator.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Attach relevant logs, screenshots, or measurements. Remove private information first.

@@ -1,0 +1,28 @@
+name: Feature proposal
+description: Propose a concrete graphics or glass capability.
+title: "[Feature] "
+body:
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: Describe the visual result or integration problem and who needs it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain a small useful first version and its acceptance criteria.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and alternatives
+      description: Include relevant device, performance, accessibility, or background-source requirements and alternatives considered.
+  - type: input
+    id: roadmap
+    attributes:
+      label: Related roadmap task
+      description: Link an existing task or explain where this fits in the plan.

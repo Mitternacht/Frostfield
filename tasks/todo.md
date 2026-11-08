@@ -1,0 +1,251 @@
+# Frostfield implementation tasks
+
+All tasks below are planned. This planning repository contains no package manifest, source, tests, or CI implementation. Follow [the plan](plan.md) and [validation requirements](../docs/validation.md). Use the native Xcode MCP workflow for project edits, builds, runs, diagnostics, and tests. Proposed paths are provisional; adjust them when a working slice reveals better boundaries. If a slice grows beyond five files or one focused session, split it before implementation.
+
+## FF-01 — Create the package and build baseline
+
+Create the Swift package during implementation. The current repository is documentation only; do not mistake this task for work already completed.
+
+**Acceptance criteria**
+- [ ] `Package.swift` declares tools version 6.0, Swift 6 language mode, iOS 26 and macOS 26, and one initial `Frostfield` library product with no GlassWeave dependency.
+- [ ] A minimal source file gives the target a buildable module without speculative public APIs, fake renderer behavior, or meaningless placeholder tests.
+- [ ] The chosen Xcode/SDK and an actual successful package build are recorded; a compatible macOS CI build checks compilation without claiming GPU validation.
+
+**Verification:** Use Xcode MCP to open/build the package on an available destination, inspect diagnostics, and record toolchain/version. Verify manifest platform parsing with that toolchain. CI must choose an Xcode version supporting the declared SDKs, fail clearly when unavailable, and avoid claiming device performance. Add tests when real behavior exists.
+
+**Dependencies:** None. **Scope:** M, four files.
+**Likely files:** `Package.swift`, `Sources/Frostfield/Frostfield.swift`, `.github/workflows/ci.yml`, `docs/evidence/build-baseline.md`.
+
+## FF-02 — Render one triangle in a UIKit host
+
+Create the smallest iOS example that displays Metal output through `MTKView`, using a conventional Metal queue and no public scene API.
+
+**Acceptance criteria**
+- [ ] A colored triangle appears on a physical iPhone or iPad using the package's renderer.
+- [ ] A missing Metal device or pipeline error produces an explicit failure state instead of a crash or blank success.
+- [ ] Shader source is packaged reproducibly and the example resolves the correct library.
+
+**Verification:** Xcode build and run; inspect the triangle and failure-state fixture; retain the device/OS/build record and one capture. Simulator is a supplementary smoke check.
+
+**Dependencies:** FF-01. **Scope:** M, five files.
+**Likely files:** `Examples/FrostfieldLab/FrostfieldLab.xcodeproj/project.pbxproj`, `Examples/FrostfieldLab/App.swift`, `Examples/FrostfieldLab/SceneViewController.swift`, `Sources/Frostfield/Renderer.swift`, `Sources/Frostfield/Shaders/Triangle.metal`.
+
+## FF-03 — Make the host obey its lifecycle
+
+Add resize, inactive/hidden pause, and explicit requested-versus-continuous drawing to the triangle fixture.
+
+**Acceptance criteria**
+- [ ] Rotation, safe-area changes, and iPad window resizing update drawable dimensions from local bounds and `traitCollection.displayScale`, without `UIScreen.main` or a singleton render host.
+- [ ] Inactive or hidden content submits no recurring work; a still scene redraws only after invalidation.
+- [ ] A bounded in-flight policy handles unavailable drawables without blocking the main thread or reusing busy resources.
+
+**Verification:** Xcode run through resize, background/foreground, and hide/show sequences; inspect submission counters and GPU trace; run focused policy tests for pause/resume and backpressure transitions. With two scenes, resize and deactivate one while confirming the other's scale, resources, and rendering continue independently; exercise display changes where hardware permits.
+
+**Dependencies:** FF-02. **Scope:** M, five files.
+**Likely files:** `Sources/Frostfield/Renderer.swift`, `Sources/Frostfield/RenderSchedule.swift`, `Examples/FrostfieldLab/SceneViewController.swift`, `Tests/FrostfieldTests/RenderScheduleTests.swift`, `Package.swift`.
+
+### Checkpoint A — Host foundation
+
+- [ ] FF-02–FF-03 evidence is recorded, the example builds, and no lifecycle defect is carried into backend comparisons.
+
+## FF-04 — Compare the Metal 4 command path
+
+Timebox a Metal 4 version of the same triangle to one focused spike. Keep it experimental until the support and lifetime costs are understood.
+
+**Acceptance criteria**
+- [ ] The report records API/GPU requirements and a runtime capability decision, including unsupported devices.
+- [ ] Identical visuals are compared with conventional Metal on the same physical device and settings.
+- [ ] The report explains allocator reuse, residency, synchronization, complexity, and the chosen next step; missing measurements remain explicitly missing.
+
+**Verification:** Xcode build/run plus Metal validation and a trace for each available backend; compare screenshots and counters. If suitable hardware is unavailable, retain the conventional path and leave performance conclusions open.
+
+**Dependencies:** FF-03. **Scope:** M, three files.
+**Likely files:** `Examples/Experiments/Metal4Triangle.swift`, `Examples/FrostfieldLab/SceneViewController.swift`, `docs/decisions/metal-backend.md`.
+
+## FF-05 — Compare Satin with the minimal renderer
+
+Timebox a Satin-backed version of the same small scene to one focused spike behind a local experimental interface. Investigate a dependency without making it part of the package's public contract. The original Hi-Rez repository was archived on April 15, 2025; evaluate the Fabric-Project candidate instead and recheck its maintenance at implementation time. Its currently inspected manifest uses Swift tools 6.2, Swift 5 language mode, and C++17, so explicitly test the Swift 6 consumer/concurrency boundary. Follow [the research spike scorecard](../docs/research-spikes.md).
+
+**Acceptance criteria**
+- [ ] Both candidates render one transformed indexed mesh using a custom MSL shader, export the resulting offscreen texture, and present it through the same UIKit host at equivalent settings; these are experimental operations, not production APIs.
+- [ ] The comparison verifies the exported texture's readiness/lifetime and a Swift 6 clean-consumer build, and records packaging, license obligations, dependency footprint, maintenance, and measured cost.
+- [ ] A documented decision removes unused experimental code from shipping targets and does not expose the comparison interface publicly.
+
+**Verification:** Xcode build/run of the isolated experiment in a clean Swift 6 consumer; inspect the custom-shader output and exported texture using a fixed color/geometry fixture, including read-before-write/reuse hazards. Inspect the resolved dependency revision and upstream license; collect a matched trace or mark measurement unavailable. If the one-session feasibility pass cannot establish these operations, record the blocker and repair scope; do not pass the dependency-adoption gate based on a built-in triangle alone.
+
+**Dependencies:** FF-03; use FF-04's findings when choosing the production path. **Scope:** M, four files.
+**Likely files:** `Examples/Experiments/SatinComparison/Package.swift`, `Examples/Experiments/SatinComparison/Comparison.swift`, `Examples/Experiments/SatinComparison/Package.resolved`, `docs/decisions/renderer-foundation.md`.
+
+### Checkpoint B — Backend choice
+
+- [ ] FF-04–FF-05 leave a reasoned implementation choice and no speculative public abstraction. Baseline device coverage and the first benchmark fixture are named.
+
+## FF-06 — Move a primitive through a camera
+
+Add only the transform and camera data needed to position the existing primitive. Establish a consistent coordinate convention before a larger scene graph.
+
+**Acceptance criteria**
+- [ ] One primitive can translate, rotate, and scale under a perspective camera using app-supplied state.
+- [ ] Coordinate handedness, matrix order, depth range, and near/far validation are documented.
+- [ ] Camera or transform updates do not reconstruct stable GPU resources or require SwiftUI.
+
+**Verification:** Xcode build/run of deterministic poses; focused Swift Testing cases for transform composition and invalid projection inputs; compare known screen positions.
+
+**Dependencies:** Checkpoint B. **Scope:** M, five files.
+**Likely files:** `Sources/Frostfield/Transform.swift`, `Sources/Frostfield/Camera.swift`, `Sources/Frostfield/Renderer.swift`, `Tests/FrostfieldTests/TransformTests.swift`, `Examples/FrostfieldLab/CameraFixture.swift`.
+
+## FF-07 — Render indexed procedural geometry
+
+Introduce one indexed mesh representation and a procedural cube fixture. Reuse the camera and transform path rather than adding an asset loader.
+
+**Acceptance criteria**
+- [ ] A cube with consistent winding and normals renders correctly under the documented coordinate convention.
+- [ ] Invalid indices or incompatible attribute layouts fail with useful diagnostics before encoding unsafe work.
+- [ ] Repeated transform-only updates reuse the mesh buffers.
+
+**Verification:** Xcode build/run with wireframe or diagnostic coloring; focused geometry tests for index bounds and normals; inspect buffer-allocation counters during animation.
+
+**Dependencies:** FF-06. **Scope:** M, four files.
+**Likely files:** `Sources/Frostfield/Geometry.swift`, `Sources/Frostfield/Renderer.swift`, `Tests/FrostfieldTests/GeometryTests.swift`, `Examples/FrostfieldLab/GeometryFixture.swift`.
+
+## FF-08 — Supply a custom material shader
+
+Create the first material binding contract from a working built-in unlit material and a caller-supplied shader fixture.
+
+**Acceptance criteria**
+- [ ] An app supplies a shader function and documented parameters to shade the existing mesh.
+- [ ] Missing functions or incompatible bindings produce actionable errors; parameter updates reuse prepared pipelines.
+- [ ] The custom and built-in material paths use the same rendering/lifetime rules without requiring a material graph.
+
+**Verification:** Xcode build/run with a time-varying color material; exercise invalid-function and binding cases; confirm no pipeline creation during warmed-up parameter animation.
+
+**Dependencies:** FF-07. **Scope:** M, five files.
+**Likely files:** `Sources/Frostfield/Material.swift`, `Sources/Frostfield/PipelineCache.swift`, `Sources/Frostfield/Renderer.swift`, `Sources/Frostfield/Shaders/Unlit.metal`, `Examples/FrostfieldLab/MaterialFixture.swift`.
+
+### Checkpoint C — Standalone v0.1 qualification
+
+- [ ] FF-01–FF-08 render a deterministic programmable mesh scene with camera/transforms and unlit/custom shaders, pass focused tests and GPU validation, and expose only API justified by the fixture.
+- [ ] A clean consuming app resolves only Frostfield at the candidate revision, loads packaged shaders, and runs the UIKit example without sibling repositories, development-only paths, or GlassWeave. Record installation, error/lifecycle behavior, and the scoped supported-device matrix.
+- [ ] Run the physical-device recipe in `docs/validation.md` on this core fixture, establish and meet named-device CPU/GPU/memory/idle budgets, and complete that document's release checklist. Save scoped evidence as `docs/evidence/v0.1-core-qualification.md`; record any unavailable measurements as incomplete gates.
+
+This is the first usable release boundary. A limited v0.1 may ship here independently of GlassWeave and FF-09–FF-15. Its scope is camera/transforms, indexed geometry, unlit/custom material shaders, and the UIKit sample host. Lighting, particles, post-processing, a public texture-export contract, and a SwiftUI adapter remain explicitly planned. The experimental export in FF-05 validates a candidate backend, not a shipped offscreen API. This qualification needs its own measured baseline; do not defer it to FF-14. Split fixes discovered by the qualification into focused tasks before accepting the gate.
+
+The following tasks are optional later milestones and do not block the limited v0.1.
+
+## FF-09 — Light one mesh
+
+Add a single directional Lambert light as the first composable lighting slice.
+
+**Acceptance criteria**
+- [ ] Light direction and intensity affect the cube predictably in linear working color space.
+- [ ] Rotated or non-uniformly scaled geometry uses correct normal transforms.
+- [ ] The API describes this limited lighting model without implying physically based rendering or shadows.
+
+**Verification:** Xcode build/run at known light directions and scales; capture reference images with fixed camera, exposure, and shader parameters.
+
+**Dependencies:** FF-08. **Scope:** M, three files.
+**Likely files:** `Sources/Frostfield/DirectionalLight.swift`, `Sources/Frostfield/Shaders/Lambert.metal`, `Examples/FrostfieldLab/LightingFixture.swift`.
+
+## FF-10 — Animate one bounded particle emitter
+
+Implement one deterministic emitter with a fixed maximum particle capacity, reusing existing scheduling and material conventions.
+
+**Acceptance criteria**
+- [ ] A seeded emitter animates a fixed-capacity set of particles through a compute/update and draw sequence.
+- [ ] Producer/consumer GPU ordering is explicit, with no per-frame readback or capacity growth.
+- [ ] Pause/resume and large time deltas have defined behavior without unstable jumps or allocation spikes.
+
+**Verification:** Xcode build/run plus GPU validation; compare equal-seed/equal-time reference frames; inspect dispatch ordering and memory during a sustained run.
+
+**Dependencies:** FF-08 and Checkpoint C's render-pass contract. **Scope:** M, four files.
+**Likely files:** `Sources/Frostfield/ParticleEmitter.swift`, `Sources/Frostfield/Shaders/Particles.metal`, `Sources/Frostfield/Renderer.swift`, `Examples/FrostfieldLab/ParticleFixture.swift`.
+
+### Checkpoint D — Lighting and animation
+
+- [ ] FF-09–FF-10 remain optional scene features, preserve idle scheduling, and introduce no unexplained memory growth or GPU validation errors.
+
+## FF-11 — Apply one post-process
+
+Add a single full-screen color-grade pass to an offscreen scene render. This establishes pass composition without designing a general render-graph system.
+
+**Acceptance criteria**
+- [ ] The grade can be enabled, bypassed, and parameterized without changing geometry or materials.
+- [ ] Intermediate textures are reused, resize safely, and avoid read/write feedback hazards.
+- [ ] Sampling, alpha handling, and display conversion preserve known reference colors when bypassed.
+
+**Verification:** Xcode build/run with color-chart and moving-scene fixtures; inspect pass ordering and allocations; compare bypass output against the direct path.
+
+**Dependencies:** FF-08. **Scope:** M, four files.
+**Likely files:** `Sources/Frostfield/PostProcess.swift`, `Sources/Frostfield/Shaders/ColorGrade.metal`, `Sources/Frostfield/Renderer.swift`, `Examples/FrostfieldLab/PostProcessFixture.swift`.
+
+## FF-12 — Export a texture with a lifetime contract
+
+Expose a narrow offscreen-output path suitable for an external consumer such as GlassWeave, independently of a UI host.
+
+**Acceptance criteria**
+- [ ] Output specifies device, dimensions, format, color/alpha convention, UV mapping, and frame identity.
+- [ ] Readiness and consumer completion prevent reuse or destruction while either producer or consumer still uses the texture.
+- [ ] Resize, no-free-slot, and stale-frame behavior are deterministic; unsupported cross-device/queue use fails explicitly.
+
+**Verification:** Xcode build/run a delayed-consumer fixture with GPU validation; focused lifetime-policy tests; use known color quadrants and frame stamps to check orientation, color, and ordering.
+
+**Dependencies:** FF-08; use FF-11's offscreen path if available. **Scope:** M, five files.
+**Likely files:** `Sources/Frostfield/TextureOutput.swift`, `Sources/Frostfield/Renderer.swift`, `Tests/FrostfieldTests/TextureLifetimeTests.swift`, `Examples/FrostfieldLab/TextureConsumerFixture.swift`, `docs/architecture.md`.
+
+## FF-13 — Add an optional SwiftUI host
+
+Wrap the proven UIKit host with a thin adapter while retaining its renderer and scheduler across ordinary SwiftUI updates.
+
+**Acceptance criteria**
+- [ ] Scene state reaches the existing renderer without per-frame view reconstruction or a second render loop.
+- [ ] Identity changes, resizing, and teardown create and release the expected number of renderer instances.
+- [ ] Native overlays remain accessible and interactive; the adapter does not make the core depend on SwiftUI.
+
+**Verification:** Load matching Xcode SwiftUI guidance; Xcode build/run a state-update and navigation fixture; inspect instance/submission counters and native overlay interaction.
+
+**Dependencies:** FF-03, FF-08. **Scope:** M, four files.
+**Likely files:** `Package.swift`, `Sources/FrostfieldUIKit/FrostfieldView.swift`, `Sources/FrostfieldSwiftUI/FrostfieldSceneView.swift`, `Examples/FrostfieldLab/SwiftUIFixture.swift`.
+
+### Checkpoint E — App integration
+
+- [ ] FF-11–FF-13 preserve color/lifetime contracts and the core can render independently of both UI frameworks. Proposed target extraction is verified by package dependency inspection.
+
+## FF-14 — Establish a sustained resource budget
+
+Instrument and profile the expanded reference fixture for a later release, then fix only the largest evidenced resource or scheduling problem within this slice. Split additional fixes into new tasks. This supplements the scoped v0.1 measurements at Checkpoint C; it does not postpone or replace them.
+
+**Acceptance criteria**
+- [ ] The record contains the required physical-device timing, memory, thermal, idle, and interaction measurements.
+- [ ] Frame-rate/quality choices and numeric acceptance budgets are set from evidence for named devices; unmet budgets remain open.
+- [ ] Warmed-up rendering has no unexplained allocation growth or shader/pipeline compilation; any justified recurring work is documented.
+
+**Verification:** Execute the reproducible recipe in `docs/validation.md`; capture before/after traces for any fix; rerun only affected correctness fixtures.
+
+**Dependencies:** FF-09–FF-13. **Scope:** M, four files.
+**Likely files:** `Sources/Frostfield/RenderMetrics.swift`, `Sources/Frostfield/Renderer.swift`, `Examples/FrostfieldLab/BenchmarkFixture.swift`, `docs/evidence/initial-device-profile.md`.
+
+## FF-15 — Feed a Frostfield frame to GlassWeave
+
+Use an example app with local package dependencies to connect the two real implementations without adding a library dependency cycle.
+
+**Acceptance criteria**
+- [ ] A Frostfield-rendered moving texture drives a custom GlassWeave surface while native controls remain responsive.
+- [ ] The fixture verifies color, UV, readiness, and completion against FF-12; it exercises resize and delayed consumption.
+- [ ] The report identifies actual duplicated utilities and either justifies a future extraction or records that none is needed.
+
+**Verification:** Xcode build/run the combined fixture with GPU validation; compare known color/frame-stamp cases and record a physical-device trace. Keep cross-repository changes in a separate coordinated task if necessary.
+
+**Dependencies:** FF-12, FF-14, and GlassWeave's custom-surface integration proof. **Scope:** M, four files in this repository.
+**Likely files:** `Examples/Interoperability/Interoperability.xcodeproj/project.pbxproj`, `Examples/Interoperability/App.swift`, `Examples/Interoperability/TextureBridge.swift`, `docs/evidence/glassweave-interoperability.md`.
+
+### Checkpoint F — Evidence
+
+- [ ] FF-14–FF-15 are measured on physical devices, limitations are public, and no shared infrastructure is extracted solely for anticipated reuse.
+
+### Checkpoint G — Expanded release qualification
+
+- [ ] A clean checkout resolves the documented products and runs the example; package/CI checks and the physical-device release matrix pass.
+- [ ] README and release notes separate working features from the roadmap, link evidence, and state supported OS/device/backend combinations precisely.
+- [ ] Dependency license obligations, public API docs, failure behavior, and known limitations match the shipped contents. Complete the release checklist in `docs/validation.md` before tagging.
+
+Run this checkpoint when a later release advertises the expanded effects/integration scope. Checkpoint C already permits a qualified, standalone limited v0.1; GlassWeave interoperability never blocks a Frostfield-only release that does not advertise it. Split any corrective implementation work into additional focused tasks. Every published capability needs working code and linked evidence; unimplemented roadmap work stays unchecked.

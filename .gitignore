@@ -1,0 +1,20 @@
+# SwiftPM and Xcode generated state
+.build/
+.swiftpm/
+DerivedData/
+build/
+xcuserdata/
+*.xcuserstate
+*.xcresult
+
+# Local system files and credentials
+.DS_Store
+.env
+.env.*
+!.env.example
+*.p12
+*.mobileprovision
+
+# Large local profiling captures; commit concise evidence summaries instead.
+*.trace
+*.gputrace
