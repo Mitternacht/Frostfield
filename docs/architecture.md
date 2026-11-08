@@ -75,6 +75,16 @@ test, and colors fragments by their model-space normals. Both renderers share on
 internal frame loop (`FrameSubmitter`): bounded slots, late target acquisition,
 and per-slot uniform buffers reused only after GPU completion.
 
+Current state (FF-08, experimental): `MeshRenderer` shades meshes with a
+`Material<Parameters>`: the built-in unlit material or a fragment function the app
+supplies from its own `MTLLibrary`. Making a material checks the function (missing,
+not a fragment function, varyings the vertex stage does not write, unsupported
+bindings, parameter-block size) with Metal's pipeline reflection and prepares its
+pipeline in a per-renderer cache keyed by library object and function name. Drawing
+copies the parameters into the frame's commands and creates nothing. Built-in and
+custom materials share the vertex stage, culling, depth test, and frame slots. The
+contract is in [materials](materials.md).
+
 ## Creative API progression
 
 The first composition path is a camera plus transformed indexed geometry and a prepared material. Expose a documented shader binding contract so app authors can invent materials without waiting for a catalogue of effects. Add one directional Lambert light, one bounded particle emitter, and one full-screen post-process as separate slices.

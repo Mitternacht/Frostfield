@@ -93,6 +93,10 @@ index count that is not a multiple of 3, an index at or beyond the vertex count,
 a normal count that differs from the position count, NaN or infinite values,
 and zero-length normals. A geometry value is therefore always safe to upload.
 
+The vertex stage passes the interpolated model-space normal and position to the
+material's fragment function as `[[user(ff_model_normal)]]` and
+`[[user(ff_model_position)]]`; see [materials](materials.md).
+
 `MeshRenderer.makeMesh(_:)` uploads it once into three buffers. The pipeline
 reads positions (attribute `FF_MESH_ATTRIBUTE_POSITION`, buffer
 `FF_MESH_POSITION_BUFFER_INDEX`) and normals (attribute `FF_MESH_ATTRIBUTE_NORMAL`,

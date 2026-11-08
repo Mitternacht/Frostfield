@@ -51,14 +51,29 @@ The fixture switch at the top of the panel chooses what the scene draws:
   as a color: +x reddish, -x teal, +y light green, -y purple, +z lavender, -z olive.
   The pose buttons choose Front, Corner (-x, +y, and +z visible), or Stretched, and
   continuous mode spins the cube. The mesh is uploaded once when the scene loads;
-  the status text shows 1 pipeline, 1 depth state, and 5 buffers (two per-frame
-  uniform buffers and the cube's position, normal, and index buffers) however long
-  it animates. The view has a depth buffer only while this fixture is shown.
+  the status text shows 3 pipelines (the normal diagnostic plus the material
+  fixture's two, all prepared on the same renderer at launch), 1 depth state, and 5
+  buffers (two per-frame uniform buffers and the cube's position, normal, and index
+  buffers) however long it animates. The view has a depth buffer only while a mesh
+  fixture is shown.
 
-Launch with `-FrostfieldLabFixture <triangle|camera|geometry>` to choose the first
-fixture, `-FrostfieldLabCameraPose <rest|moved|turned|scaled>` for the camera
-fixture's first pose, and `-FrostfieldLabCubePose <front|corner|stretched>` for the
-cube's.
+- **Material** (FF-08): the cube's mesh, in the corner pose, shaded by a material
+  instead of the normal diagnostic. **Unlit** is Frostfield's built-in unlit material;
+  the Amber and Teal buttons change its color parameter. **Pulse** is
+  `lab_pulse_fragment` from the app's own shader library (`LabShaders.metal`), with
+  its parameter record declared once in `LabShaderTypes.h`, which Swift imports through
+  the target's bridging-header setting. In continuous mode the app writes the
+  animation time into the pulse material's parameters every frame and bands of color
+  travel up the cube. Both materials are made when the scene loads, so the status text
+  shows 3 pipelines (normal diagnostic, unlit, pulse) from launch, and they stay at 3
+  while colors, materials, and time change. The material fixture shares the cube
+  fixture's mesh, so the buffer count stays at 5.
+
+Launch with `-FrostfieldLabFixture <triangle|camera|geometry|material>` to choose the
+first fixture, `-FrostfieldLabCameraPose <rest|moved|turned|scaled>` for the camera
+fixture's first pose, `-FrostfieldLabCubePose <front|corner|stretched>` for the
+cube's, and `-FrostfieldLabMaterial <unlit|pulse>` for the material fixture's first
+material.
 
 The drawable size is set from the view's own bounds and
 `traitCollection.displayScale` in `layoutSubviews`; nothing reads a screen-wide

@@ -34,7 +34,7 @@ struct MeshVertexLayoutTests {
 /// A CPU reference for what a camera sees of an axis-aligned box: cast a ray
 /// through a pixel and find the face it enters first. It shares no code with
 /// the rasterizer, culling, or depth test.
-private struct BoxRayCaster {
+struct BoxRayCaster {
     let inverseViewProjection: simd_float4x4
     let inverseModel: simd_float4x4
     let half: Float
@@ -55,15 +55,20 @@ private struct BoxRayCaster {
         case ambiguous
     }
 
-    func hit(ndc: SIMD2<Float>) -> Hit {
-        // Unproject the near and far points of the pixel's ray into model space.
+    /// The model-space origin and direction of the ray through a pixel, from
+    /// the near plane to the far plane.
+    func ray(ndc: SIMD2<Float>) -> (origin: SIMD3<Float>, direction: SIMD3<Float>) {
         func modelPoint(depth: Float) -> SIMD3<Float> {
             let world = inverseViewProjection * SIMD4(ndc.x, ndc.y, depth, 1)
             let model = inverseModel * (world / world.w)
             return SIMD3(model.x, model.y, model.z) / model.w
         }
         let origin = modelPoint(depth: 0)
-        let direction = modelPoint(depth: 1) - origin
+        return (origin, modelPoint(depth: 1) - origin)
+    }
+
+    func hit(ndc: SIMD2<Float>) -> Hit {
+        let (origin, direction) = ray(ndc: ndc)
         if !intersects(origin: origin, direction: direction, half: half * 1.1) { return .clearMiss }
 
         var entry: Float = -.infinity, exit: Float = .infinity, axis = 0

@@ -5,7 +5,7 @@ import Testing
 /// A CPU-readable BGRA8 render target cleared to opaque black, optionally
 /// with a depth attachment cleared to 1.
 struct OffscreenTarget {
-    struct Pixel: CustomStringConvertible {
+    struct Pixel: CustomStringConvertible, Equatable {
         enum Channel: Sendable { case red, green, blue }
 
         var blue: UInt8, green: UInt8, red: UInt8, alpha: UInt8
@@ -112,6 +112,19 @@ struct OffscreenTarget {
     func pixel(clipX: Float, clipY: Float) -> Pixel {
         let (x, y) = pixelPosition(ndc: SIMD2(clipX, clipY))
         return pixel(x: x, y: y)
+    }
+
+    /// Every pixel in row-major order, top row first, read in one copy.
+    func pixels() -> [Pixel] {
+        let count = texture.width * texture.height
+        var bytes = [UInt8](repeating: 0, count: count * 4)
+        texture.getBytes(
+            &bytes, bytesPerRow: texture.width * 4,
+            from: MTLRegionMake2D(0, 0, texture.width, texture.height), mipmapLevel: 0
+        )
+        return (0..<count).map { i in
+            Pixel(blue: bytes[i * 4], green: bytes[i * 4 + 1], red: bytes[i * 4 + 2], alpha: bytes[i * 4 + 3])
+        }
     }
 
     func pixel(x: Int, y: Int) -> Pixel {

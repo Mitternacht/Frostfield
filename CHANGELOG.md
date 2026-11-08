@@ -34,6 +34,15 @@
   procedural `IndexedGeometry.cube(size:)`, and `MeshRenderer`/`Mesh`: indexed meshes
   uploaded once and drawn with depth testing, back-face culling, and normal
   diagnostic coloring; the lab's cube fixture (FF-07).
+- Experimental materials: `Material<Parameters>`, the built-in unlit material
+  (`MeshRenderer.makeUnlitMaterial(color:)`, `UnlitParameters`), app-supplied fragment
+  functions (`MeshRenderer.makeMaterial(fragmentFunction:library:parameters:)`) under a
+  documented [binding contract](docs/materials.md), typed `MaterialError` diagnostics
+  checked through Metal's pipeline reflection before any frame is encoded, a
+  per-renderer pipeline cache, and `drawFrame(mesh:material:transform:camera:target:)`.
+  Parameter updates copy values into the frame's commands and create no pipeline. The
+  lab's material fixture shades the cube with the unlit material and a time-varying
+  material from the app's own shader library (FF-08).
 
 No stable public API or release is available yet. Physical-device rendering has not
 been verified.

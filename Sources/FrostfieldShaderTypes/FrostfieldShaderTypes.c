@@ -13,3 +13,7 @@ _Static_assert(offsetof(FFTriangleUniforms, padding) == 12, "padding must be at 
 _Static_assert(sizeof(FFTransformUniforms) == 64, "FFTransformUniforms must be 64 bytes");
 _Static_assert(_Alignof(FFTransformUniforms) == 16, "FFTransformUniforms must be 16-byte aligned");
 _Static_assert(offsetof(FFTransformUniforms, modelViewProjection) == 0, "modelViewProjection must be at offset 0");
+
+_Static_assert(sizeof(FFUnlitParameters) == 16, "FFUnlitParameters must be 16 bytes");
+_Static_assert(_Alignof(FFUnlitParameters) == 16, "FFUnlitParameters must be 16-byte aligned");
+_Static_assert(offsetof(FFUnlitParameters, color) == 0, "color must be at offset 0");

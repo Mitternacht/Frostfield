@@ -1,12 +1,15 @@
 /// Counters for the GPU objects a renderer created.
 ///
 /// Every pipeline, depth-stencil state, and buffer the renderer creates is
-/// counted here when it is created. Drawing with new transforms, cameras, or
-/// other per-frame values writes into existing per-frame buffers instead, so
-/// these counters stay constant across such updates. A host can show them to
+/// counted here when it is created. Drawing with new transforms, cameras,
+/// material parameters, or other per-frame values writes into existing
+/// per-frame buffers or the frame's commands instead, so these counters stay
+/// constant across such updates. A host can show them to
 /// confirm that steady-state drawing creates nothing.
 public struct ResourceStatistics: Sendable, Equatable {
-    /// Render pipeline states compiled from the packaged shaders.
+    /// Render pipeline states created from the packaged shaders or from
+    /// app-supplied material functions, including any a material check
+    /// rejected after Metal created it.
     public var renderPipelinesCreated = 0
     /// Depth-stencil states created.
     public var depthStencilStatesCreated = 0

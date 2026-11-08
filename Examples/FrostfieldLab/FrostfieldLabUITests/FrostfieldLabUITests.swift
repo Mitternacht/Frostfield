@@ -215,7 +215,9 @@ final class FrostfieldLabUITests: XCTestCase {
         XCTAssertEqual(start.text("pose"), "front")
         XCTAssertEqual(start["meshVertices"], 24)
         XCTAssertEqual(start["meshIndices"], 36)
-        XCTAssertEqual(start["pipelinesCreated"], 1)
+        // The normal diagnostic, plus the unlit and pulse pipelines the
+        // material fixture prepares when the scene loads (FF-08).
+        XCTAssertEqual(start["pipelinesCreated"], 3)
         XCTAssertEqual(start["depthStatesCreated"], 1)
         // Two per-frame uniform buffers plus the cube's position, normal, and
         // index buffers: 2 × 64 + 24 × 16 × 2 + 36 × 4 bytes.
@@ -254,7 +256,105 @@ final class FrostfieldLabUITests: XCTestCase {
         XCTAssertEqual(triangle["buffersAllocated"], 2)
     }
 
+    /// FF-08: the material fixture shades the cube's mesh with the built-in
+    /// unlit material and with the app's own `lab_pulse_fragment`. Choosing a
+    /// color or material draws one frame, continuous drawing feeds the
+    /// animation time into the pulse material's parameters, and the pixels on
+    /// screen change with it, while the renderer's pipeline, depth-state, and
+    /// buffer counters stay at their launch values. The app runs with Metal
+    /// API validation.
+    @MainActor
+    func testMaterialFixtureAnimatesParametersWithoutCreatingPipelines() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-FrostfieldLabFixture", "material"]
+        app.launchEnvironment["MTL_DEBUG_LAYER"] = "1"
+        app.launch()
+        let start = try waitForSettledCounters(in: app)
+        XCTAssertEqual(start.text("fixture"), "material")
+        XCTAssertEqual(start.text("material"), "unlit")
+        XCTAssertEqual(start.text("materialFunction"), "ff_unlit_fragment")
+        XCTAssertEqual(start["meshVertices"], 24)
+        // Normal diagnostic, unlit, and pulse: all prepared at launch.
+        XCTAssertEqual(start["pipelinesCreated"], 3)
+        // Two per-frame uniform buffers and the cube's three mesh buffers;
+        // the material fixture shares the cube fixture's mesh.
+        XCTAssertEqual(start["buffersAllocated"], 5)
+        let amber = try cubePixel(in: app)
+        XCTAssertGreaterThan(amber.red, 0.8, "amber: \(amber)")
+        XCTAssertLessThan(amber.blue, 0.3, "amber: \(amber)")
+
+        app.segmentedControls["unlitColor"].buttons["Teal"].tap()
+        let teal = try waitForCounters(in: app) {
+            $0.text("unlitColor") == "teal" && $0["completed"] == start["submitted"] + 1
+        }
+        XCTAssertEqual(teal["submitted"], start["submitted"] + 1, "one color change, one frame")
+        let tealPixel = try cubePixel(in: app)
+        XCTAssertLessThan(tealPixel.red, 0.3, "teal: \(tealPixel)")
+        XCTAssertGreaterThan(tealPixel.green, 0.5, "teal: \(tealPixel)")
+
+        app.segmentedControls["material"].buttons["Pulse"].tap()
+        let pulse = try waitForCounters(in: app) {
+            $0.text("material") == "pulse" && $0["completed"] == teal["submitted"] + 1
+        }
+        XCTAssertEqual(pulse.text("materialFunction"), "lab_pulse_fragment")
+
+        app.segmentedControls["drawingMode"].buttons["Continuous"].tap()
+        var samples: [RGB] = []
+        for _ in 0..<4 {
+            Thread.sleep(forTimeInterval: 0.4)
+            samples.append(try cubePixel(in: app))
+        }
+        let animated = try waitForCounters(in: app) { $0["submitted"] >= pulse["submitted"] + 120 }
+        record("material fixture: \(start) -> \(animated); pulse samples \(samples)")
+        let times = [pulse, animated].compactMap { $0.text("materialTime").flatMap(Double.init) }
+        XCTAssertEqual(times.count, 2)
+        XCTAssertGreaterThan(times[1], times[0] + 1, "the app advanced the material's time parameter")
+        let distinct = Set(samples.map { "\(Int($0.red * 255))-\(Int($0.green * 255))-\(Int($0.blue * 255))" })
+        XCTAssertGreaterThan(distinct.count, 1, "the pulse material's pixels did not change: \(samples)")
+
+        for counters in [teal, pulse, animated] {
+            for key in ["pipelinesCreated", "depthStatesCreated", "buffersAllocated", "bufferBytesAllocated"] {
+                XCTAssertEqual(counters[key], start[key], key)
+            }
+        }
+    }
+
     // MARK: Helpers
+
+    struct RGB: CustomStringConvertible {
+        var red: Double, green: Double, blue: Double
+        var description: String { String(format: "(%.3f, %.3f, %.3f)", red, green, blue) }
+    }
+
+    /// The color of the cube a little below and right of its centre in the
+    /// material fixture's corner pose, read from a screenshot of the render
+    /// view alone, in the view's own coordinates. The fixture's camera sits
+    /// 0.5 below the cube's centre at distance 5 with a 50° field of view, so
+    /// the centre projects to 39.3 % of the view's height.
+    @MainActor
+    private func cubePixel(in app: XCUIApplication) throws -> RGB {
+        let renderView = app.otherElements["renderView"]
+        let size = renderView.frame.size
+        let point = CGPoint(x: size.width / 2 + 20, y: size.height * 0.393 + 30)
+        let image = renderView.screenshot().image
+        let cgImage = try XCTUnwrap(image.cgImage)
+        let pixelX = Int(point.x * image.scale), pixelY = Int(point.y * image.scale)
+        var bytes = [UInt8](repeating: 0, count: 4)
+        let context = try XCTUnwrap(CGContext(
+            data: &bytes, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        // Shift the image so the sampled pixel covers the context's only
+        // pixel; Core Graphics counts y from the bottom.
+        context.draw(cgImage, in: CGRect(
+            x: -pixelX, y: pixelY - cgImage.height + 1, width: cgImage.width, height: cgImage.height
+        ))
+        let rgb = RGB(red: Double(bytes[0]) / 255, green: Double(bytes[1]) / 255, blue: Double(bytes[2]) / 255)
+        // The view's clear color is (0.08, 0.09, 0.11); the sample must be on the cube.
+        XCTAssertGreaterThan(max(rgb.red, rgb.green, rgb.blue), 0.2, "sampled the background: \(rgb)")
+        return rgb
+    }
 
     /// Writes measured counters into the test log as an activity.
     @MainActor

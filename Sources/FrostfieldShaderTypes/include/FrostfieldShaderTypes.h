@@ -13,10 +13,12 @@
 #ifdef __METAL_VERSION__
 #include <metal_stdlib>
 typedef metal::float2 FFFloat2;
+typedef metal::float4 FFFloat4;
 typedef metal::float4x4 FFFloat4x4;
 #else
 #include <simd/simd.h>
 typedef simd_float2 FFFloat2;
+typedef simd_float4 FFFloat4;
 typedef simd_float4x4 FFFloat4x4;
 #endif
 
@@ -66,5 +68,40 @@ typedef struct FFTransformUniforms {
 #define FF_MESH_NORMAL_BUFFER_INDEX 2
 /// Byte stride of both vertex streams.
 #define FF_MESH_VERTEX_STREAM_STRIDE 16
+
+// Materials. A material is a fragment function that shades what `ff_mesh_vertex`
+// rasterizes. It may read the varyings below through its [[stage_in]] struct
+// and one parameter block at fragment buffer index
+// FF_MATERIAL_PARAMETERS_BUFFER_INDEX, and nothing else. docs/materials.md
+// describes the contract for app-supplied functions.
+
+/// Fragment buffer index of a material's parameter block.
+#define FF_MATERIAL_PARAMETERS_BUFFER_INDEX 0
+
+/// Parameters of the built-in unlit material (`ff_unlit_fragment`).
+/// 16 bytes, 16-byte aligned.
+typedef struct FFUnlitParameters {
+    /// The color every covered pixel receives, written to the color attachment
+    /// unchanged (no blending, no color conversion). Byte offset 0.
+    FFFloat4 color;
+} FFUnlitParameters;
+
+#ifdef __METAL_VERSION__
+/// The vertex output of `ff_mesh_vertex`, which a material's fragment function
+/// receives as [[stage_in]].
+///
+/// Metal matches a fragment input to this output by its [[user(...)]] name and
+/// type, not by the member name, so an app's fragment function can declare its
+/// own struct with any member names and only the members it reads.
+struct FFMeshVaryings {
+    /// Clip-space position; in a fragment function, the pixel's window
+    /// position and depth.
+    float4 position [[position]];
+    /// The interpolated model-space normal. Not normalized.
+    float3 modelNormal [[user(ff_model_normal)]];
+    /// The interpolated model-space position.
+    float3 modelPosition [[user(ff_model_position)]];
+};
+#endif
 
 #endif

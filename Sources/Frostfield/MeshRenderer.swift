@@ -37,20 +37,29 @@ public final class Mesh {
     }
 }
 
-/// Renders one indexed ``Mesh`` per frame, placed by a ``Transform`` and
-/// viewed through a ``Camera``, with depth testing and back-face culling.
+/// Renders one indexed ``Mesh`` per frame, placed by a ``Transform``,
+/// viewed through a ``Camera``, and shaded by a ``Material``, with depth
+/// testing and back-face culling.
 ///
 /// Triangles whose indices run counter-clockwise on screen are front faces;
 /// back faces are culled, and the nearest surface wins the depth test
-/// (`less`, depth cleared to 1). The built-in shading is a diagnostic: each
-/// fragment shows its model-space normal as a color, `normal * 0.5 + 0.5`.
+/// (`less`, depth cleared to 1). Every material, built-in or app-supplied,
+/// shares this vertex stage, depth test, culling, and frame loop; only the
+/// fragment function and its parameter block differ (`docs/materials.md`).
+/// ``drawFrame(mesh:transform:camera:target:)`` uses the built-in normal
+/// diagnostic: each fragment shows its model-space normal as a color,
+/// `normal * 0.5 + 0.5`.
 ///
-/// The initializer creates the pipeline, the depth-stencil state, and one
-/// uniform buffer per frame slot; ``makeMesh(_:)`` creates a mesh's buffers.
-/// Drawing creates nothing: it writes `projection * view * model` into the
-/// frame slot's uniform buffer, so ``resourceStatistics`` stays constant while
-/// transforms and cameras change. Frame slots, skips, and completion reports
-/// behave as in ``TriangleRenderer``.
+/// The initializer creates the normal diagnostic's pipeline, the
+/// depth-stencil state, and one uniform buffer per frame slot.
+/// ``makeMesh(_:)`` creates a mesh's buffers, and ``makeUnlitMaterial(color:)``
+/// and ``makeMaterial(fragmentFunction:library:parameters:)`` create a
+/// material's pipeline the first time its fragment function is used. Drawing
+/// creates nothing: it writes `projection * view * model` into the frame
+/// slot's uniform buffer and copies the material's parameters into the frame's
+/// commands, so ``resourceStatistics`` stays constant while transforms,
+/// cameras, and material parameters change. Frame slots, skips, and completion
+/// reports behave as in ``TriangleRenderer``.
 ///
 /// Every target's pass needs a depth attachment of ``depthPixelFormat``. For
 /// an `MTKView`, set its `depthStencilPixelFormat` to the same format.
@@ -59,30 +68,36 @@ public final class Mesh {
 /// arrive on a Metal-owned thread.
 public final class MeshRenderer {
     static let vertexFunctionName = "ff_mesh_vertex"
-    static let fragmentFunctionName = "ff_mesh_normal_fragment"
+    static let normalFragmentFunctionName = "ff_mesh_normal_fragment"
+    static let unlitFragmentFunctionName = "ff_unlit_fragment"
 
     /// The device every resource of this renderer belongs to.
     public let device: any MTLDevice
-    /// The color format the pipeline renders; targets must match it.
+    /// The color format the pipelines render; targets must match it.
     public let colorPixelFormat: MTLPixelFormat
-    /// The depth format the pipeline tests against; targets must match it.
+    /// The depth format the pipelines test against; targets must match it.
     public let depthPixelFormat: MTLPixelFormat
     /// The maximum number of frames that may be in flight at once.
     public var maxFramesInFlight: Int { submitter.slots.capacity }
     /// Counters for submitted, completed, and skipped frames.
     public var statistics: FrameStatistics { submitter.slots.statistics }
     /// Counters for the pipelines, depth-stencil states, and buffers this
-    /// renderer created, including every mesh's buffers.
+    /// renderer created, including every mesh's buffers and every material's
+    /// pipeline.
     public private(set) var resourceStatistics: ResourceStatistics
 
     private let submitter: FrameSubmitter
-    private let pipeline: any MTLRenderPipelineState
     private let depthState: any MTLDepthStencilState
+    /// Frostfield's packaged library, loaded once so the built-in materials'
+    /// cache keys stay stable.
+    private let builtInLibrary: any MTLLibrary
+    private let pipelineCache: MaterialPipelineCache
+    private let normalMaterial: Material<NoMaterialParameters>
     /// One uniform buffer per frame slot, indexed by slot.
     var uniformBuffers: [any MTLBuffer] { submitter.uniformBuffers }
 
-    /// Creates the queue, pipeline, depth-stencil state, and per-frame
-    /// buffers.
+    /// Creates the queue, the normal diagnostic's pipeline, the depth-stencil
+    /// state, and the per-frame buffers.
     ///
     /// - Parameters:
     ///   - device: The device to render with; `nil` throws
@@ -117,23 +132,25 @@ public final class MeshRenderer {
         guard let vertexFunction = library.makeFunction(name: Self.vertexFunctionName) else {
             throw .shaderFunctionMissing(name: Self.vertexFunctionName)
         }
-        guard let fragmentFunction = library.makeFunction(name: Self.fragmentFunctionName) else {
-            throw .shaderFunctionMissing(name: Self.fragmentFunctionName)
-        }
-
-        let descriptor = MTLRenderPipelineDescriptor()
-        descriptor.label = "Frostfield.Mesh"
-        descriptor.vertexFunction = vertexFunction
-        descriptor.fragmentFunction = fragmentFunction
-        descriptor.vertexDescriptor = Self.vertexDescriptor
-        descriptor.colorAttachments[0].pixelFormat = colorPixelFormat
-        descriptor.depthAttachmentPixelFormat = depthPixelFormat
-        let pipeline: any MTLRenderPipelineState
+        let pipelineCache = MaterialPipelineCache(
+            device: device,
+            vertexFunction: vertexFunction,
+            vertexDescriptor: Self.vertexDescriptor,
+            colorPixelFormat: colorPixelFormat,
+            depthPixelFormat: depthPixelFormat
+        )
+        let normalProgram: MaterialProgram
         do {
-            pipeline = try device.makeRenderPipelineState(descriptor: descriptor)
-            resources.renderPipelinesCreated += 1
+            normalProgram = try pipelineCache.program(
+                functionName: Self.normalFragmentFunctionName,
+                library: library,
+                parameterLength: 0,
+                resources: &resources
+            )
+        } catch .functionMissing(let name, _) {
+            throw .shaderFunctionMissing(name: name)
         } catch {
-            throw .pipelineCreationFailed(reason: String(describing: error))
+            throw .pipelineCreationFailed(reason: error.description)
         }
 
         let depthDescriptor = MTLDepthStencilDescriptor()
@@ -149,8 +166,10 @@ public final class MeshRenderer {
         self.colorPixelFormat = colorPixelFormat
         self.depthPixelFormat = depthPixelFormat
         self.submitter = submitter
-        self.pipeline = pipeline
         self.depthState = depthState
+        self.builtInLibrary = library
+        self.pipelineCache = pipelineCache
+        self.normalMaterial = Material(program: normalProgram, parameters: NoMaterialParameters())
         self.resourceStatistics = resources
     }
 
@@ -206,15 +225,98 @@ public final class MeshRenderer {
         )
     }
 
-    /// Encodes and commits one frame of `mesh` placed by `transform` and
-    /// viewed through `camera`, or reports why it did not.
+    /// Makes the built-in unlit material: every covered pixel receives
+    /// `color`, written to the color attachment unchanged.
+    ///
+    /// The first call prepares the unlit pipeline; later calls reuse it.
+    /// Change the material's `parameters.color` and draw again to recolor it.
+    public func makeUnlitMaterial(color: SIMD4<Float>) throws(MaterialError) -> Material<UnlitParameters> {
+        precondition(
+            MemoryLayout<UnlitParameters>.size == MemoryLayout<FFUnlitParameters>.size
+                && MemoryLayout<UnlitParameters>.offset(of: \.color) == 0,
+            "UnlitParameters must have the layout of FFUnlitParameters"
+        )
+        return try makeMaterial(
+            fragmentFunction: Self.unlitFragmentFunctionName,
+            library: builtInLibrary,
+            parameters: UnlitParameters(color: color)
+        )
+    }
+
+    /// Makes a material from a fragment function the app supplies, with
+    /// initial parameter values.
+    ///
+    /// The function shades what Frostfield's mesh vertex stage rasterizes. It
+    /// may read the varyings `float4 [[position]]`,
+    /// `float3 [[user(ff_model_normal)]]`, and
+    /// `float3 [[user(ff_model_position)]]` through its `[[stage_in]]` struct,
+    /// and one read-only parameter block, `constant T &parameters [[buffer(0)]]`,
+    /// whose size must equal `MemoryLayout<Parameters>.size` and be smaller
+    /// than 4096 bytes. An empty `Parameters` type means the function declares
+    /// no parameter block. See `docs/materials.md`.
+    ///
+    /// The first material for a function prepares its render pipeline and
+    /// checks its bindings through Metal's reflection; later materials that
+    /// name the same function in the same library object reuse it.
+    ///
+    /// - Parameters:
+    ///   - name: The fragment function's name in `library`.
+    ///   - library: A library made by this renderer's device, such as the
+    ///     app's `makeDefaultLibrary()` or one compiled from source.
+    ///   - parameters: The material's initial parameter values.
+    /// - Throws: ``MaterialError`` when the function is missing, is not a
+    ///   fragment function, reads varyings the vertex stage does not write,
+    ///   declares bindings Frostfield does not provide, or has a parameter
+    ///   block of a different size. Nothing is encoded in any of these cases.
+    public func makeMaterial<Parameters: BitwiseCopyable>(
+        fragmentFunction name: String,
+        library: any MTLLibrary,
+        parameters: Parameters
+    ) throws(MaterialError) -> Material<Parameters> {
+        let program = try pipelineCache.program(
+            functionName: name,
+            library: library,
+            parameterLength: MemoryLayout<Parameters>.size,
+            resources: &resourceStatistics
+        )
+        return Material(program: program, parameters: parameters)
+    }
+
+    /// Encodes and commits one frame of `mesh` with the built-in normal
+    /// diagnostic material, placed by `transform` and viewed through
+    /// `camera`, or reports why it did not.
     ///
     /// - Precondition: `mesh` belongs to this renderer's device, and the
     ///   target's pass has a depth attachment of ``depthPixelFormat``.
     public func drawFrame(mesh: Mesh, transform: Transform, camera: Camera, target: () -> FrameTarget?) -> FrameOutcome {
+        drawFrame(mesh: mesh, material: normalMaterial, transform: transform, camera: camera, target: target)
+    }
+
+    /// Encodes and commits one frame of `mesh` shaded by `material`, placed
+    /// by `transform` and viewed through `camera`, or reports why it did not.
+    ///
+    /// The material's current ``Material/parameters`` are copied into the
+    /// frame's commands while it is encoded; changing them afterwards affects
+    /// only later frames. Drawing creates no pipeline or buffer.
+    ///
+    /// - Precondition: `mesh` belongs to this renderer's device, `material`
+    ///   was made by this renderer, and the target's pass has a depth
+    ///   attachment of ``depthPixelFormat``.
+    public func drawFrame<Parameters>(
+        mesh: Mesh,
+        material: Material<Parameters>,
+        transform: Transform,
+        camera: Camera,
+        target: () -> FrameTarget?
+    ) -> FrameOutcome {
         precondition(
             mesh.device === device,
             "The mesh was created for the device \(mesh.device.name), not this renderer's device \(device.name)"
+        )
+        precondition(
+            material.program.cache === pipelineCache,
+            "The material \(material.fragmentFunctionName) was made by another MeshRenderer. "
+                + "Make materials with the renderer that draws them; its pipeline matches only that renderer's formats."
         )
         return submitter.submit(label: "Frostfield.MeshFrame", target: target) { encoder, uniformBuffer, pass, colorTexture in
             let depthFormat = pass.depthAttachment.texture?.pixelFormat
@@ -231,13 +333,24 @@ public final class MeshRenderer {
             )
             uniformBuffer.contents().storeBytes(of: uniforms, as: FFTransformUniforms.self)
 
-            encoder.setRenderPipelineState(pipeline)
+            encoder.setRenderPipelineState(material.program.pipeline)
             encoder.setDepthStencilState(depthState)
             encoder.setFrontFacing(.counterClockwise)
             encoder.setCullMode(.back)
             encoder.setVertexBuffer(uniformBuffer, offset: 0, index: Int(FF_TRANSFORM_UNIFORMS_BUFFER_INDEX))
             encoder.setVertexBuffer(mesh.positionBuffer, offset: 0, index: Int(FF_MESH_POSITION_BUFFER_INDEX))
             encoder.setVertexBuffer(mesh.normalBuffer, offset: 0, index: Int(FF_MESH_NORMAL_BUFFER_INDEX))
+            // The parameter size was checked against the function's parameter
+            // block when the material was made.
+            if MemoryLayout<Parameters>.size > 0 {
+                withUnsafeBytes(of: material.parameters) { bytes in
+                    encoder.setFragmentBytes(
+                        bytes.baseAddress!,
+                        length: bytes.count,
+                        index: Int(FF_MATERIAL_PARAMETERS_BUFFER_INDEX)
+                    )
+                }
+            }
             encoder.drawIndexedPrimitives(
                 type: .triangle,
                 indexCount: mesh.indexCount,
@@ -248,3 +361,6 @@ public final class MeshRenderer {
         }
     }
 }
+
+/// The parameters of a material whose fragment function reads none.
+struct NoMaterialParameters: BitwiseCopyable {}
