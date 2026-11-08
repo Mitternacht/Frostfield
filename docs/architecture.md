@@ -38,6 +38,14 @@ Prepare shader libraries and common pipeline variants before interaction. Parame
 
 Never block the main thread waiting for a drawable or an available frame slot. A missed drawable, suspended app, or saturated consumer produces a defined skip/backpressure outcome. Paused and hidden scenes do not keep submitting frames. `MTKView` already supports requested and continuous drawing; a custom `CAMetalLayer` host needs evidence of a requirement before replacing it. [MTKView](https://developer.apple.com/documentation/metalkit/mtkview).
 
+Current state (FF-02/FF-03, experimental): `TriangleRenderer` bounds frames in
+flight with slots that are skipped, never waited for, and `RenderSchedule`
+derives `MTKView` pacing from mode, scene activity, visibility, and drawable size.
+The UIKit host still acquires drawables synchronously on the main thread through
+`MTKView.currentDrawable`; simulator runs measured waits of up to 67 ms there
+([evidence](evidence/checkpoint-a-host.md)). A physical-device measurement
+decides whether that justifies deferring acquisition or a `CAMetalLayer` host.
+
 ## Creative API progression
 
 The first composition path is a camera plus transformed indexed geometry and a prepared material. Expose a documented shader binding contract so app authors can invent materials without waiting for a catalogue of effects. Add one directional Lambert light, one bounded particle emitter, and one full-screen post-process as separate slices.
