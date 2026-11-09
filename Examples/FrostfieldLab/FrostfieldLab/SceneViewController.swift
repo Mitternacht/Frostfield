@@ -206,8 +206,10 @@ final class SceneViewController: UIViewController {
         newWindowButton.addAction(UIAction { [weak self] _ in self?.openNewWindow() }, for: .primaryActionTriggered)
         newWindowButton.isHidden = !UIApplication.shared.supportsMultipleScenes
 
+        // VoiceOver reads the visible status text. It changes on every frame
+        // while drawing continuously.
         statusLabel.accessibilityIdentifier = "frameStatus"
-        statusLabel.accessibilityLabel = "Frame statistics"
+        statusLabel.accessibilityTraits.insert(.updatesFrequently)
         statusLabel.numberOfLines = 0
         statusLabel.font = UIFontMetrics(forTextStyle: .footnote)
             .scaledFont(for: .monospacedDigitSystemFont(ofSize: 13, weight: .regular))
@@ -300,6 +302,10 @@ final class SceneViewController: UIViewController {
             created \(resources.renderPipelinesCreated) pipelines · \(resources.depthStencilStatesCreated) depth · \
             \(resources.buffersAllocated) buffers (\(resources.bufferBytesAllocated) B)
             """
+        // The UI tests read the counters as `key=value` pairs from the
+        // accessibility value. Only a UI-testing launch sets it, so VoiceOver
+        // users hear the visible text above.
+        guard LabLaunchOptions.isUITesting else { return }
         var fields: [(String, String)] = [
             ("fixture", fixture.rawValue),
             ("mode", "\(schedule.mode)"),
@@ -498,5 +504,12 @@ enum LabLaunchOptions {
     /// so the failure state can be inspected on hardware that has one.
     static var simulatesMissingDevice: Bool {
         ProcessInfo.processInfo.arguments.contains("-FrostfieldLabSimulateMissingDevice")
+    }
+
+    /// `-FrostfieldLabUITesting`, set by the UI tests, publishes the status
+    /// counters as `key=value` pairs in the status label's accessibility
+    /// value.
+    static var isUITesting: Bool {
+        ProcessInfo.processInfo.arguments.contains("-FrostfieldLabUITesting")
     }
 }

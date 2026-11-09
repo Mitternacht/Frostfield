@@ -31,8 +31,9 @@ view, and, where the system supports multiple windows, opens another window. The
 status text shows the scene's mode, activity, pacing, drawable size and display
 scale, the renderer's submitted, completed, and skipped frames, and the host's
 draw-callback counters, including callbacks and frames while the scene was not
-active. Its accessibility value carries the same counters as `key=value` pairs for
-the UI tests.
+active. VoiceOver reads that visible text. Only when the app is launched with
+`-FrostfieldLabUITesting`, as the UI tests do, does the label also carry the
+counters as `key=value` pairs in its accessibility value.
 
 The fixture switch at the top of the panel chooses what the scene draws:
 

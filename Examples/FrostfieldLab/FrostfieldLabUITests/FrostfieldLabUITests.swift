@@ -2,7 +2,9 @@ import XCTest
 
 /// Drives the lab's render host through rendering, failure, invalidation,
 /// visibility, background, and rotation, and checks the counters the host
-/// publishes in its status label's accessibility value.
+/// publishes in its status label's accessibility value. Every launch passes
+/// `-FrostfieldLabUITesting`, without which the lab leaves that value to
+/// VoiceOver's reading of the visible text.
 final class FrostfieldLabUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -12,7 +14,7 @@ final class FrostfieldLabUITests: XCTestCase {
     /// completed, and no failure message is shown.
     @MainActor
     func testRenderHostSubmitsAFrame() throws {
-        let app = XCUIApplication()
+        let app = makeApp()
         app.launch()
 
         XCTAssertTrue(app.otherElements["renderView"].waitForExistence(timeout: 10))
@@ -21,12 +23,28 @@ final class FrostfieldLabUITests: XCTestCase {
         XCTAssertEqual(counters.text("pacing"), "onRequest")
     }
 
+    /// Without `-FrostfieldLabUITesting` the status label exposes only its
+    /// visible text, so VoiceOver reads what the panel shows rather than the
+    /// tests' `key=value` protocol.
+    @MainActor
+    func testStatusIsReadAsItsVisibleText() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let status = app.staticTexts["frameStatus"]
+        XCTAssertTrue(status.waitForExistence(timeout: 10))
+        let label = status.label
+        XCTAssertTrue(label.contains("submitted"), label)
+        XCTAssertTrue(label.contains("requested"), label)
+        XCTAssertFalse(label.contains("="), label)
+        let value = (status.value as? String) ?? ""
+        XCTAssertFalse(value.contains("="), "accessibility value: \(value)")
+    }
+
     /// Without a Metal device the lab shows the renderer's typed error instead
     /// of an empty view.
     @MainActor
     func testMissingDeviceShowsFailureState() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-FrostfieldLabSimulateMissingDevice"]
+        let app = makeApp(["-FrostfieldLabSimulateMissingDevice"])
         app.launch()
 
         let failure = app.staticTexts["renderFailure"]
@@ -39,7 +57,7 @@ final class FrostfieldLabUITests: XCTestCase {
     /// callbacks; one invalidation produces exactly one frame.
     @MainActor
     func testStillSceneRedrawsOnlyAfterInvalidation() throws {
-        let app = XCUIApplication()
+        let app = makeApp()
         app.launch()
         let settled = try waitForSettledCounters(in: app)
         XCTAssertEqual(settled.text("mode"), "requested")
@@ -61,7 +79,7 @@ final class FrostfieldLabUITests: XCTestCase {
     /// submissions and draw callbacks until it is shown again.
     @MainActor
     func testHiddenContinuousSceneStopsSubmitting() throws {
-        let app = XCUIApplication()
+        let app = makeApp()
         app.launch()
         let start = try waitForSettledCounters(in: app)
 
@@ -87,7 +105,7 @@ final class FrostfieldLabUITests: XCTestCase {
     /// returning, then resumes continuous drawing when active again.
     @MainActor
     func testBackgroundedContinuousSceneSubmitsNoRecurringWork() throws {
-        let app = XCUIApplication()
+        let app = makeApp()
         app.launch()
         _ = try waitForSettledCounters(in: app)
         app.segmentedControls["drawingMode"].buttons["Continuous"].tap()
@@ -112,7 +130,7 @@ final class FrostfieldLabUITests: XCTestCase {
     /// and then stays still.
     @MainActor
     func testRequestedSceneRedrawsOnceAfterBackground() throws {
-        let app = XCUIApplication()
+        let app = makeApp()
         app.launch()
         let settled = try waitForSettledCounters(in: app)
 
@@ -134,7 +152,7 @@ final class FrostfieldLabUITests: XCTestCase {
     func testRotationResizesTheDrawable() throws {
         XCUIDevice.shared.orientation = .portrait
         addTeardownBlock { @MainActor in XCUIDevice.shared.orientation = .portrait }
-        let app = XCUIApplication()
+        let app = makeApp()
         app.launch()
         let portrait = try waitForSettledCounters(in: app)
         try assertDrawableCoversWindow(portrait, in: app)
@@ -158,7 +176,7 @@ final class FrostfieldLabUITests: XCTestCase {
     /// nor continuous animation creates a pipeline or a buffer.
     @MainActor
     func testCameraFixtureUpdatesCreateNoGPUResources() throws {
-        let app = XCUIApplication()
+        let app = makeApp()
         app.launch()
         let triangle = try waitForSettledCounters(in: app)
         XCTAssertEqual(triangle.text("fixture"), "triangle")
@@ -206,8 +224,7 @@ final class FrostfieldLabUITests: XCTestCase {
     /// fixture without a depth buffer and back must not trip it.
     @MainActor
     func testCubeFixtureReusesMeshBuffers() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-FrostfieldLabFixture", "geometry"]
+        let app = makeApp(["-FrostfieldLabFixture", "geometry"])
         app.launchEnvironment["MTL_DEBUG_LAYER"] = "1"
         app.launch()
         let start = try waitForSettledCounters(in: app)
@@ -265,8 +282,7 @@ final class FrostfieldLabUITests: XCTestCase {
     /// API validation.
     @MainActor
     func testMaterialFixtureAnimatesParametersWithoutCreatingPipelines() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-FrostfieldLabFixture", "material"]
+        let app = makeApp(["-FrostfieldLabFixture", "material"])
         app.launchEnvironment["MTL_DEBUG_LAYER"] = "1"
         app.launch()
         let start = try waitForSettledCounters(in: app)
@@ -320,6 +336,14 @@ final class FrostfieldLabUITests: XCTestCase {
     }
 
     // MARK: Helpers
+
+    /// The lab, launched so that it publishes its counters for these tests.
+    @MainActor
+    private func makeApp(_ arguments: [String] = []) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-FrostfieldLabUITesting"] + arguments
+        return app
+    }
 
     struct RGB: CustomStringConvertible {
         var red: Double, green: Double, blue: Double
