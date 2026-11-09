@@ -8,12 +8,44 @@ core will be independent of SwiftUI, with native presentation adapters added whe
 
 ## Status
 
-**Early implementation; no release.** The package currently contains a GPU capability
-survey and an experimental diagnostic-triangle renderer with focused tests, and
-[`Examples/`](Examples/README.md) holds a UIKit `MTKView` lab app. These are rendering
-fixtures, not a scene API; physical-device behavior has not been verified. All framework
-capabilities described below remain planned work. Progress and evidence are tracked in
-[the task list](tasks/todo.md).
+**Early implementation; no release.** Everything below is experimental API in an
+unreleased package. It has been verified with GPU unit tests on a Mac and with the
+[`Examples/`](Examples/README.md) lab app on the iOS Simulator, **not on a physical iPhone
+or iPad**. The limited v0.1 candidate is not qualified: the physical-device measurements
+and budgets it requires have not been taken
+([v0.1 core qualification record](docs/evidence/v0.1-core-qualification.md)). Progress and
+evidence are tracked in [the task list](tasks/todo.md).
+
+## What works today
+
+- A UIKit `MTKView` sample host with requested and continuous drawing, per-scene pause
+  while hidden or in the background, and drawable size from each view's own bounds and
+  display scale (`RenderSchedule`).
+- Conventional Metal rendering with a bounded number of frames in flight that skips
+  instead of waiting, typed construction errors, and shaders packaged in the
+  framework's resource bundle (`TriangleRenderer`, `MeshRenderer`).
+- `Transform`, a perspective `Camera`, and validated `PerspectiveProjection` under one
+  documented [coordinate convention](docs/coordinates.md).
+- Validated indexed geometry (`IndexedGeometry`), a procedural cube, depth testing, and
+  back-face culling.
+- Materials: a built-in unlit material and fragment shaders an app supplies from its
+  own Metal library, under a documented [binding contract](docs/materials.md), with
+  typed errors before anything is drawn and no pipeline creation while parameters
+  animate.
+- A runtime GPU capability survey (`RenderCapabilities`).
+
+Failure behavior, thread and lifetime rules, and color handling are described in
+[materials](docs/materials.md), [coordinates](docs/coordinates.md), and the
+[architecture](docs/architecture.md). Physical-device performance is unknown.
+
+## Roadmap (not implemented)
+
+- Physical-device qualification of the v0.1 core: named devices, budgets, and traces.
+- One directional light, one bounded particle emitter, and one post-process.
+- A public offscreen texture-output contract and an optional SwiftUI adapter.
+- Interoperability with GlassWeave (see [Companion project](#companion-project)).
+- A Metal 4 backend, if measurements on devices justify it
+  ([decision](docs/decisions/metal-backend.md)).
 
 ## Direction
 
@@ -22,10 +54,9 @@ capabilities described below remain planned work. Progress and evidence are trac
 - A UIKit `MTKView` host first, followed by an optional SwiftUI adapter.
 - Small reference scenes and physical-device measurements before broad feature expansion.
 
-The first graphics milestone is a programmable scene rendered in a native host. Across
-the two projects, GlassWeave's custom-glass integration proof has priority. Backend
-choices, including Metal 4 and a bounded Satin comparison, remain evidence-driven
-experiments rather than selected project dependencies.
+Across the two projects, GlassWeave's custom-glass integration proof has priority.
+Backend choices are recorded with evidence: conventional Metal and a minimal renderer,
+without Satin ([renderer foundation](docs/decisions/renderer-foundation.md)).
 
 ## Start here
 
@@ -37,24 +68,21 @@ experiments rather than selected project dependencies.
 - [Validation and performance protocol](docs/validation.md)
 - [Contributing](CONTRIBUTING.md)
 
-## Proposed development baseline
+## Development baseline
 
-| Area | Initial choice |
+| Area | Choice |
 | --- | --- |
-| Language | Swift 6 mode; Swift tools version 6.2 |
-| First UI target | iOS and iPadOS 26 or later |
-| macOS | macOS 26 core build checks; a native macOS UI adapter is future work |
+| Language | Swift 6 mode; Swift tools version 6.2; shaders in MSL |
+| First UI target | iOS and iPadOS 26 or later (tested so far only on the iOS 27.2 Simulator) |
+| macOS | macOS 26 core builds and GPU unit tests; a native macOS UI adapter is future work |
+| Rendering backend | Conventional Metal command queue; Metal 4 is an experiment, not shipped |
 | Local agent workflow | Xcode 27 skills and the native Xcode MCP server |
-| Future CI | macOS 26 runner; macOS Debug/Release and iOS Simulator Release builds |
-| Dependencies | None selected; keep the first implementation independent |
+| CI | `macos-26` runner: package tests on macOS, lab build for the iOS Simulator (written; not yet run on GitHub) |
+| Dependencies | None |
 
-Start implementation from [HANDOFF.md](HANDOFF.md). The first implementation task
-will create the Swift package and establish native Xcode builds. Add focused tests
-with testable behavior and a runnable reference example with the rendering milestone.
-Recorded build and test results live in [`docs/evidence/`](docs/evidence/).
-
-The OS baseline is a project choice. Metal 4 capability will be checked independently
-of OS availability when a backend is implemented.
+Recorded build, test, and qualification results live in [`docs/evidence/`](docs/evidence/).
+The OS baseline is a project choice; GPU features are checked on the actual device at
+run time, not inferred from the OS version.
 
 ## Companion project
 

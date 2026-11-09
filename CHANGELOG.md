@@ -43,6 +43,17 @@
   Parameter updates copy values into the frame's commands and create no pipeline. The
   lab's material fixture shades the cube with the unlit material and a time-varying
   material from the app's own shader library (FF-08).
+- [v0.1 core qualification record](docs/evidence/v0.1-core-qualification.md)
+  (Checkpoint C preparation): a clean consumer package resolved Frostfield alone from
+  git at the candidate revision and rendered with its packaged shaders on a Mac and on
+  the iOS Simulator; labelled Mac characterization; every physical-device measurement
+  listed as not taken.
 
-No stable public API or release is available yet. Physical-device rendering has not
-been verified.
+No stable public API or release is available yet. The limited v0.1 is not qualified:
+physical-device rendering, performance, and budgets have not been measured.
+
+### Roadmap (not implemented)
+
+- Physical-device qualification of the v0.1 core.
+- Lighting, particles, post-processing, public texture output, a SwiftUI adapter, and
+  GlassWeave interoperability.

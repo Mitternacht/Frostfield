@@ -102,6 +102,10 @@ Apply this checklist to the limited v0.1 after FF-08, with the scoped Checkpoint
 - [ ] Dependency versions and license obligations are recorded; experimental dependencies do not leak into shipping products.
 - [ ] Release notes link the evidence and retain unimplemented features as roadmap items.
 
+Status (2026-11-09): no item is complete. The
+[v0.1 core qualification record](evidence/v0.1-core-qualification.md) lists what the Mac
+and the iOS Simulator established and every physical-device measurement still missing.
+
 ## Language and data-layout evidence
 
 Follow [the language strategy](language-strategy.md). With the first actual GPU
