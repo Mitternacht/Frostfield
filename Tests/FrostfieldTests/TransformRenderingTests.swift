@@ -243,9 +243,13 @@ struct TransformRenderingTests {
         (completions, reportCompletion) = AsyncStream.makeStream(of: FrameCompletion.self)
     }
 
-    func makeRenderer() throws -> TriangleRenderer {
+    func makeRenderer(device: (any MTLDevice)? = nil) throws -> TriangleRenderer {
         let report = reportCompletion
-        return try TriangleRenderer(device: device, colorPixelFormat: .bgra8Unorm, onFrameCompleted: { report.yield($0) })
+        return try TriangleRenderer(
+            device: device ?? self.device,
+            colorPixelFormat: .bgra8Unorm,
+            onFrameCompleted: { report.yield($0) }
+        )
     }
 
     /// Near each corner (80 % corner, 10 % each other corner) the corner's
@@ -294,13 +298,22 @@ struct TransformRenderingTests {
 
     /// Camera and transform changes, including a new aspect ratio and a new
     /// projection, only rewrite the slot's existing uniform buffer.
+    ///
+    /// The renderer is created on a ``CountingDevice``, which logs every
+    /// object-creating message the renderer sends to its device. That log,
+    /// not the renderer's own `resourceStatistics`, shows that drawing
+    /// creates nothing.
     @Test func `Camera and transform updates create no GPU resources`() async throws {
-        let renderer = try makeRenderer()
-        let created = renderer.resourceStatistics
-        #expect(created.renderPipelinesCreated == 2)
-        #expect(created.buffersAllocated == renderer.maxFramesInFlight)
-        #expect(created.bufferBytesAllocated == renderer.maxFramesInFlight * TriangleRenderer.uniformBufferLength)
-        let buffers = renderer.uniformBuffers.map { ObjectIdentifier($0) }
+        let counting = CountingDevice(wrapping: device)
+        let renderer = try makeRenderer(device: counting.device)
+        let created = counting.creations
+        let pipelines = created.filter { $0.hasPrefix("newRenderPipelineState") }
+        let buffers = created.filter { $0.hasPrefix("newBuffer") }
+        #expect(pipelines.count == 2, "\(created)")
+        #expect(buffers.count == renderer.maxFramesInFlight, "\(created)")
+        // The renderer's own report agrees with what its device saw.
+        #expect(renderer.resourceStatistics.renderPipelinesCreated == pipelines.count)
+        #expect(renderer.resourceStatistics.buffersAllocated == buffers.count)
 
         let targets = [
             try OffscreenTarget(device: device, width: 64, height: 64),
@@ -324,8 +337,8 @@ struct TransformRenderingTests {
             lastExpected = try camera.viewProjectionMatrix(aspectRatio: aspectRatio) * transform.matrix
         }
 
-        #expect(renderer.resourceStatistics == created)
-        #expect(renderer.uniformBuffers.map { ObjectIdentifier($0) } == buffers)
+        let createdWhileDrawing = Array(counting.creations.dropFirst(created.count))
+        #expect(createdWhileDrawing.isEmpty, "drawing created \(createdWhileDrawing.count) objects: \(Set(createdWhileDrawing).sorted())")
         #expect(renderer.statistics.submitted == 60)
         // Frame 60 used slot 1 (frames alternate between the two slots while
         // each waits for the previous one), and that buffer holds its matrix.

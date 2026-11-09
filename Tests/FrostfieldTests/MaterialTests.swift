@@ -143,9 +143,9 @@ struct MaterialRenderingTests {
         (completions, reportCompletion) = AsyncStream.makeStream(of: FrameCompletion.self)
     }
 
-    func makeRenderer() throws -> MeshRenderer {
+    func makeRenderer(device: (any MTLDevice)? = nil) throws -> MeshRenderer {
         let report = reportCompletion
-        return try MeshRenderer(device: device, colorPixelFormat: .bgra8Unorm, onFrameCompleted: { report.yield($0) })
+        return try MeshRenderer(device: device ?? self.device, colorPixelFormat: .bgra8Unorm, onFrameCompleted: { report.yield($0) })
     }
 
     func makeTarget(size: Int = 128) throws -> OffscreenTarget {
@@ -259,9 +259,12 @@ struct MaterialRenderingTests {
     /// The FF-08 counter test. After the materials are made and drawn once,
     /// 120 frames animate the unlit color and the custom material's scale,
     /// alternating materials every frame. Each frame shows its own values,
-    /// and the renderer creates no pipeline, depth state, or buffer.
+    /// and the renderer creates no pipeline, depth state, or buffer: the
+    /// renderer runs on a ``CountingDevice``, whose log of object-creating
+    /// messages is checked as well as the renderer's own counters.
     @Test func `Warmed parameter animation creates no pipelines`() async throws {
-        let renderer = try makeRenderer()
+        let counting = CountingDevice(wrapping: device)
+        let renderer = try makeRenderer(device: counting.device)
         let library = try await MaterialTestShaders.makeLibrary(device: device)
         let mesh = try renderer.makeMesh(.cube())
         var unlit = try renderer.makeUnlitMaterial(color: [1, 1, 1, 1])
@@ -275,6 +278,8 @@ struct MaterialRenderingTests {
         try await draw(renderer, mesh, tint, pose, into: target)
         let warmed = renderer.resourceStatistics
         #expect(warmed.renderPipelinesCreated == 3, "normal diagnostic, unlit, and tint")
+        let warmedCreations = counting.creations
+        #expect(warmedCreations.filter { $0.hasPrefix("newRenderPipelineState") }.count == 3, "\(warmedCreations)")
 
         var mismatches: [String] = []
         for frame in 0..<120 {
@@ -295,6 +300,8 @@ struct MaterialRenderingTests {
             }
         }
         #expect(mismatches.isEmpty, "\(mismatches.prefix(5))")
+        let createdWhileDrawing = Array(counting.creations.dropFirst(warmedCreations.count))
+        #expect(createdWhileDrawing.isEmpty, "drawing created \(createdWhileDrawing.count) objects: \(Set(createdWhileDrawing).sorted())")
         #expect(renderer.resourceStatistics == warmed)
         #expect(renderer.statistics.submitted == 122)
         #expect(renderer.statistics.failed == 0)

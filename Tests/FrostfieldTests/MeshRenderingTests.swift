@@ -150,9 +150,9 @@ struct MeshRenderingTests {
         (completions, reportCompletion) = AsyncStream.makeStream(of: FrameCompletion.self)
     }
 
-    func makeRenderer() throws -> MeshRenderer {
+    func makeRenderer(device: (any MTLDevice)? = nil) throws -> MeshRenderer {
         let report = reportCompletion
-        return try MeshRenderer(device: device, colorPixelFormat: .bgra8Unorm, onFrameCompleted: { report.yield($0) })
+        return try MeshRenderer(device: device ?? self.device, colorPixelFormat: .bgra8Unorm, onFrameCompleted: { report.yield($0) })
     }
 
     func makeTarget(width: Int = 128, height: Int = 128) throws -> OffscreenTarget {
@@ -288,20 +288,28 @@ struct MeshRenderingTests {
 
     /// The renderer creates its pipeline, depth state, and uniform buffers
     /// once; `makeMesh` adds exactly the mesh's three buffers; 100 frames of
-    /// transform and camera changes add nothing.
+    /// transform and camera changes add nothing. A ``CountingDevice`` logs
+    /// every object-creating message the renderer sends to its device, so
+    /// the check does not rely on the renderer's own `resourceStatistics`.
     @Test func `Transform-only updates reuse the mesh buffers`() async throws {
-        let renderer = try makeRenderer()
+        let counting = CountingDevice(wrapping: device)
+        let renderer = try makeRenderer(device: counting.device)
         let initial = renderer.resourceStatistics
         #expect(initial.renderPipelinesCreated == 1)
         #expect(initial.depthStencilStatesCreated == 1)
         #expect(initial.buffersAllocated == renderer.maxFramesInFlight)
+        let created = counting.creations
+        #expect(created.filter { $0.hasPrefix("newRenderPipelineState") }.count == 1, "\(created)")
+        #expect(created.filter { $0.hasPrefix("newDepthStencilState") }.count == 1, "\(created)")
+        #expect(created.filter { $0.hasPrefix("newBuffer") }.count == renderer.maxFramesInFlight, "\(created)")
 
         let cube = IndexedGeometry.cube()
         let mesh = try renderer.makeMesh(cube)
         let afterMesh = renderer.resourceStatistics
         #expect(afterMesh.buffersAllocated == initial.buffersAllocated + 3)
         #expect(afterMesh.bufferBytesAllocated == initial.bufferBytesAllocated + 24 * 16 * 2 + 36 * 4)
-        let meshBuffers = [mesh.positionBuffer, mesh.normalBuffer, mesh.indexBuffer].map { ObjectIdentifier($0) }
+        let uploaded = counting.creations
+        #expect(Array(uploaded.dropFirst(created.count)) == Array(repeating: "newBufferWithBytes:length:options:", count: 3))
 
         let target = try makeTarget(width: 64, height: 64)
         var camera = CubePose.frontCamera
@@ -315,8 +323,9 @@ struct MeshRenderingTests {
             try await render(renderer, mesh, transform, camera, into: target)
         }
 
+        let createdWhileDrawing = Array(counting.creations.dropFirst(uploaded.count))
+        #expect(createdWhileDrawing.isEmpty, "drawing created \(createdWhileDrawing.count) objects: \(Set(createdWhileDrawing).sorted())")
         #expect(renderer.resourceStatistics == afterMesh)
-        #expect([mesh.positionBuffer, mesh.normalBuffer, mesh.indexBuffer].map { ObjectIdentifier($0) } == meshBuffers)
         #expect(renderer.statistics.submitted == 100)
         #expect(renderer.statistics.failed == 0)
     }

@@ -206,10 +206,14 @@ final class FrostfieldLabUITests: XCTestCase {
     }
 
     /// FF-06: the camera fixture's pose and field of view are app state. Each
-    /// change draws one frame, and neither the changes, the fixture switch,
-    /// nor continuous animation creates a pipeline or a buffer.
+    /// change draws exactly one frame, and continuous animation keeps drawing.
+    /// `TriangleRenderer` creates its pipelines and buffers only in its
+    /// initializer, so its status counters are constant by construction and
+    /// prove nothing here; the package test `Camera and transform updates
+    /// create no GPU resources` checks that drawing creates no GPU object
+    /// through a counting device.
     @MainActor
-    func testCameraFixtureUpdatesCreateNoGPUResources() throws {
+    func testCameraFixtureDrawsOneFramePerChange() throws {
         let app = makeApp()
         app.launch()
         let triangle = try waitForSettledCounters(in: app)
@@ -241,21 +245,19 @@ final class FrostfieldLabUITests: XCTestCase {
         app.segmentedControls["drawingMode"].buttons["Continuous"].tap()
         let animated = try waitForCounters(in: app) { $0["submitted"] >= widened["submitted"] + 60 }
         record("camera fixture: \(triangle) -> \(animated)")
-
-        for counters in [start, previous, widened, animated] {
-            XCTAssertEqual(counters["pipelinesCreated"], triangle["pipelinesCreated"])
-            XCTAssertEqual(counters["buffersAllocated"], triangle["buffersAllocated"])
-            XCTAssertEqual(counters["bufferBytesAllocated"], triangle["bufferBytesAllocated"])
-        }
-        XCTAssertEqual(triangle["pipelinesCreated"], 2)
-        XCTAssertEqual(triangle["buffersAllocated"], 2)
+        XCTAssertEqual(animated.text("fixture"), "camera")
+        XCTAssertEqual(animated.text("pacing"), "continuous")
     }
 
     /// FF-07: the cube fixture uploads its mesh once when the view loads.
     /// Pose changes and continuous animation change only the transform, so
     /// the mesh renderer's pipeline, depth-state, and buffer counters stay
-    /// constant. The app runs with Metal API validation, and switching to a
-    /// fixture without a depth buffer and back must not trip it.
+    /// constant. These counters are the renderer's own report of what
+    /// `makeMesh` and `makeMaterial` created: they catch an app that makes
+    /// meshes or materials per frame, not an allocation inside `drawFrame`,
+    /// which the package tests check through a counting device. The app runs
+    /// with Metal API validation, and switching to a fixture without a depth
+    /// buffer and back must not trip it.
     @MainActor
     func testCubeFixtureReusesMeshBuffers() throws {
         let app = makeApp(["-FrostfieldLabFixture", "geometry"])
@@ -311,9 +313,10 @@ final class FrostfieldLabUITests: XCTestCase {
     /// unlit material and with the app's own `lab_pulse_fragment`. Choosing a
     /// color or material draws one frame, continuous drawing feeds the
     /// animation time into the pulse material's parameters, and the pixels on
-    /// screen change with it, while the renderer's pipeline, depth-state, and
-    /// buffer counters stay at their launch values. The app runs with Metal
-    /// API validation.
+    /// screen change with it, while the renderer's self-reported pipeline,
+    /// depth-state, and buffer counters stay at their launch values (an app
+    /// that remade a material per frame would raise them). The app runs with
+    /// Metal API validation.
     @MainActor
     func testMaterialFixtureAnimatesParametersWithoutCreatingPipelines() throws {
         let app = makeApp(["-FrostfieldLabFixture", "material"])

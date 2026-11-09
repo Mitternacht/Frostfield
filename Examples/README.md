@@ -44,8 +44,9 @@ The fixture switch at the top of the panel chooses what the scene draws:
   buttons show one part of the transform each (Rest, Moved, Turned 60° about y,
   Scaled), and the slider sets the vertical field of view. In continuous mode the
   triangle also spins about its own y axis. Each change only rewrites the
-  renderer's per-frame uniforms; the status text shows the pipelines and buffers the
-  renderer created, which stay at 2 and 2.
+  renderer's per-frame uniforms. The status text shows the pipelines and buffers the
+  renderer created: 2 and 2, all in its initializer, so these numbers cannot change
+  while drawing. The package tests check that drawing creates no GPU object.
 
 - **Cube** (FF-07): the procedural cube as one indexed mesh, drawn by `MeshRenderer`
   with a depth buffer and back-face culling. Each face shows its model-space normal

@@ -109,7 +109,10 @@ Pipelines are cached per renderer by **library object and function name**: makin
 second material from the same function in the same `MTLLibrary` object reuses the
 pipeline. A new library object, even one compiled from the same source, is a new key.
 `MeshRenderer.resourceStatistics.renderPipelinesCreated` counts every pipeline Metal
-created, including one created and then rejected by the binding check.
+created, including one created and then rejected by the binding check. It is the
+renderer's own count, kept where the cache creates a pipeline; it shows an app that
+makes materials while animating, not what `drawFrame` does. The package tests check
+drawing separately (below).
 
 A material can only be drawn by the renderer that made it; drawing it with another
 renderer stops on a precondition before anything is encoded.
@@ -146,9 +149,13 @@ validation, scheme `Frostfield (Frostfield Workspace)`:
   the parameters each was encoded with.
 - 120 frames that change the unlit color and an app material's parameters, alternating
   materials, show each frame's values and leave every resource counter unchanged
-  (3 pipelines).
-- Each `MaterialError` case is produced by a real function and leaves the renderer
-  usable.
+  (3 pipelines). The renderer runs on a test device wrapper that logs every
+  object-creating message (`new…`) sent to the device; those frames sent none. With a
+  pipeline created inside `drawFrame` on purpose, the wrapper logged 120 and the test
+  failed, although the renderer's own counter did not move.
+- Every `MaterialError` case except `libraryDeviceMismatch` is produced by a real
+  function and leaves the renderer usable. `libraryDeviceMismatch` needs a library from
+  a second GPU; the Mac used has one, so only its description is tested.
 
 The lab's material fixture shows the same on the iOS Simulator. These are Mac GPU tests
 and simulator runs, not physical-device evidence.

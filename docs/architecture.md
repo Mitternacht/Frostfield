@@ -67,7 +67,9 @@ Current state (FF-06, experimental): `Transform`, `PerspectiveProjection`, and
 `Camera` are core value types; the app owns them and passes them to each draw.
 `TriangleRenderer.drawFrame(transform:camera:target:)` writes
 `projection * view * model` into the frame slot's existing uniform buffer, so a
-camera or transform change creates no GPU object (`ResourceStatistics`). The
+camera or transform change creates no GPU object. The package tests check this by
+logging every object-creating call the renderer sends to its device;
+`ResourceStatistics` is the renderer's own count of its creation sites. The
 conventions are in [coordinate conventions](coordinates.md).
 
 Current state (FF-07, experimental): `IndexedGeometry` validates indexed
