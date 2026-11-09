@@ -8,10 +8,12 @@ Create the Swift package during implementation. (When this task was written the 
 
 **Acceptance criteria**
 - [x] `Package.swift` declares tools version 6.2, Swift 6 language mode, iOS 26 and macOS 26, and one initial `Frostfield` library product with no GlassWeave dependency.
-- [x] A minimal source file gives the target a buildable module without speculative public APIs, fake renderer behavior, or meaningless placeholder tests.
+- [ ] A minimal source file gives the target a buildable module without speculative public APIs, fake renderer behavior, or meaningless placeholder tests.
 - [ ] The chosen Xcode/SDK and an actual successful package build are recorded; a compatible macOS CI build checks compilation without claiming GPU validation.
 
-**Evidence (2026-11-08):** [build baseline](../docs/evidence/build-baseline.md). Xcode MCP builds succeeded for macOS and the iOS Simulator. The module contains only a runtime GPU capability survey used by the lab diagnostics. The CI workflow is written; the third item stays open until it has run on GitHub.
+**Evidence (2026-11-08):** [build baseline](../docs/evidence/build-baseline.md). Xcode MCP builds succeeded for macOS and the iOS Simulator. At FF-01 the module contained only a runtime GPU capability survey, `RenderCapabilities`; no lab or renderer code has ever used it, only its own tests and the FF-04 experiment (corrected 2026-11-09: this sentence said the lab diagnostics used it). The CI workflow is written; the third item stays open until it has run on GitHub.
+
+**Review (2026-11-09):** the second criterion is unchecked. It was checked on the false statement corrected above. `RenderCapabilities` is public API that no product path uses, which this criterion and AGENTS.md exclude, and the [v0.1 audit](../docs/evidence/v0.1-core-qualification.md) leaves open whether it stays public. The rest of the criterion holds (no fake renderer behavior or placeholder tests). It can be checked again once the survey is made internal or moved into the FF-04 experiment, or gains a real product consumer; that choice is the project owner's.
 
 **Verification:** Use Xcode MCP to open/build the package on an available destination, inspect diagnostics, and record toolchain/version. Verify manifest platform parsing with that toolchain. Record compiler version, SDK, Swift language mode, default actor isolation, and the selected MSL dialect separately; follow `docs/language-strategy.md`. CI must choose an Xcode version supporting the declared SDKs, fail clearly when unavailable, and avoid claiming device performance. Add tests when real behavior exists.
 

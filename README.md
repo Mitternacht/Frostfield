@@ -32,7 +32,9 @@ evidence are tracked in [the task list](tasks/todo.md).
   own Metal library, under a documented [binding contract](docs/materials.md), with
   typed errors before anything is drawn and no pipeline creation while parameters
   animate.
-- A runtime GPU capability survey (`RenderCapabilities`).
+- A runtime GPU capability survey (`RenderCapabilities`). No renderer or lab path uses
+  it yet, only its tests and the FF-04 experiment, and whether it stays public is
+  undecided.
 
 Failure behavior, thread and lifetime rules, and color handling are described in
 [materials](docs/materials.md), [coordinates](docs/coordinates.md), and the

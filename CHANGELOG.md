@@ -7,7 +7,9 @@
 - Initial Frostfield architecture and development plan.
 - Ordered implementation tasks, acceptance criteria, and validation protocol.
 - Claude implementation handoff and contribution guidance.
-- Swift package baseline with a runtime GPU capability survey (FF-01).
+- Swift package baseline with a runtime GPU capability survey, `RenderCapabilities`
+  (FF-01). Only its tests and the FF-04 experiment use it; whether it stays public is
+  undecided.
 - Experimental `TriangleRenderer`: a diagnostic triangle through a conventional Metal
   command queue with bounded frames in flight, typed construction errors, and a shader
   library packaged in the Frostfield resource bundle (FF-02).
