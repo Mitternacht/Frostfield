@@ -18,7 +18,7 @@ struct RenderScheduleTests {
     static func settled(_ mode: RenderSchedule.Mode = .requested) -> RenderSchedule {
         var schedule = ready(mode)
         _ = schedule.frameWillBegin(at: 0)
-        schedule.frameDidEnd(.submitted(frame: 1))
+        schedule.frameDidEnd(.submitted(frame: 1), framesInFlight: 1)
         return schedule
     }
 
@@ -60,7 +60,7 @@ struct RenderScheduleTests {
         #expect(schedule.drawableSize == CGSize(width: 400, height: 200))
         #expect(schedule.shouldRequestDisplay)
         _ = schedule.frameWillBegin(at: 1)
-        schedule.frameDidEnd(.submitted(frame: 2))
+        schedule.frameDidEnd(.submitted(frame: 2), framesInFlight: 1)
 
         // Moving to a display with another scale: same bounds, new scale.
         let resized3 = schedule.updateDrawableSize(boundsSize: CGSize(width: 200, height: 100), displayScale: 3)
@@ -121,7 +121,7 @@ struct RenderScheduleTests {
         var schedule = Self.settled(.continuous)
         let began4 = schedule.frameWillBegin(at: 1)
         #expect(began4 != nil)
-        schedule.frameDidEnd(.submitted(frame: 2))
+        schedule.frameDidEnd(.submitted(frame: 2), framesInFlight: 1)
 
         schedule.setActivity(.inactive)
         #expect(!schedule.shouldRequestDisplay, "nothing changed, so nothing is requested")
@@ -140,7 +140,7 @@ struct RenderScheduleTests {
         #expect(schedule.shouldRequestDisplay)
         let began7 = schedule.frameWillBegin(at: 1)
         #expect(began7 != nil)
-        schedule.frameDidEnd(.submitted(frame: 2))
+        schedule.frameDidEnd(.submitted(frame: 2), framesInFlight: 1)
         #expect(!schedule.shouldRequestDisplay)
         let began8 = schedule.frameWillBegin(at: 2)
         #expect(began8 == nil)
@@ -175,7 +175,7 @@ struct RenderScheduleTests {
         schedule.setActivity(.inactive)
         #expect(schedule.shouldRequestDisplay)
         _ = schedule.frameWillBegin(at: 1)
-        schedule.frameDidEnd(.submitted(frame: 2))
+        schedule.frameDidEnd(.submitted(frame: 2), framesInFlight: 1)
         schedule.setActivity(.active)
         #expect(!schedule.shouldRequestDisplay, "becoming active again does not redraw")
     }
@@ -192,7 +192,7 @@ struct RenderScheduleTests {
         #expect(schedule.shouldRequestDisplay)
         let began11 = schedule.frameWillBegin(at: 2)
         #expect(began11 != nil)
-        schedule.frameDidEnd(.submitted(frame: 2))
+        schedule.frameDidEnd(.submitted(frame: 2), framesInFlight: 1)
         #expect(!schedule.shouldRequestDisplay)
         let began12 = schedule.frameWillBegin(at: 3)
         #expect(began12 == nil)
@@ -205,7 +205,7 @@ struct RenderScheduleTests {
         schedule.invalidate()
         let began13 = schedule.frameWillBegin(at: 1)
         #expect(began13 != nil)
-        schedule.frameDidEnd(.skippedNoSlot)
+        schedule.frameDidEnd(.skippedNoSlot, framesInFlight: 2)
 
         #expect(schedule.needsDisplay)
         #expect(schedule.deferral == .frameSlot)
@@ -217,7 +217,7 @@ struct RenderScheduleTests {
         #expect(schedule.shouldRequestDisplay)
         let began14 = schedule.frameWillBegin(at: 2)
         #expect(began14 != nil)
-        schedule.frameDidEnd(.submitted(frame: 2))
+        schedule.frameDidEnd(.submitted(frame: 2), framesInFlight: 1)
         schedule.frameDidComplete()
         #expect(!schedule.shouldRequestDisplay, "nothing owed after the retry")
     }
@@ -227,7 +227,7 @@ struct RenderScheduleTests {
         var schedule = Self.settled()
         schedule.invalidate()
         _ = schedule.frameWillBegin(at: 1)
-        schedule.frameDidEnd(outcome)
+        schedule.frameDidEnd(outcome, framesInFlight: 1)
         #expect(schedule.needsDisplay)
         #expect(schedule.deferral == .target)
         #expect(!schedule.shouldRequestDisplay, "no immediate re-request loop")
@@ -241,10 +241,68 @@ struct RenderScheduleTests {
         #expect(afterInvalidation.shouldRequestDisplay)
     }
 
+    /// With no frame in flight no completion will arrive, so waiting for one
+    /// would leave the owed frame undrawn: a requested scene resized after
+    /// its last frame completed, whose drawable then fails, must still be
+    /// asked to draw again. It is asked once; a second failure waits for the
+    /// next invalidation instead of re-requesting in a loop.
+    @Test(arguments: [FrameOutcome.skippedNoTarget, .encodingFailed])
+    func `A frame without a target and nothing in flight is retried once`(outcome: FrameOutcome) throws {
+        var schedule = Self.settled()
+        schedule.frameDidComplete()
+        schedule.updateDrawableSize(boundsSize: CGSize(width: 200, height: 100), displayScale: 2)
+        #expect(schedule.shouldRequestDisplay)
+        let began = schedule.frameWillBegin(at: 1)
+        #expect(began != nil)
+        schedule.frameDidEnd(outcome, framesInFlight: 0)
+
+        #expect(schedule.needsDisplay)
+        #expect(schedule.deferral == nil)
+        #expect(schedule.shouldRequestDisplay, "the retry is requested although no completion will come")
+        let retry = schedule.frameWillBegin(at: 1.016)
+        #expect(retry != nil)
+        schedule.frameDidEnd(outcome, framesInFlight: 0)
+
+        #expect(schedule.needsDisplay)
+        #expect(schedule.deferral == .target)
+        #expect(!schedule.shouldRequestDisplay, "one retry, then wait for an invalidation")
+        let stray = schedule.frameWillBegin(at: 1.032)
+        #expect(stray != nil, "a draw callback from elsewhere may still draw the owed frame")
+        schedule.frameDidEnd(outcome, framesInFlight: 0)
+        #expect(!schedule.shouldRequestDisplay)
+
+        schedule.invalidate()
+        #expect(schedule.shouldRequestDisplay)
+        _ = schedule.frameWillBegin(at: 2)
+        schedule.frameDidEnd(outcome, framesInFlight: 0)
+        #expect(schedule.shouldRequestDisplay, "an invalidation restores the retry")
+        _ = schedule.frameWillBegin(at: 2.016)
+        schedule.frameDidEnd(.submitted(frame: 2), framesInFlight: 1)
+        #expect(!schedule.needsDisplay)
+        #expect(!schedule.shouldRequestDisplay)
+    }
+
+    @Test func `A submitted frame restores the retry for a later missing target`() {
+        var schedule = Self.settled()
+        schedule.frameDidComplete()
+        schedule.invalidate()
+        _ = schedule.frameWillBegin(at: 1)
+        schedule.frameDidEnd(.skippedNoTarget, framesInFlight: 0)
+        _ = schedule.frameWillBegin(at: 1.016)
+        schedule.frameDidEnd(.submitted(frame: 2), framesInFlight: 1)
+        schedule.frameDidComplete()
+
+        schedule.invalidate()
+        _ = schedule.frameWillBegin(at: 2)
+        schedule.frameDidEnd(.skippedNoTarget, framesInFlight: 0)
+        #expect(schedule.deferral == nil)
+        #expect(schedule.shouldRequestDisplay)
+    }
+
     @Test func `Continuous drawing keeps drawing while a slot is deferred`() {
         var schedule = Self.settled(.continuous)
         _ = schedule.frameWillBegin(at: 1)
-        schedule.frameDidEnd(.skippedNoSlot)
+        schedule.frameDidEnd(.skippedNoSlot, framesInFlight: 2)
         #expect(schedule.pacing == .continuous)
         let began15 = schedule.frameWillBegin(at: 1.016)
         #expect(began15 != nil, "the next refresh tries again")
@@ -320,7 +378,7 @@ struct RenderScheduleTests {
         var schedule = Self.settled(.continuous)
         _ = schedule.frameWillBegin(at: 0)
         _ = schedule.frameWillBegin(at: 0.04)
-        schedule.frameDidEnd(.submitted(frame: 2))
+        schedule.frameDidEnd(.submitted(frame: 2), framesInFlight: 1)
         schedule.setMode(.requested)
         schedule.invalidate()
         let began24 = schedule.frameWillBegin(at: 9)

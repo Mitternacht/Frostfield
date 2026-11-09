@@ -55,6 +55,9 @@ Never block the main thread waiting for a drawable or an available frame slot. A
 Current state (FF-02/FF-03, experimental): `TriangleRenderer` bounds frames in
 flight with slots that are skipped, never waited for, and `RenderSchedule`
 derives `MTKView` pacing from mode, scene activity, visibility, and drawable size.
+A requested frame that finds no slot or drawable is deferred until a frame
+completes; when nothing is in flight, a missing drawable is retried once and then
+waits for the next invalidation.
 The UIKit host still acquires drawables synchronously on the main thread through
 `MTKView.currentDrawable`; simulator runs measured waits of up to 67 ms there
 ([evidence](evidence/checkpoint-a-host.md)). A physical-device measurement

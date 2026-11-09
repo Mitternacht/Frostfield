@@ -84,6 +84,12 @@ When the renderer cannot be created, the lab shows the typed `RendererError`
 instead of a render view. Launch with `-FrostfieldLabSimulateMissingDevice` to see
 that failure state on hardware that has a Metal device.
 
+Launch with `-FrostfieldLabSimulateMissingDrawables <n>` to answer the renderer's
+first `n` drawable requests with no target, as when `CAMetalLayer.nextDrawable()`
+times out. With nothing in flight, the schedule asks for the owed frame once more:
+with `1` the first frame is drawn on that retry, and with `2` the scene waits,
+without further draw callbacks, until the next invalidation (for example Redraw).
+
 ## Experiments
 
 [`Experiments/`](Experiments/) holds timeboxed backend spikes. They are not

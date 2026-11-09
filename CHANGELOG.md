@@ -14,8 +14,14 @@
 - `FrostfieldLab`, a UIKit `MTKView` example app, and a combined Xcode workspace (FF-02).
 - Experimental `RenderSchedule`: requested versus continuous drawing, per-scene
   pause while inactive, hidden, or in the background, redraw only after
-  invalidation, slot and drawable backpressure without waiting, and drawable size
-  from local bounds and display scale (FF-03).
+  invalidation, frame-slot backpressure without waiting, and drawable size from
+  local bounds and display scale (FF-03). A requested frame that finds no free slot
+  or no drawable is deferred rather than waited for; with nothing in flight, a
+  missing drawable is retried once, then waits for the next invalidation
+  (`frameDidEnd(_:framesInFlight:)`). The UIKit sample host still acquires
+  drawables synchronously on the main thread through `MTKView.currentDrawable`;
+  whether that blocks on a device is unmeasured, and FF-03's drawable criterion is
+  open ([Checkpoint A](docs/evidence/checkpoint-a-host.md#drawable-acquisition-on-the-main-thread)).
 - FF-04 experiment comparing conventional Metal with the Metal 4 command path
   (`Examples/Experiments/Metal4Comparison`, not shipped) and the
   [Metal backend decision](docs/decisions/metal-backend.md): conventional Metal stays

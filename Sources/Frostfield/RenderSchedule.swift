@@ -20,9 +20,12 @@ import CoreGraphics
 ///   (``Pacing/onRequest``). An inactive scene therefore submits no recurring
 ///   frames, but still redraws once after, for example, a resize.
 /// - A requested frame that could not get a frame slot or a drawable stays
-///   owed and is retried after a submitted frame completes (a missing drawable
-///   also after the next invalidation), so the host never waits and never
-///   re-requests in a tight loop.
+///   owed. While frames are in flight it is retried after one of them
+///   completes (a missing drawable also after the next invalidation). When no
+///   frame is in flight, no completion will come, so a missing drawable is
+///   retried once on the next display request; if that retry also finds no
+///   drawable, the frame waits for the next invalidation. The host never waits
+///   and never re-requests in a tight loop.
 /// - Animation time advances only while drawing continuously, by at most
 ///   ``maximumFrameStep`` per frame, so a resumed scene continues where it
 ///   stopped instead of jumping by the paused interval.
@@ -72,10 +75,17 @@ public struct RenderSchedule: Sendable, Equatable {
     public enum Deferral: Sendable, Equatable {
         /// Every frame slot was in flight. Retried after a frame completes.
         case frameSlot
-        /// The host supplied no drawable, or Metal could not start encoding.
-        /// Retried after a frame completes or the content is invalidated.
+        /// The host supplied no drawable, or Metal could not start encoding,
+        /// and either frames were in flight or the one retry without frames
+        /// in flight was already used. Retried after a frame completes or the
+        /// content is invalidated.
         case target
     }
+
+    /// How many times a requested frame that found no target is requested
+    /// again while no frame is in flight, before it waits for an
+    /// invalidation.
+    public static let maximumTargetRetriesWithoutFramesInFlight = 1
 
     /// The largest animation-time advance between two continuous frames, in
     /// seconds. A longer gap, such as a stalled main thread, advances
@@ -101,6 +111,9 @@ public struct RenderSchedule: Sendable, Equatable {
     /// The timestamp of the last continuous frame, or `nil` when the next
     /// continuous frame starts a new interval.
     private var lastFrameTimestamp: Double?
+    /// Retries already requested for a frame that found no target while no
+    /// frame was in flight. Reset by a submitted frame and by invalidation.
+    private var targetRetriesWithoutFramesInFlight = 0
 
     /// Creates a schedule that is stopped until the host reports an active or
     /// inactive scene, a visible view, and a non-empty drawable.
@@ -179,10 +192,12 @@ public struct RenderSchedule: Sendable, Equatable {
 
     /// Marks presented content as stale, for example after a content or
     /// drawable change. A frame is then owed; a stopped host keeps the debt
-    /// until it resumes. Clears a ``Deferral/target`` deferral, because the
-    /// change may have made a drawable available.
+    /// until it resumes. Clears a ``Deferral/target`` deferral and restores
+    /// the retry for a missing target, because the change may have made a
+    /// drawable available.
     public mutating func invalidate() {
         needsDisplay = true
+        targetRetriesWithoutFramesInFlight = 0
         if deferral == .target { deferral = nil }
     }
 
@@ -211,15 +226,32 @@ public struct RenderSchedule: Sendable, Equatable {
 
     /// Records the renderer's outcome for a frame that ``frameWillBegin(at:)``
     /// allowed.
-    public mutating func frameDidEnd(_ outcome: FrameOutcome) {
+    ///
+    /// - Parameters:
+    ///   - outcome: What the renderer did with the frame.
+    ///   - framesInFlight: Submitted frames whose completion the host has not
+    ///     yet reported through ``frameDidComplete()``, for example the sum of
+    ///     ``FrameStatistics/inFlight`` over every renderer whose completions
+    ///     the host forwards. When it is 0 no completion will arrive, so a
+    ///     frame that found no target is requested again once
+    ///     (``maximumTargetRetriesWithoutFramesInFlight``) instead of waiting
+    ///     for one.
+    public mutating func frameDidEnd(_ outcome: FrameOutcome, framesInFlight: Int) {
         switch outcome {
         case .submitted:
             needsDisplay = false
             deferral = nil
+            targetRetriesWithoutFramesInFlight = 0
         case .skippedNoSlot:
             deferral = .frameSlot
         case .skippedNoTarget, .encodingFailed:
-            deferral = .target
+            if framesInFlight <= 0,
+               targetRetriesWithoutFramesInFlight < Self.maximumTargetRetriesWithoutFramesInFlight {
+                targetRetriesWithoutFramesInFlight += 1
+                deferral = nil
+            } else {
+                deferral = .target
+            }
         }
     }
 

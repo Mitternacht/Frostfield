@@ -75,6 +75,40 @@ final class FrostfieldLabUITests: XCTestCase {
         XCTAssertEqual(try readCounters(in: app)["submitted"], settled["submitted"] + 1, "one invalidation, one frame")
     }
 
+    /// FF-03: a requested frame whose drawable is missing while no frame is
+    /// in flight would wait for a completion that never comes. The host asks
+    /// for it once more and draws it without any interaction.
+    @MainActor
+    func testMissingDrawableWithNothingInFlightIsRetried() throws {
+        let app = makeApp(["-FrostfieldLabSimulateMissingDrawables", "1"])
+        app.launch()
+        let settled = try waitForSettledCounters(in: app)
+        record("one missing drawable: \(settled)")
+        XCTAssertEqual(settled["skippedNoTarget"], 1)
+        XCTAssertGreaterThanOrEqual(settled["submitted"], 1, "the owed frame was drawn on the retry")
+        XCTAssertEqual(settled.text("pacing"), "onRequest")
+    }
+
+    /// FF-03: the retry is bounded. When the retry also finds no drawable,
+    /// the host stops asking (no callbacks in a loop) and draws after the
+    /// next invalidation.
+    @MainActor
+    func testRepeatedMissingDrawableWaitsForInvalidation() throws {
+        let app = makeApp(["-FrostfieldLabSimulateMissingDrawables", "2"])
+        app.launch()
+        let failed = try waitForCounters(in: app) { $0["skippedNoTarget"] == 2 }
+        Thread.sleep(forTimeInterval: 2)
+        let still = try readCounters(in: app)
+        record("two missing drawables, then 2 s: \(failed) -> \(still)")
+        XCTAssertEqual(still["submitted"], 0)
+        XCTAssertEqual(still["skippedNoTarget"], 2)
+        XCTAssertEqual(still["callbacks"], failed["callbacks"], "no draw callbacks after the bounded retry")
+
+        app.buttons["redraw"].tap()
+        let drawn = try waitForCounters(in: app) { $0["submitted"] == 1 && $0["completed"] == 1 }
+        XCTAssertEqual(drawn["skippedNoTarget"], 2)
+    }
+
     /// Continuous drawing submits recurring frames; hiding the view stops both
     /// submissions and draw callbacks until it is shown again.
     @MainActor

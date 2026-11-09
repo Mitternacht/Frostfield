@@ -36,6 +36,9 @@ final class SceneViewController: UIViewController {
     private var fixture = LabLaunchOptions.fixture
     private let cameraFixture = CameraFixture(pose: LabLaunchOptions.cameraPose)
     private var counters = HostCounters()
+    /// Drawable requests still to be answered with no target, from
+    /// `-FrostfieldLabSimulateMissingDrawables`.
+    private var simulatedMissingDrawables = LabLaunchOptions.simulatedMissingDrawables
     private var isAppeared = false
     private var displayScale: CGFloat = 0
 
@@ -380,6 +383,10 @@ extension SceneViewController: MTKViewDelegate {
         // The renderer asks for a target only after it holds a free frame
         // slot, so a drawable is never held while every slot is busy.
         let target = { [self] () -> FrameTarget? in
+            if simulatedMissingDrawables > 0 {
+                simulatedMissingDrawables -= 1
+                return nil
+            }
             let start = ContinuousClock.now
             let pass = view.currentRenderPassDescriptor
             let drawable = view.currentDrawable
@@ -409,7 +416,10 @@ extension SceneViewController: MTKViewDelegate {
         if case .submitted = outcome, !isActive {
             counters.submittedWhileNotActive += 1
         }
-        schedule.frameDidEnd(outcome)
+        // Completions from either renderer reach `frameDidComplete()`, so a
+        // frame still in flight on either one will end a deferral.
+        let framesInFlight = renderers.triangle.statistics.inFlight + renderers.mesh.statistics.inFlight
+        schedule.frameDidEnd(outcome, framesInFlight: framesInFlight)
         applySchedule()
     }
 }
@@ -504,6 +514,14 @@ enum LabLaunchOptions {
     /// so the failure state can be inspected on hardware that has one.
     static var simulatesMissingDevice: Bool {
         ProcessInfo.processInfo.arguments.contains("-FrostfieldLabSimulateMissingDevice")
+    }
+
+    /// `-FrostfieldLabSimulateMissingDrawables <n>` answers the renderer's
+    /// first `n` drawable requests with no target, as when
+    /// `CAMetalLayer.nextDrawable()` times out, so the host's recovery can be
+    /// observed.
+    static var simulatedMissingDrawables: Int {
+        value(after: "-FrostfieldLabSimulateMissingDrawables").flatMap(Int.init).map { max(0, $0) } ?? 0
     }
 
     /// `-FrostfieldLabUITesting`, set by the UI tests, publishes the status
