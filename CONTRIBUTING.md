@@ -1,6 +1,8 @@
 # Contributing to Frostfield
 
-This is a planning repository. Start with [HANDOFF.md](HANDOFF.md), read the
+The repository holds the plan and an experimental, unreleased implementation of
+FF-01–FF-08 (package, `FrostfieldLab` example app, CI workflow); everything later is
+planned. Start with [HANDOFF.md](HANDOFF.md), read the
 [plan](tasks/plan.md), and use the [ordered backlog](tasks/todo.md) as the source of
 implementation tasks. Review the relevant [architecture](docs/architecture.md) contracts
 before adding behavior.

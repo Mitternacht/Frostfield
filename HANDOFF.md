@@ -1,8 +1,13 @@
 # Frostfield: implementation handoff for Claude
 
-Prepared 2026-11-08. This repository contains a plan, not an implementation.
-There is no Swift package, renderer, shader, app, test suite, or active CI yet.
-The user deliberately reserved implementation for Claude.
+Prepared 2026-11-08, when this repository contained a plan, not an
+implementation. The user deliberately reserved implementation for Claude.
+
+**Status (2026-11-09):** the repository now contains an experimental,
+unreleased Swift package, the `FrostfieldLab` example app, and a CI workflow for
+FF-01–FF-08. [The task list](tasks/todo.md) records which acceptance criteria
+have evidence; nothing has run on a physical iPhone or iPad, the CI workflow has
+not run on GitHub, and no release exists. Everything after FF-08 is planned.
 
 ## Read in order
 

@@ -1,10 +1,10 @@
 # Frostfield implementation tasks
 
-All tasks below are planned. This planning repository contains no package manifest, source, tests, or CI implementation. Follow [the plan](plan.md) and [validation requirements](../docs/validation.md). Use the native Xcode MCP workflow for project edits, builds, runs, diagnostics, and tests. Proposed paths are provisional; adjust them when a working slice reveals better boundaries. If a slice grows beyond five files or one focused session, split it before implementation.
+Status (2026-11-09): FF-01–FF-08 are implemented as an experimental, unreleased Swift package, the `FrostfieldLab` example app, and a CI workflow; each box below is checked only where its evidence exists, and no criterion has physical-device evidence. FF-09 onward are planned. Follow [the plan](plan.md) and [validation requirements](../docs/validation.md). Use the native Xcode MCP workflow for project edits, builds, runs, diagnostics, and tests. Proposed paths are provisional; adjust them when a working slice reveals better boundaries. If a slice grows beyond five files or one focused session, split it before implementation.
 
 ## FF-01 — Create the package and build baseline
 
-Create the Swift package during implementation. The current repository is documentation only; do not mistake this task for work already completed.
+Create the Swift package during implementation. (When this task was written the repository was documentation only; the package now exists, and the boxes below record what its evidence covers.)
 
 **Acceptance criteria**
 - [x] `Package.swift` declares tools version 6.2, Swift 6 language mode, iOS 26 and macOS 26, and one initial `Frostfield` library product with no GlassWeave dependency.

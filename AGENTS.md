@@ -2,9 +2,12 @@
 
 ## Project state and scope
 
-Frostfield is a planned Apple-native framework. This repository currently contains
-documentation only. Read `HANDOFF.md`, `README.md`, `tasks/plan.md`, `tasks/todo.md`, and
-the relevant architecture section before implementation. Do not treat described APIs,
+Frostfield is a planned Apple-native framework. This repository contains an
+experimental, unreleased Swift package, the `FrostfieldLab` example app, and a CI workflow
+for FF-01–FF-08; `tasks/todo.md` records which acceptance criteria have evidence, and none
+has physical-device evidence. Everything after FF-08 is planned. Read `HANDOFF.md`,
+`README.md`, `tasks/plan.md`, `tasks/todo.md`, and the relevant architecture section
+before implementation. Do not treat described APIs,
 examples, package targets, or performance budgets as existing functionality. Distinguish
 implemented behavior from planned capabilities in documentation and reports.
 

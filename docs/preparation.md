@@ -1,7 +1,9 @@
 # Repository preparation
 
-This repository is a documentation-only implementation plan and Claude handoff.
-No package, renderer, scene API, shader, or visual demo is implemented.
+This document records how the repository was prepared as a documentation-only
+implementation plan and Claude handoff (2026-11-08). The repository has since gained an
+experimental, unreleased implementation of FF-01–FF-08; see [the task list](../tasks/todo.md).
+No scene API is implemented.
 
 ## Preparation sequence
 

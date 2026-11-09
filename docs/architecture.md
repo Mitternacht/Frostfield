@@ -1,6 +1,6 @@
 # Frostfield architecture
 
-Status: proposed design, 2026-11-08. The initial repository contains planning documents only: no package manifest, source, tests, CI implementation, or renderer. Types, target names, and contracts become public only after their implementation fixtures validate them.
+Status: proposed design, 2026-11-08. The repository then contained planning documents only. It now contains an experimental, unreleased package, the `FrostfieldLab` example app, and a CI workflow for FF-01–FF-08; the "Current state" notes below describe what exists, and everything else in this document is planned. Types, target names, and contracts become public only after their implementation fixtures validate them.
 
 ## Boundaries
 

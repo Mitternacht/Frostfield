@@ -1,6 +1,6 @@
 # Frostfield implementation plan
 
-Prepared 2026-11-08. Status: documentation and handoff preparation only. No package manifest, source, tests, CI implementation, renderer, scene API, or supported visual effects are implemented. Claude will start implementation from this plan.
+Prepared 2026-11-08 as documentation and handoff preparation. Status (2026-11-09): FF-01–FF-08 exist as an experimental, unreleased package, the `FrostfieldLab` example app, and a CI workflow, with Mac GPU and iOS Simulator evidence only ([task list](todo.md)). The scene API, lighting, particles, post-processing, texture export, the SwiftUI adapter, and GlassWeave interoperability are not implemented.
 
 ## Product goal
 
