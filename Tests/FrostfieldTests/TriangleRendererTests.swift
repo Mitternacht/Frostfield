@@ -6,6 +6,18 @@ import Testing
 
 private let systemDevice = MTLCreateSystemDefaultDevice()
 
+/// Whether this test run asked for Metal API validation, and whether it must
+/// have it.
+enum APIValidation {
+    /// `MTL_DEBUG_LAYER=1` makes Metal wrap the system device in its
+    /// validation layer.
+    static var isRequested: Bool { ProcessInfo.processInfo.environment["MTL_DEBUG_LAYER"] == "1" }
+    /// `FROSTFIELD_REQUIRE_API_VALIDATION=1`, set by the shared `Frostfield`
+    /// scheme's test action and by CI, turns a run without validation into a
+    /// failure instead of a skipped check.
+    static var isRequired: Bool { ProcessInfo.processInfo.environment["FROSTFIELD_REQUIRE_API_VALIDATION"] == "1" }
+}
+
 /// Construction failures must surface as typed errors, never as a crash or a
 /// renderer that silently draws nothing.
 struct TriangleRendererFailureTests {
@@ -221,11 +233,15 @@ struct TriangleRenderingTests {
         #expect(statistics.failed == 0)
     }
 
-    /// With `MTL_DEBUG_LAYER=1` (set by the shared Frostfield scheme's test
-    /// action) the system device must be Metal's validation wrapper; otherwise
-    /// the GPU tests above would run without API validation.
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["MTL_DEBUG_LAYER"] == "1"))
+    /// With `MTL_DEBUG_LAYER=1` the system device must be Metal's validation
+    /// wrapper; otherwise the GPU tests would run without API validation.
+    /// The shared Frostfield scheme and CI also set
+    /// `FROSTFIELD_REQUIRE_API_VALIDATION=1`, under which a run without
+    /// `MTL_DEBUG_LAYER=1` or without the wrapper fails here rather than
+    /// skipping the check.
+    @Test(.enabled(if: APIValidation.isRequested || APIValidation.isRequired))
     func `API validation wraps the device when requested`() {
+        #expect(APIValidation.isRequested, "FROSTFIELD_REQUIRE_API_VALIDATION=1, but MTL_DEBUG_LAYER is not 1")
         #expect(String(describing: type(of: device)).contains("Debug"), "device type: \(type(of: device))")
     }
 

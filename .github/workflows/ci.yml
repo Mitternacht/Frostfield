@@ -42,8 +42,11 @@ jobs:
 
       # The combined workspace holds the package (shared scheme `Frostfield`)
       # and the FrostfieldLab example app. Package tests run on macOS because
-      # they render off-screen on the runner's GPU; the shared scheme sets
-      # MTL_DEBUG_LAYER=1 so Metal API validation wraps the device.
+      # they render off-screen on the runner's GPU. The shared schemes set
+      # MTL_DEBUG_LAYER=1 so Metal API validation wraps the device; the test
+      # steps also pass it to the test runner (TEST_RUNNER_ prefix) together
+      # with FROSTFIELD_REQUIRE_API_VALIDATION=1, which makes the validation
+      # check fail, not skip, if a run ever lacks the validation layer.
       - name: Build package (macOS Debug)
         run: xcodebuild build -workspace Examples/Frostfield.xcworkspace -scheme Frostfield -destination 'generic/platform=macOS' -configuration Debug CODE_SIGNING_ALLOWED=NO
 
@@ -54,11 +57,17 @@ jobs:
         run: xcodebuild build -workspace Examples/Frostfield.xcworkspace -scheme Frostfield -destination 'generic/platform=iOS Simulator' -configuration Release CODE_SIGNING_ALLOWED=NO
 
       - name: Test package (macOS)
+        env:
+          TEST_RUNNER_MTL_DEBUG_LAYER: "1"
+          TEST_RUNNER_FROSTFIELD_REQUIRE_API_VALIDATION: "1"
         run: xcodebuild test -workspace Examples/Frostfield.xcworkspace -scheme Frostfield -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
 
       # FF-04 experiment (not shipped): conventional versus Metal 4 output and
       # lifetime tests. Metal 4 cases skip on a GPU without the Metal 4 family.
       - name: Test Metal 4 experiment (macOS)
+        env:
+          TEST_RUNNER_MTL_DEBUG_LAYER: "1"
+          TEST_RUNNER_FROSTFIELD_REQUIRE_API_VALIDATION: "1"
         run: xcodebuild test -workspace Examples/Frostfield.xcworkspace -scheme Metal4ComparisonTests -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
 
       - name: Build Metal 4 benchmark tool (macOS)

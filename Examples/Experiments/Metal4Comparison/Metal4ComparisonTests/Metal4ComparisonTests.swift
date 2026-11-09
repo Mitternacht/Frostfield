@@ -239,10 +239,19 @@ struct Metal4LifetimeTests {
 }
 #endif
 
-/// With `MTL_DEBUG_LAYER=1` (set by the `Metal4Experiment` scheme's test
-/// action) the device must be Metal's validation wrapper.
-@Test(.enabled(if: systemDevice != nil && ProcessInfo.processInfo.environment["MTL_DEBUG_LAYER"] == "1"))
+/// With `MTL_DEBUG_LAYER=1` (set by the `Metal4ComparisonTests` scheme's test
+/// action) the device must be Metal's validation wrapper. The scheme and CI
+/// also set `FROSTFIELD_REQUIRE_API_VALIDATION=1`, under which a run without
+/// `MTL_DEBUG_LAYER=1` fails here instead of skipping the check.
+@Test(.enabled(if: systemDevice != nil && (
+    ProcessInfo.processInfo.environment["MTL_DEBUG_LAYER"] == "1"
+        || ProcessInfo.processInfo.environment["FROSTFIELD_REQUIRE_API_VALIDATION"] == "1"
+)))
 func `API validation wraps the device when requested`() throws {
+    #expect(
+        ProcessInfo.processInfo.environment["MTL_DEBUG_LAYER"] == "1",
+        "FROSTFIELD_REQUIRE_API_VALIDATION=1, but MTL_DEBUG_LAYER is not 1"
+    )
     let device = try #require(systemDevice)
     #expect(String(describing: type(of: device)).contains("Debug"), "device type: \(type(of: device))")
 }
