@@ -61,8 +61,9 @@ public final class Mesh {
 /// cameras, and material parameters change. Frame slots, skips, and completion
 /// reports behave as in ``TriangleRenderer``.
 ///
-/// Every target's pass needs a depth attachment of ``depthPixelFormat``. For
-/// an `MTKView`, set its `depthStencilPixelFormat` to the same format.
+/// Every target's pass needs a depth attachment of ``depthPixelFormat`` and
+/// no stencil attachment. For an `MTKView`, set its `depthStencilPixelFormat`
+/// to the same depth-only format.
 ///
 /// Use one renderer from one thread or actor at a time. Completion reports
 /// arrive on a Metal-owned thread.
@@ -120,8 +121,9 @@ public final class MeshRenderer {
         var resources = ResourceStatistics()
         let submitter = try FrameSubmitter(
             device: device,
-            label: "Frostfield.MeshRenderer",
+            rendererName: "MeshRenderer",
             colorPixelFormat: colorPixelFormat,
+            depthPixelFormat: depthPixelFormat,
             maxFramesInFlight: maxFramesInFlight,
             uniformBufferLength: MemoryLayout<FFTransformUniforms>.stride,
             resources: &resources,
@@ -287,7 +289,8 @@ public final class MeshRenderer {
     /// `camera`, or reports why it did not.
     ///
     /// - Precondition: `mesh` belongs to this renderer's device, and the
-    ///   target's pass has a depth attachment of ``depthPixelFormat``.
+    ///   target's pass has a single-sample color attachment, a depth
+    ///   attachment of ``depthPixelFormat``, and no stencil attachment.
     public func drawFrame(mesh: Mesh, transform: Transform, camera: Camera, target: () -> FrameTarget?) -> FrameOutcome {
         drawFrame(mesh: mesh, material: normalMaterial, transform: transform, camera: camera, target: target)
     }
@@ -300,8 +303,9 @@ public final class MeshRenderer {
     /// only later frames. Drawing creates no pipeline or buffer.
     ///
     /// - Precondition: `mesh` belongs to this renderer's device, `material`
-    ///   was made by this renderer, and the target's pass has a depth
-    ///   attachment of ``depthPixelFormat``.
+    ///   was made by this renderer, and the target's pass has a
+    ///   single-sample color attachment, a depth attachment of
+    ///   ``depthPixelFormat``, and no stencil attachment.
     public func drawFrame<Parameters>(
         mesh: Mesh,
         material: Material<Parameters>,
@@ -318,14 +322,9 @@ public final class MeshRenderer {
             "The material \(material.fragmentFunctionName) was made by another MeshRenderer. "
                 + "Make materials with the renderer that draws them; its pipeline matches only that renderer's formats."
         )
-        return submitter.submit(label: "Frostfield.MeshFrame", target: target) { encoder, uniformBuffer, pass, colorTexture in
-            let depthFormat = pass.depthAttachment.texture?.pixelFormat
-            precondition(
-                depthFormat == depthPixelFormat,
-                "MeshRenderer needs a depth attachment of pixel format \(depthPixelFormat.rawValue), but the target has "
-                    + (depthFormat.map { "format \($0.rawValue)" } ?? "none")
-                    + ". For an MTKView, set depthStencilPixelFormat to the renderer's depthPixelFormat."
-            )
+        // The submitter checks the target's color, depth, and stencil
+        // attachments against the pipelines before encoding.
+        return submitter.submit(label: "Frostfield.MeshFrame", target: target) { encoder, uniformBuffer, _, colorTexture in
             // The target is non-empty, so the ratio is finite and positive.
             let aspectRatio = Float(colorTexture.width) / Float(colorTexture.height)
             let uniforms = FFTransformUniforms(

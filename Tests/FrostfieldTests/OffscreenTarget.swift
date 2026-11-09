@@ -133,3 +133,41 @@ struct OffscreenTarget {
         return Pixel(blue: bytes[0], green: bytes[1], red: bytes[2], alpha: bytes[3])
     }
 }
+
+/// Targets whose attachments a renderer's pipelines were not built for, for
+/// the precondition exit tests. Exit-test bodies cannot capture values, so
+/// they build their targets through these functions.
+enum MismatchedTarget {
+    /// A private render-target texture; `sampleCount` above 1 makes it a
+    /// multisample texture.
+    static func texture(
+        _ device: any MTLDevice, _ pixelFormat: MTLPixelFormat, sampleCount: Int = 1
+    ) throws -> any MTLTexture {
+        let descriptor = MTLTextureDescriptor()
+        descriptor.textureType = sampleCount > 1 ? .type2DMultisample : .type2D
+        descriptor.pixelFormat = pixelFormat
+        descriptor.width = 16
+        descriptor.height = 16
+        descriptor.sampleCount = sampleCount
+        descriptor.usage = .renderTarget
+        descriptor.storageMode = .private
+        return try #require(device.makeTexture(descriptor: descriptor))
+    }
+
+    /// A pass that clears `color` and any depth and stencil attachments.
+    static func frameTarget(
+        color: any MTLTexture, depth: (any MTLTexture)? = nil, stencil: (any MTLTexture)? = nil
+    ) -> FrameTarget {
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = color
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].storeAction = color.sampleCount > 1 ? .dontCare : .store
+        pass.depthAttachment.texture = depth
+        pass.depthAttachment.loadAction = .clear
+        pass.depthAttachment.storeAction = .dontCare
+        pass.stencilAttachment.texture = stencil
+        pass.stencilAttachment.loadAction = .clear
+        pass.stencilAttachment.storeAction = .dontCare
+        return FrameTarget(passDescriptor: pass, drawable: nil)
+    }
+}

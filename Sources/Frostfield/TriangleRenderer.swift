@@ -43,6 +43,12 @@ public enum RendererError: Error, Equatable, Sendable, CustomStringConvertible {
 }
 
 /// The render pass and optional drawable one frame renders into.
+///
+/// The pass must match the renderer's pipelines: a single-sample first color
+/// attachment of the renderer's color format, a depth attachment only for a
+/// ``MeshRenderer`` (of its ``MeshRenderer/depthPixelFormat``), and no stencil
+/// attachment. A mismatched target stops on a precondition before anything is
+/// encoded.
 public struct FrameTarget {
     /// A pass whose first color attachment has the renderer's pixel format.
     public var passDescriptor: MTLRenderPassDescriptor
@@ -172,8 +178,9 @@ public final class TriangleRenderer {
         var resources = ResourceStatistics()
         let submitter = try FrameSubmitter(
             device: device,
-            label: "Frostfield.TriangleRenderer",
+            rendererName: "TriangleRenderer",
             colorPixelFormat: colorPixelFormat,
+            depthPixelFormat: nil,
             maxFramesInFlight: maxFramesInFlight,
             uniformBufferLength: Self.uniformBufferLength,
             resources: &resources,

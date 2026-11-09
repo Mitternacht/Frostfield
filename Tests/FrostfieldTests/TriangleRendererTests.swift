@@ -246,3 +246,50 @@ struct TriangleRenderingTests {
         #expect(completion == FrameCompletion(frame: frame, succeeded: true))
     }
 }
+
+/// A target the triangle's pipelines were not built for would abort under
+/// Metal API validation and is undefined without it. The renderer stops
+/// first, before creating a command buffer, with a message that says how to
+/// fix the target. Each child process inherits `MTL_DEBUG_LAYER`, so without
+/// the renderer's check it would still fail, but in Metal with another
+/// message.
+@Suite(.enabled(if: systemDevice != nil))
+struct TriangleRendererPreconditionTests {
+    @Test func `A multisample target stops before encoding`() async {
+        let result = await #expect(processExitsWith: .failure, observing: [\.standardErrorContent]) {
+            guard let device = MTLCreateSystemDefaultDevice() else { return }
+            let renderer = try TriangleRenderer(device: device, colorPixelFormat: .bgra8Unorm)
+            let color = try MismatchedTarget.texture(device, .bgra8Unorm, sampleCount: 4)
+            _ = renderer.drawFrame(rotation: 0) { MismatchedTarget.frameTarget(color: color) }
+        }
+        let message = String(decoding: result?.standardErrorContent ?? [], as: UTF8.self)
+        #expect(message.contains("TriangleRenderer renders single-sample targets"), "stderr: \(message)")
+        #expect(message.contains("sampleCount 4"))
+        #expect(message.contains("leave sampleCount at 1"))
+    }
+
+    @Test func `A target with a depth attachment stops before encoding`() async {
+        let result = await #expect(processExitsWith: .failure, observing: [\.standardErrorContent]) {
+            guard let device = MTLCreateSystemDefaultDevice() else { return }
+            let renderer = try TriangleRenderer(device: device, colorPixelFormat: .bgra8Unorm)
+            let color = try MismatchedTarget.texture(device, .bgra8Unorm)
+            let depth = try MismatchedTarget.texture(device, .depth32Float)
+            _ = renderer.drawFrame(rotation: 0) { MismatchedTarget.frameTarget(color: color, depth: depth) }
+        }
+        let message = String(decoding: result?.standardErrorContent ?? [], as: UTF8.self)
+        #expect(message.contains("TriangleRenderer draws without depth"), "stderr: \(message)")
+        #expect(message.contains("set depthStencilPixelFormat to .invalid"))
+    }
+
+    @Test func `A target with a stencil attachment stops before encoding`() async {
+        let result = await #expect(processExitsWith: .failure, observing: [\.standardErrorContent]) {
+            guard let device = MTLCreateSystemDefaultDevice() else { return }
+            let renderer = try TriangleRenderer(device: device, colorPixelFormat: .bgra8Unorm)
+            let color = try MismatchedTarget.texture(device, .bgra8Unorm)
+            let stencil = try MismatchedTarget.texture(device, .stencil8)
+            _ = renderer.drawFrame(rotation: 0) { MismatchedTarget.frameTarget(color: color, stencil: stencil) }
+        }
+        let message = String(decoding: result?.standardErrorContent ?? [], as: UTF8.self)
+        #expect(message.contains("TriangleRenderer draws without a stencil attachment"), "stderr: \(message)")
+    }
+}

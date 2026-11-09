@@ -102,8 +102,11 @@ reads positions (attribute `FF_MESH_ATTRIBUTE_POSITION`, buffer
 `FF_MESH_POSITION_BUFFER_INDEX`) and normals (attribute `FF_MESH_ATTRIBUTE_NORMAL`,
 buffer `FF_MESH_NORMAL_BUFFER_INDEX`) as `float3` with a 16-byte stride, the
 stride of `SIMD3<Float>`; buffer 0 holds `FFTransformUniforms`. Every target
-needs a depth attachment in the renderer's `depthPixelFormat`; drawing into a
-pass without one stops with a precondition message before any draw is encoded.
+needs a single-sample color attachment, a depth attachment in the renderer's
+`depthPixelFormat`, and no stencil attachment; drawing into any other pass stops
+with a precondition message before a command buffer is created. The triangle
+renderer's targets likewise need a single-sample color attachment and no depth or
+stencil attachment.
 
 ## Evidence
 

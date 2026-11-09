@@ -372,4 +372,25 @@ struct MeshRendererPreconditionTests {
         #expect(message.contains("needs a depth attachment"), "stderr: \(message)")
         #expect(message.contains("depthStencilPixelFormat"))
     }
+
+    /// The mesh pipelines declare no stencil format, so a stencil attachment
+    /// (for example from an `MTKView` with a combined depth-stencil format)
+    /// is refused even when the depth attachment matches.
+    @Test func `A target with a stencil attachment stops before encoding`() async {
+        let result = await #expect(processExitsWith: .failure, observing: [\.standardErrorContent]) {
+            guard let device = MTLCreateSystemDefaultDevice() else { return }
+            let renderer = try MeshRenderer(device: device, colorPixelFormat: .bgra8Unorm)
+            let mesh = try renderer.makeMesh(.cube())
+            let color = try MismatchedTarget.texture(device, .bgra8Unorm)
+            let depth = try MismatchedTarget.texture(device, .depth32Float)
+            let stencil = try MismatchedTarget.texture(device, .stencil8)
+            let camera = Camera(position: [0, 0, 3], projection: try PerspectiveProjection(verticalFieldOfView: 1, near: 0.1, far: 10))
+            _ = renderer.drawFrame(mesh: mesh, transform: .identity, camera: camera) {
+                MismatchedTarget.frameTarget(color: color, depth: depth, stencil: stencil)
+            }
+        }
+        let message = String(decoding: result?.standardErrorContent ?? [], as: UTF8.self)
+        #expect(message.contains("MeshRenderer draws without a stencil attachment"), "stderr: \(message)")
+        #expect(message.contains("such as .depth32Float"))
+    }
 }

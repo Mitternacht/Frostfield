@@ -4,12 +4,18 @@ import Metal
 /// bounded set of frame slots, and one uniform buffer per slot.
 ///
 /// ``submit(label:target:encode:)`` claims a free slot without waiting, asks
-/// for the target only then, lets the renderer encode into the slot's uniform
-/// buffer, and commits. The slot stays busy until Metal reports the command
-/// buffer complete, so a slot's buffer is never written while the GPU may
-/// still read it.
+/// for the target only then, checks that the target matches the renderer's
+/// pipelines, lets the renderer encode into the slot's uniform buffer, and
+/// commits. The slot stays busy until Metal reports the command buffer
+/// complete, so a slot's buffer is never written while the GPU may still read
+/// it.
 final class FrameSubmitter {
+    /// The renderer's type name, used in precondition messages.
+    let rendererName: String
     let colorPixelFormat: MTLPixelFormat
+    /// The depth format the renderer's pipelines test against, or `nil` when
+    /// they draw without a depth attachment.
+    let depthPixelFormat: MTLPixelFormat?
     let slots: FrameSlots
     /// One uniform buffer per frame slot, indexed by slot.
     let uniformBuffers: [any MTLBuffer]
@@ -21,14 +27,16 @@ final class FrameSubmitter {
     /// the buffers in `resources`.
     init(
         device: any MTLDevice,
-        label: String,
+        rendererName: String,
         colorPixelFormat: MTLPixelFormat,
+        depthPixelFormat: MTLPixelFormat?,
         maxFramesInFlight: Int,
         uniformBufferLength: Int,
         resources: inout ResourceStatistics,
         onFrameCompleted: @escaping @Sendable (FrameCompletion) -> Void
     ) throws(RendererError) {
         precondition((1...3).contains(maxFramesInFlight), "maxFramesInFlight must be 1, 2, or 3")
+        let label = "Frostfield.\(rendererName)"
         guard let commandQueue = device.makeCommandQueue() else { throw .commandQueueUnavailable }
         commandQueue.label = label
 
@@ -43,7 +51,9 @@ final class FrameSubmitter {
             uniformBuffers.append(buffer)
         }
 
+        self.rendererName = rendererName
         self.colorPixelFormat = colorPixelFormat
+        self.depthPixelFormat = depthPixelFormat
         self.commandQueue = commandQueue
         self.uniformBuffers = uniformBuffers
         self.slots = FrameSlots(capacity: maxFramesInFlight)
@@ -54,9 +64,11 @@ final class FrameSubmitter {
     /// and commits.
     ///
     /// A `nil` target, or one without a non-empty color texture, releases the
-    /// slot unused. `encode` receives the open encoder, the slot's uniform
-    /// buffer, the target's pass, and its color texture; it must not end the
-    /// encoder.
+    /// slot unused. A target the renderer's pipelines cannot draw into stops
+    /// on a precondition before any command buffer exists (see
+    /// ``checkCompatibility(of:colorTexture:)``). `encode` receives the open
+    /// encoder, the slot's uniform buffer, the target's pass, and its color
+    /// texture; it must not end the encoder.
     func submit(
         label: String,
         target: () -> FrameTarget?,
@@ -76,10 +88,7 @@ final class FrameSubmitter {
             slots.releaseUnusedForMissingTarget(slot)
             return .skippedNoTarget
         }
-        precondition(
-            colorTexture.pixelFormat == colorPixelFormat,
-            "Target pixel format \(colorTexture.pixelFormat.rawValue) does not match the pipeline's \(colorPixelFormat.rawValue)"
-        )
+        checkCompatibility(of: target.passDescriptor, colorTexture: colorTexture)
 
         guard let commandBuffer = commandQueue.makeCommandBuffer(),
               let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: target.passDescriptor)
@@ -108,5 +117,46 @@ final class FrameSubmitter {
         }
         commandBuffer.commit()
         return .submitted(frame: frame)
+    }
+
+    /// Stops with a message that says how to fix the target when its
+    /// attachments do not match what the renderer's pipelines were built for:
+    /// the color format, a single sample per pixel, the depth attachment (its
+    /// format, or none for a renderer without depth), and no stencil
+    /// attachment. Metal API validation aborts on each of these mismatches,
+    /// and without validation the result is undefined, so they are caught
+    /// before encoding.
+    func checkCompatibility(of pass: MTLRenderPassDescriptor, colorTexture: any MTLTexture) {
+        precondition(
+            colorTexture.pixelFormat == colorPixelFormat,
+            "Target pixel format \(colorTexture.pixelFormat.rawValue) does not match the pipeline's \(colorPixelFormat.rawValue)"
+        )
+        precondition(
+            colorTexture.sampleCount == 1,
+            "\(rendererName) renders single-sample targets, but the target's color texture has sampleCount "
+                + "\(colorTexture.sampleCount). For an MTKView, leave sampleCount at 1."
+        )
+        let depthFormat = pass.depthAttachment.texture?.pixelFormat
+        if let depthPixelFormat {
+            precondition(
+                depthFormat == depthPixelFormat,
+                "\(rendererName) needs a depth attachment of pixel format \(depthPixelFormat.rawValue), but the target has "
+                    + (depthFormat.map { "format \($0.rawValue)" } ?? "none")
+                    + ". For an MTKView, set depthStencilPixelFormat to the renderer's depthPixelFormat."
+            )
+        } else {
+            precondition(
+                depthFormat == nil,
+                "\(rendererName) draws without depth, but the target has a depth attachment of pixel format "
+                    + "\(depthFormat?.rawValue ?? 0). For an MTKView, set depthStencilPixelFormat to .invalid."
+            )
+        }
+        let stencilFormat = pass.stencilAttachment.texture?.pixelFormat
+        precondition(
+            stencilFormat == nil,
+            "\(rendererName) draws without a stencil attachment, but the target has one of pixel format "
+                + "\(stencilFormat?.rawValue ?? 0). For an MTKView, use a depthStencilPixelFormat without stencil, "
+                + "such as .depth32Float, or .invalid for a renderer without depth."
+        )
     }
 }
