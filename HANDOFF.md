@@ -9,6 +9,54 @@ FF-01–FF-08. [The task list](tasks/todo.md) records which acceptance criteria
 have evidence; nothing has run on a physical iPhone or iPad, the CI workflow has
 not run on GitHub, and no release exists. Everything after FF-08 is planned.
 
+## Pick up here (2026-11-09)
+
+The work lives on the branch `implement/milestone-1`. It is not merged into
+`main`. FF-01–FF-08 are implemented, and an independent review's findings were
+fixed on the branch. The last full runs:
+
+- Package scheme on My Mac (Apple M5), with Metal API validation required:
+  116 test functions, 208 cases, all passed.
+- `FrostfieldLab` UI tests: 13 of 13 passed on the iPhone 17 simulator
+  (iOS 27.2); a 6-test subset passed on the iPad Air 11-inch (M4) simulator.
+
+Open work, in the order it matters:
+
+1. **Physical-device evidence.** This includes the FF-02 triangle on a device,
+   the FF-04 and FF-05 device comparisons, and the Checkpoint C
+   recipe and budgets in `docs/validation.md`. Checkpoints A, B, and C stay
+   unchecked until it exists.
+2. **FF-03 criterion 3.** The host still gets drawables through
+   `MTKView.currentDrawable`, which can wait on the main thread when every
+   drawable is in flight. The bounded retry does not change that.
+3. **Owner decisions** recorded in the task list:
+   - whether `RenderCapabilities` stays public (FF-01 criterion 2);
+   - which oldest and recent devices form the baseline (Checkpoint B);
+   - whether to keep or restate the five-file slice rule.
+4. **CI on GitHub.** `.github/workflows/ci.yml` runs on pull requests and on
+   pushes to `main`, and has not run yet.
+5. **Optional later milestones.** FF-09 onward has not started. FF-09 (one
+   directional light) is the next task in order.
+
+Tooling notes from this round:
+
+- In Xcode MCP, open `Examples/Frostfield.xcworkspace` (package, lab, and
+  shared package scheme). Do not open the package folder on its own first. The
+  headless bridge can then keep a stale package root, and lab builds fail with
+  "Missing package product".
+- After switching schemes, set the run destination explicitly: My Mac for the
+  package's GPU tests, an iPhone simulator for the lab. The destination
+  otherwise tends to jump to "My Mac (Designed for iPad)", which needs signing.
+- The package scheme sets `MTL_DEBUG_LAYER=1` and
+  `FROSTFIELD_REQUIRE_API_VALIDATION=1`. The validation check fails, rather
+  than skips, when validation is missing.
+- Lab UI tests must launch through `makeApp()`, which adds
+  `-FrostfieldLabUITesting`. `RenderSchedule.frameDidEnd(_:framesInFlight:)`
+  needs the in-flight count of every renderer whose completions it receives.
+- This is a public repository. Commit with the account's GitHub noreply
+  address, and keep personal paths, team IDs, and device identifiers out of
+  tracked files.
+
 ## Read in order
 
 1. [AGENTS.md](AGENTS.md) — repository and Apple-tool requirements.
@@ -36,6 +84,9 @@ for the combined effort. Neither repository initially depends on the other.
 Frostfield work can run independently when a separate implementer is available.
 
 ## Start here
+
+FF-01–FF-08 are done; continue from "Pick up here" above. The original
+guidance for a fresh start follows.
 
 Start with **FF-01** in the task list to establish the package and build baseline.
 Then use **FF-02–FF-03** for the smallest runnable UIKit/Metal fixture and its
@@ -91,7 +142,7 @@ gate. Update the task list only after its stated verification passes.
 
 > Read AGENTS.md and HANDOFF.md, then the linked plan, architecture, experiments,
 > validation protocol, and task list. Implement Frostfield in dependency order,
-> beginning with FF-01 and the rendering-evidence checkpoint. Use the required
+> continuing from the first open item under "Pick up here". Use the required
 > Apple skills and native Xcode MCP tools. Keep interfaces experimental until
 > working fixtures establish them. Record evidence and update the task list as
 > each slice passes. Preserve GlassWeave's independence and avoid expanding the
