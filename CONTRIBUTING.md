@@ -32,19 +32,13 @@ builds, diagnostics, previews, runs, and tests. Human contributors may use Xcode
 
 ## Continuous integration
 
-The CI workflow uses Xcode 27.2 on GitHub's `xcode-27` runner to build macOS Debug
-and Release, generic iOS Simulator Release, and generic visionOS Simulator Release.
-It records the toolchain and checks for the Metal compiler before building. Add
-focused test jobs with the first testable behavior.
+This repository has no CI. Build and test locally with Xcode 27.2, using the Xcode MCP
+server first and `xcodebuild` with Metal API Validation as the fallback. Keep physical
+device validation separate from simulator results.
 
-Use read-only workflow permissions, pinned action revisions, and `pull_request` for
-contributor builds. Avoid signing credentials for package-only checks. Keep physical
-device validation separate from simulator build results.
-
-Apple documents `xcodebuild` for external CI in its
-[Swift package CI guidance](https://developer.apple.com/documentation/xcode/building-swift-packages-or-apps-that-use-them-in-continuous-integration-workflows).
-Verify Xcode and SDK availability in the selected image when updating the CI
-toolchain. See the [official Xcode 27 runner image](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md#xcode).
+Apple documents `xcodebuild` in its
+[Swift package CI guidance](https://developer.apple.com/documentation/xcode/building-swift-packages-or-apps-that-use-them-in-continuous-integration-workflows),
+should a hosted workflow be added later.
 
 ## Pull requests and releases
 

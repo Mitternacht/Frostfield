@@ -303,7 +303,7 @@ remain open.
 | Deployment targets | macOS, iOS, iPadOS, and visionOS 27.0 or later |
 | Development toolchain | Xcode 27 with the macOS, iOS, and visionOS 27 SDKs |
 | Local agent workflow | Xcode 27 skills and the native Xcode MCP server |
-| CI checks | macOS tests and Debug and Release builds, plus iOS and visionOS Simulator Release builds |
+| CI checks | None; builds and tests run locally with Xcode 27.2 |
 | Dependencies | None |
 
 Use the native macOS lab for local rendering work. The release gates track
