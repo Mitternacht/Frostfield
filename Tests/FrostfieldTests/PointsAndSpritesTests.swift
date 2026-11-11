@@ -260,4 +260,56 @@ struct PointsAndSpritesTests {
             try SpriteRenderer(device: device, sprites: [Sprite(position: .zero, size: SIMD2(-1, 1))])
         }
     }
+
+    @Test
+    func `A color graph replaces point, sprite, and line color without a new pipeline`() throws {
+        let fixture = try PrimitiveRenderFixture(side: 64)
+        let graph = try SurfaceShaderGraph { s in
+            .init(baseColor: s.uniform("Tint", SIMD3(0, 1, 0)))
+        }
+        let uniforms = try ShaderUniforms(graph: graph)
+        let points = try PointsRenderer(
+            device: fixture.device, cloud: try PointCloud(positions: [SIMD3(-2, 0, -4)]),
+            material: PointsMaterial(
+                size: .pixels(8), color: SIMD4(1, 0, 0, 1), colorGraph: graph, colorUniforms: uniforms
+            )
+        )
+        let sprites = try SpriteRenderer(
+            device: fixture.device, sprites: [Sprite(position: SIMD3(2, 0, -4), size: SIMD2(repeating: 1))],
+            material: SpriteMaterial(color: SIMD4(1, 0, 0, 1), colorGraph: graph, colorUniforms: uniforms)
+        )
+        let line = try LineRenderer(
+            device: fixture.device,
+            geometry: try LineGeometry(positions: [SIMD3(-1, 0, -4), SIMD3(1, 0, -4)]),
+            material: LineMaterial(
+                width: .pixels(4), cap: .butt, color: SIMD4(1, 0, 0, 1), blending: .opaque,
+                colorGraph: graph, colorUniforms: uniforms
+            )
+        )
+        let pixels = try fixture.render(fixture.graph([
+            SceneNode(primitive: .points(points)),
+            SceneNode(primitive: .sprites(sprites)),
+            SceneNode(primitive: .lines(line)),
+        ])).pixels
+        #expect(isNearly(pixels[32 * 64 + 16], SIMD4(0, 1, 0, 1)))
+        #expect(isNearly(pixels[32 * 64 + 48], SIMD4(0, 1, 0, 1)))
+        #expect(isNearly(pixels[32 * 64 + 32], SIMD4(0, 1, 0, 1)))
+        try uniforms.set("Tint", to: SIMD3(0, 0, 1))
+        let edited = try fixture.render(fixture.graph([
+            SceneNode(primitive: .points(points)),
+            SceneNode(primitive: .sprites(sprites)),
+            SceneNode(primitive: .lines(line)),
+        ])).pixels
+        #expect(isNearly(edited[32 * 64 + 16], SIMD4(0, 0, 1, 1)))
+        #expect(isNearly(edited[32 * 64 + 48], SIMD4(0, 0, 1, 1)))
+        #expect(isNearly(edited[32 * 64 + 32], SIMD4(0, 0, 1, 1)))
+        #expect(throws: PrimitiveRendererError.colorGraph("A primitive color graph reads UV0, the incoming color, and uniforms.")) {
+            _ = try PointsRenderer(
+                device: fixture.device, cloud: try PointCloud(positions: [.zero]),
+                material: PointsMaterial(
+                    colorGraph: try SurfaceShaderGraph { s in .init(baseColor: s.worldPosition) }
+                )
+            )
+        }
+    }
 }

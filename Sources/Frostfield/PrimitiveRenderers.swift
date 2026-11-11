@@ -211,11 +211,16 @@ public struct PointsMaterial {
     /// Optional intersection fade against `SceneGraph.viewportSnapshot` depth.
     /// Use alpha or additive blending.
     public var softParticleFade: SoftParticleDepth.Fade?
+    /// Replaces the shaded color. Only base color and opacity are read.
+    public var colorGraph: SurfaceShaderGraph?
+    /// Live uniforms for `colorGraph`.
+    public var colorUniforms: ShaderUniforms?
 
     public init(
         size: Size = .pixels(2), shape: Shape = .square, color: SIMD4<Float> = SIMD4(repeating: 1),
         map: (any MTLTexture)? = nil, alphaTest: Float = 0, blending: PrimitiveBlending = .opaque,
-        depthTest: Bool = true, softParticleFade: SoftParticleDepth.Fade? = nil
+        depthTest: Bool = true, softParticleFade: SoftParticleDepth.Fade? = nil,
+        colorGraph: SurfaceShaderGraph? = nil, colorUniforms: ShaderUniforms? = nil
     ) {
         self.size = size
         self.shape = shape
@@ -225,6 +230,8 @@ public struct PointsMaterial {
         self.blending = blending
         self.depthTest = depthTest
         self.softParticleFade = softParticleFade
+        self.colorGraph = colorGraph
+        self.colorUniforms = colorUniforms
     }
 }
 
@@ -291,7 +298,9 @@ public final class PointsRenderer {
         try PrimitivePipeline.validate(color: material.color, alphaTest: material.alphaTest)
         try PrimitivePipeline.validate(map: material.map, device: device)
         try PrimitivePipeline.validate(softParticleFade: material.softParticleFade, blending: material.blending)
-        let library = try PrimitivePipeline.library(device: device)
+        try PrimitivePipeline.validate(colorGraph: material.colorGraph, uniforms: material.colorUniforms)
+        let library = try material.colorGraph.map { try PrimitivePipeline.nodeLibrary($0, device: device) }
+            ?? PrimitivePipeline.library(device: device)
         pipeline = try PrimitivePipeline.make(
             device: device, library: library, vertex: "frostfield_points_vertex", fragment: "frostfield_points_fragment",
             hasColors: cloud.colors != nil, hasMap: material.map != nil, hasSoftParticles: material.softParticleFade != nil,
@@ -345,6 +354,7 @@ public final class PointsRenderer {
         encoder.setFragmentBytes(&style, length: MemoryLayout<PackedPointStyle>.stride, index: 0)
         if let map = material.map { encoder.setFragmentTexture(map, index: 0) }
         if let fade = material.softParticleFade { softParticles?.bind(fade, into: encoder) }
+        if material.colorGraph != nil { PrimitivePipeline.bindColorGraph(material.colorUniforms, into: encoder) }
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: range.count)
     }
 }
@@ -411,12 +421,17 @@ public struct LineMaterial: Sendable {
     public var blending: PrimitiveBlending
     /// When false the line draws over everything, after every depth-tested draw.
     public var depthTest: Bool
+    /// Replaces the shaded color. Only base color and opacity are read.
+    public var colorGraph: SurfaceShaderGraph?
+    /// Live uniforms for `colorGraph`.
+    public var colorUniforms: ShaderUniforms?
 
     /// Round joins and caps match the Three.js fat-line appearance.
     public init(
         width: Width = .pixels(1), join: Join = .round, cap: Cap = .round,
         color: SIMD4<Float> = SIMD4(repeating: 1), dash: Dash? = nil,
-        blending: PrimitiveBlending = .alpha, depthTest: Bool = true
+        blending: PrimitiveBlending = .alpha, depthTest: Bool = true,
+        colorGraph: SurfaceShaderGraph? = nil, colorUniforms: ShaderUniforms? = nil
     ) {
         self.width = width
         self.join = join
@@ -425,6 +440,8 @@ public struct LineMaterial: Sendable {
         self.dash = dash
         self.blending = blending
         self.depthTest = depthTest
+        self.colorGraph = colorGraph
+        self.colorUniforms = colorUniforms
     }
 }
 
@@ -491,7 +508,9 @@ public final class LineRenderer {
             throw PrimitiveRendererError.miterLimit
         }
         try PrimitivePipeline.validate(color: material.color, alphaTest: 0)
-        let library = try PrimitivePipeline.library(device: device)
+        try PrimitivePipeline.validate(colorGraph: material.colorGraph, uniforms: material.colorUniforms)
+        let library = try material.colorGraph.map { try PrimitivePipeline.nodeLibrary($0, device: device) }
+            ?? PrimitivePipeline.library(device: device)
         let hairline = material.width == .hairline
         let pipeline = try PrimitivePipeline.make(
             device: device, library: library,
@@ -612,6 +631,7 @@ public final class LineRenderer {
         var style = PackedLineStyle(material: material, tint: draw.tint, sampleCount: sampleCount)
         encoder.setVertexBytes(&style, length: MemoryLayout<PackedLineStyle>.stride, index: 4)
         encoder.setFragmentBytes(&style, length: MemoryLayout<PackedLineStyle>.stride, index: 0)
+        if material.colorGraph != nil { PrimitivePipeline.bindColorGraph(material.colorUniforms, into: encoder) }
         let count = lines.segments.count
         if material.width == .hairline {
             encoder.drawPrimitives(type: .line, vertexStart: 0, vertexCount: count * 2)
@@ -649,11 +669,16 @@ public struct SpriteMaterial {
     /// Optional intersection fade against `SceneGraph.viewportSnapshot` depth.
     /// Use alpha or additive blending.
     public var softParticleFade: SoftParticleDepth.Fade?
+    /// Replaces the shaded color. Only base color and opacity are read.
+    public var colorGraph: SurfaceShaderGraph?
+    /// Live uniforms for `colorGraph`.
+    public var colorUniforms: ShaderUniforms?
 
     public init(
         map: (any MTLTexture)? = nil, color: SIMD4<Float> = SIMD4(repeating: 1), sizeAttenuation: Bool = true,
         alphaTest: Float = 0, blending: PrimitiveBlending = .alpha, depthTest: Bool = true,
-        softParticleFade: SoftParticleDepth.Fade? = nil
+        softParticleFade: SoftParticleDepth.Fade? = nil,
+        colorGraph: SurfaceShaderGraph? = nil, colorUniforms: ShaderUniforms? = nil
     ) {
         self.map = map
         self.color = color
@@ -662,6 +687,8 @@ public struct SpriteMaterial {
         self.blending = blending
         self.depthTest = depthTest
         self.softParticleFade = softParticleFade
+        self.colorGraph = colorGraph
+        self.colorUniforms = colorUniforms
     }
 }
 
@@ -713,7 +740,9 @@ public final class SpriteRenderer {
         try PrimitivePipeline.validate(color: material.color, alphaTest: material.alphaTest)
         try PrimitivePipeline.validate(map: material.map, device: device)
         try PrimitivePipeline.validate(softParticleFade: material.softParticleFade, blending: material.blending)
-        let library = try PrimitivePipeline.library(device: device)
+        try PrimitivePipeline.validate(colorGraph: material.colorGraph, uniforms: material.colorUniforms)
+        let library = try material.colorGraph.map { try PrimitivePipeline.nodeLibrary($0, device: device) }
+            ?? PrimitivePipeline.library(device: device)
         pipeline = try PrimitivePipeline.make(
             device: device, library: library, vertex: "frostfield_sprites_vertex", fragment: "frostfield_sprites_fragment",
             hasColors: false, hasMap: material.map != nil, hasSoftParticles: material.softParticleFade != nil,
@@ -753,6 +782,7 @@ public final class SpriteRenderer {
         )
         encoder.setVertexBytes(&style, length: MemoryLayout<PackedSpriteStyle>.stride, index: 2)
         encoder.setFragmentBytes(&style, length: MemoryLayout<PackedSpriteStyle>.stride, index: 0)
+        if material.colorGraph != nil { PrimitivePipeline.bindColorGraph(material.colorUniforms, into: encoder) }
         if let map = material.map { encoder.setFragmentTexture(map, index: 0) }
         if let fade = material.softParticleFade { softParticles?.bind(fade, into: encoder) }
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: sprites.count)
@@ -776,6 +806,7 @@ public enum PrimitiveRendererError: LocalizedError, Equatable {
     case pipeline(String)
     case resource(String)
     case projection
+    case colorGraph(String)
 
     public var errorDescription: String? {
         switch self {
@@ -795,6 +826,7 @@ public enum PrimitiveRendererError: LocalizedError, Equatable {
         case .pipeline(let message): "Could not create the primitive pipeline: \(message)"
         case .resource(let name): "Metal could not allocate \(name)."
         case .projection: "The view's projection has no usable vertical scale for pixel-sized primitives."
+        case .colorGraph(let detail): detail
         }
     }
 }
@@ -1096,6 +1128,81 @@ enum PrimitivePipeline {
         } catch {
             throw PrimitiveRendererError.library(error.localizedDescription)
         }
+    }
+
+    static func validate(colorGraph: SurfaceShaderGraph?, uniforms: ShaderUniforms?) throws {
+        guard let colorGraph else {
+            guard uniforms == nil else {
+                throw PrimitiveRendererError.colorGraph("Color uniforms need a color graph.")
+            }
+            return
+        }
+        let channels = Set(colorGraph.outputs.connected.map(\.0))
+        guard !channels.isEmpty, channels.isSubset(of: [.baseColor, .opacity]) else {
+            throw PrimitiveRendererError.colorGraph("A primitive color graph reads base color and opacity.")
+        }
+        guard colorGraph.textures.isEmpty else {
+            throw PrimitiveRendererError.colorGraph("A primitive color graph cannot sample textures.")
+        }
+        if let uniforms, !uniforms.matches(colorGraph.uniforms) {
+            throw PrimitiveRendererError.colorGraph("Color uniforms must match the graph.")
+        }
+        for node in colorGraph.nodes {
+            switch node {
+            case .sampleTexture, .sampleScene, .sampleSceneLevel, .sampleDepth, .viewportSafeUV, .softParticleOpacity,
+                 .viewPositionFromDepth, .normalFromDepth, .denoise, .linearDepth, .derivative, .bumpMap, .triplanarSample:
+                throw PrimitiveRendererError.colorGraph("A primitive color graph cannot sample a texture or the frame.")
+            case .input(let input) where input.isScreenSpace || input == .worldPosition || input == .normal:
+                throw PrimitiveRendererError.colorGraph("A primitive color graph reads UV0, the incoming color, and uniforms.")
+            default:
+                break
+            }
+        }
+    }
+
+    static func nodeLibrary(_ graph: SurfaceShaderGraph, device: any MTLDevice) throws -> any MTLLibrary {
+        guard let softURL = Bundle.module.url(forResource: "FrostfieldSoftParticle", withExtension: "h"),
+              let shadingURL = Bundle.module.url(forResource: "PrimitiveShading", withExtension: "h") else {
+            throw PrimitiveRendererError.library("The package is missing its primitive shader sources.")
+        }
+        let function = try graph.metalFunction(named: "frostfield_generated_surface")
+        let source = """
+        #include <metal_stdlib>
+        using namespace metal;
+        #define FROSTFIELD_PRIMITIVE_NODE 1
+        \(SurfaceShaderGraph.supportSource)
+        \(PackedGraphView.metalSource)
+        struct FrostfieldGraphResources {
+            constant float4* uniforms;
+            constant FrostfieldGraphView* view;
+        };
+        static inline float4 frostfield_graph_uniform(thread const FrostfieldGraphResources& resources, uint index) {
+            return resources.uniforms[index];
+        }
+        \(function)
+        \(try String(contentsOf: softURL, encoding: .utf8))
+        \(try String(contentsOf: shadingURL, encoding: .utf8))
+        """
+        do {
+            return try ShaderLibraryCache.library(source: source, device: device)
+        } catch {
+            throw PrimitiveRendererError.pipeline(ShaderProgram.diagnose(error, source: source))
+        }
+    }
+
+    static func bindColorGraph(_ uniforms: ShaderUniforms?, into encoder: any MTLRenderCommandEncoder) {
+        let values = uniforms?.bufferSnapshot().values ?? []
+        if values.isEmpty {
+            var unused = SIMD4<Float>.zero
+            encoder.setFragmentBytes(&unused, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
+        } else {
+            values.withUnsafeBytes { encoder.setFragmentBytes($0.baseAddress!, length: $0.count, index: 3) }
+        }
+        var view = PackedGraphView(
+            viewMatrix: .init(1), projectionMatrix: .init(1), modelMatrix: .init(1), normalMatrix: .init(1),
+            camera: .zero, viewport: .zero, clip: .zero, depthRange: .zero
+        )
+        encoder.setFragmentBytes(&view, length: MemoryLayout<PackedGraphView>.stride, index: 4)
     }
 
     static func make(

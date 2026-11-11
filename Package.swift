@@ -118,6 +118,7 @@ let package = Package(
                 .copy("PathBlueNoiseRanks.bin"),
                 .copy("FrostfieldMaterialExtensions.h"),
                 .copy("ClassicMaterialShading.h"),
+                .copy("PrimitiveShading.h"),
             ]
         ),
         .target(name: "FrostfieldSwiftUI", dependencies: ["Frostfield"]),
