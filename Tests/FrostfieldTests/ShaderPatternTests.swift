@@ -604,4 +604,78 @@ struct ShaderPatternTests {
             try SurfaceShaderGraph(nodes: [.input(.objectPosition), .derivative(.dy, 0)], outputs: .init(positionOffset: 1))
         }
     }
+
+    @Test("Structs nest, branch, and round-trip their fields on the GPU")
+    func structs() throws {
+        let marker = "struct-fields-7c4e"
+        let graph = try BufferShaderGraph(fieldCount: 1) { b in
+            let sample = b.elementField(0)
+            let point = b.defineStruct("Point", [
+                ShaderStruct.Field("x", .scalar), ShaderStruct.Field("y", .scalar),
+            ])
+            let here = b.make(point, ["x": sample.x, "y": sample.y])
+            let wrapped = b.defineStruct("Sample", [
+                ShaderStruct.Field("point", structure: point.index),
+                ShaderStruct.Field("scale", .scalar),
+            ])
+            let packed = b.make(wrapped, ["point": here, "scale": b.constant(Float(2))])
+            let other = b.make(wrapped, [
+                "point": b.make(point, ["x": b.constant(Float(0)), "y": b.constant(Float(1))]),
+                "scale": b.constant(Float(3)),
+            ])
+            let chosen = b.branch(sample.x) { packed } else: { other }
+            let scaled = packed.field("point", as: point).field("x", as: Float.self) * packed.field("scale", as: Float.self)
+            return [0: b.vector(
+                scaled,
+                chosen.field("point", as: point).field("y", as: Float.self),
+                chosen.field("scale", as: Float.self),
+                b.constant(Float(0))
+            ).named(marker)]
+        }
+        let source = try graph.metalFunction(named: "struct_probe")
+        #expect(source.contains("struct frostfield_struct_0_Point"))
+        #expect(source.contains("struct frostfield_struct_1_Sample"))
+        #expect(source.contains("frostfield_struct_0_Point point;"))
+        #expect(!source.contains("void n"))
+        let samples = [SIMD2<Float>(1, 4), SIMD2(0, 9), SIMD2(0.2, -3)]
+        let result = try probe.run(graph, elements: samples.map { [SIMD4($0.x, $0.y, 0, 0)] })
+        for (sample, fields) in zip(samples, result) {
+            let first = sample.x > 0.5
+            #expect(fields[0].x == sample.x * 2, "scaled \(sample)")
+            #expect(fields[0].y == (first ? sample.y : 1), "nested \(sample): \(fields[0].y)")
+            #expect(fields[0].z == (first ? 2 : 3), "arm \(sample): \(fields[0].z)")
+        }
+        #expect(try JSONDecoder().decode(BufferShaderGraph.self, from: JSONEncoder().encode(graph)) == graph)
+
+        #expect(throws: MaterialGraph.Failure.invalidDeclaration("Struct Point is missing field y.")) {
+            try BufferShaderGraph(fieldCount: 1) { b in
+                let point = b.defineStruct("Point", [
+                    ShaderStruct.Field("x", .scalar), ShaderStruct.Field("y", .scalar),
+                ])
+                _ = b.make(point, ["x": b.constant(Float(1))])
+                return [0: b.elementField(0)]
+            }
+        }
+        #expect(throws: MaterialGraph.Failure.invalidDeclaration("Field x is scalar, not vector3.")) {
+            try BufferShaderGraph(fieldCount: 1) { b in
+                let point = b.defineStruct("Point", [ShaderStruct.Field("x", .scalar)])
+                let value = b.make(point, ["x": b.constant(Float(1))])
+                return [0: b.vector(value.field("x", as: SIMD3<Float>.self), b.constant(Float(0)))]
+            }
+        }
+        #expect(throws: MaterialGraph.Failure.invalidDeclaration("The arms of a struct branch must be the same struct.")) {
+            try BufferShaderGraph(fieldCount: 1) { b in
+                let point = b.defineStruct("Point", [ShaderStruct.Field("x", .scalar)])
+                let wrapped = b.defineStruct("Sample", [ShaderStruct.Field("point", structure: point.index)])
+                let here = b.make(point, ["x": b.constant(Float(1))])
+                let there = b.make(wrapped, ["point": here])
+                _ = b.branch(b.constant(Float(1))) { here } else: { there }
+                return [0: b.elementField(0)]
+            }
+        }
+        let negativeDefault = try BufferShaderGraph(fieldCount: 1) { b in
+            [0: b.vector(b.uniform("K", Int32(-2)).toFloat(), b.constant(Float(0)), b.constant(Float(0)), b.constant(Float(0)))]
+        }
+        #expect(try ShaderUniforms(negativeDefault.uniforms).integer(named: "K") == -2)
+    }
 }

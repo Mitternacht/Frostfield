@@ -23,6 +23,10 @@ public struct MaterialGraph: Sendable {
     public static let maximumNestingDepth = 16
     /// The most layers a `.parallaxOcclusion` node may march.
     public static let maximumParallaxSteps = 128
+    /// The most structs one graph may declare.
+    public static let maximumStructCount = 16
+    /// The most fields one struct may have.
+    public static let maximumStructFields = 16
     /// The most loop iterations and parallax layers one evaluation of a stage may run.
     /// Each loop counts its iteration count times the counts of the loops around it,
     /// and each parallax node its layers plus one, times the same factor. This keeps a
@@ -42,6 +46,9 @@ public struct MaterialGraph: Sendable {
         case int
         /// A boolean. Comparisons and branches can read it directly.
         case bool
+        /// A declared struct. The struct's index lives beside the node; this case only
+        /// marks the value as a struct so it cannot be used as a float.
+        case structure
 
         /// A linear RGB color is a vector3.
         public static let color = ValueType.vector3
@@ -55,6 +62,7 @@ public struct MaterialGraph: Sendable {
             case .matrix3: 9
             case .matrix4: 16
             case .int, .bool: 1
+            case .structure: 0
             }
         }
 
@@ -66,6 +74,7 @@ public struct MaterialGraph: Sendable {
             switch self {
             case .matrix3: 3
             case .matrix4: 4
+            case .structure: 0
             default: 1
             }
         }
@@ -90,6 +99,7 @@ public struct MaterialGraph: Sendable {
             case .matrix4: "float4x4"
             case .int: "int"
             case .bool: "bool"
+            case .structure: "void"
             }
         }
     }
@@ -210,6 +220,10 @@ public struct MaterialGraph: Sendable {
         case countOneBits(NodeID)
         /// Truncates a float toward zero, or converts an int to a float.
         case numericCast(NodeID)
+        /// Builds a declared struct from one value per field, in declaration order.
+        case constructStruct(index: Int, fields: [NodeID])
+        /// One field of a struct value. `field` is the field's position in the declaration.
+        case structField(value: NodeID, field: Int)
 
         // MARK: Control flow
 
@@ -376,6 +390,10 @@ public struct MaterialGraph: Sendable {
         /// The node brings one evaluation's loop iterations and parallax layers above
         /// `maximumTotalIterations`.
         case tooManyIterations(node: NodeID, iterations: Int)
+        /// A struct node names a missing declaration or a missing field.
+        case invalidStruct(NodeID)
+        /// Two struct values were required to be the same declaration and were not.
+        case structMismatch(node: NodeID, expected: Int, actual: Int)
 
         public var errorDescription: String? {
             switch self {
@@ -428,6 +446,10 @@ public struct MaterialGraph: Sendable {
             case .tooManyIterations(let node, let iterations):
                 "Material graph node \(node) raises one evaluation to \(iterations) loop iterations and parallax layers, "
                     + "counting nested loops multiplied together; the limit is \(MaterialGraph.maximumTotalIterations)."
+            case .invalidStruct(let node):
+                "Material graph node \(node) uses a struct the graph does not declare, or a field it does not have."
+            case .structMismatch(let node, let expected, let actual):
+                "Material graph node \(node) needs struct \(expected), but received struct \(actual)."
             }
         }
     }

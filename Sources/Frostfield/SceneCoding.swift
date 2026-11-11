@@ -590,6 +590,10 @@ extension MaterialGraph.Node: Codable {
         case "bitcast": self = .bitcast(try operands(1)[0])
         case "countOneBits": self = .countOneBits(try operands(1)[0])
         case "numericCast": self = .numericCast(try operands(1)[0])
+        case "constructStruct":
+            self = .constructStruct(index: try container.decode(Int.self, forKey: .index), fields: inputs)
+        case "structField":
+            self = .structField(value: try operands(1)[0], field: try container.decode(Int.self, forKey: .index))
         default: throw corrupted(container, "Unknown graph node \(kind).", codingPath: decoder.codingPath)
         }
     }
@@ -722,6 +726,12 @@ extension MaterialGraph.Node: Codable {
         case .bitcast(let value): try write("bitcast", [value])
         case .countOneBits(let value): try write("countOneBits", [value])
         case .numericCast(let value): try write("numericCast", [value])
+        case .constructStruct(let index, let fields):
+            try write("constructStruct", fields)
+            try container.encode(index, forKey: .index)
+        case .structField(let value, let field):
+            try write("structField", [value])
+            try container.encode(field, forKey: .index)
         }
     }
 }
@@ -736,6 +746,8 @@ extension ShaderUniform: Codable {
         switch type {
         case .int:
             self.init(name, try container.decode(Int32.self, forKey: .integerValue))
+        case .structure:
+            throw corrupted(container, "A struct is not a uniform type.", codingPath: decoder.codingPath)
         case .scalar, .bool, .vector2, .vector3, .vector4, .matrix3, .matrix4:
             let header = try container.decode(SIMD4<Float>.self, forKey: .defaultValue)
             switch type {
@@ -761,6 +773,8 @@ extension ShaderUniform: Codable {
                 }
             case .int:
                 throw corrupted(container, "An integer uniform is stored as integerValue.", codingPath: decoder.codingPath)
+            case .structure:
+                throw corrupted(container, "A struct is not a uniform type.", codingPath: decoder.codingPath)
             }
         }
     }
@@ -841,7 +855,7 @@ extension ShaderFunction: Codable {
 
 /// The declarations every graph kind shares, encoded with the same keys.
 private enum GraphKeys: String, CodingKey {
-    case nodes, uniforms, textures, functions, labels, output, outputs, fieldCount
+    case nodes, uniforms, textures, functions, structs, labels, output, outputs, fieldCount
 }
 
 private struct GraphDeclarations {
@@ -849,6 +863,7 @@ private struct GraphDeclarations {
     var uniforms: [ShaderUniform]
     var textures: [ShaderTextureInput]
     var functions: [ShaderFunction]
+    var structs: [ShaderStruct]
     var labels: [MaterialGraph.NodeID: String]
 
     init(_ container: KeyedDecodingContainer<GraphKeys>) throws {
@@ -856,17 +871,23 @@ private struct GraphDeclarations {
         uniforms = try container.decodeIfPresent([ShaderUniform].self, forKey: .uniforms) ?? []
         textures = try container.decodeIfPresent([ShaderTextureInput].self, forKey: .textures) ?? []
         functions = try container.decodeIfPresent([ShaderFunction].self, forKey: .functions) ?? []
+        structs = try container.decodeIfPresent([ShaderStruct].self, forKey: .structs) ?? []
+        structs = structs.enumerated().map { index, structure in
+            ShaderStruct(index: index, name: structure.name, fields: structure.fields)
+        }
         labels = try container.decodeIfPresent([MaterialGraph.NodeID: String].self, forKey: .labels) ?? [:]
     }
 
     static func encode(
         _ container: inout KeyedEncodingContainer<GraphKeys>, nodes: [MaterialGraph.Node], uniforms: [ShaderUniform],
-        textures: [ShaderTextureInput], functions: [ShaderFunction], labels: [MaterialGraph.NodeID: String]
+        textures: [ShaderTextureInput], functions: [ShaderFunction], structs: [ShaderStruct],
+        labels: [MaterialGraph.NodeID: String]
     ) throws {
         try container.encode(nodes, forKey: .nodes)
         if !uniforms.isEmpty { try container.encode(uniforms, forKey: .uniforms) }
         if !textures.isEmpty { try container.encode(textures, forKey: .textures) }
         if !functions.isEmpty { try container.encode(functions, forKey: .functions) }
+        if !structs.isEmpty { try container.encode(structs, forKey: .structs) }
         if !labels.isEmpty { try container.encode(labels, forKey: .labels) }
     }
 }
@@ -923,7 +944,7 @@ extension SurfaceShaderGraph: Codable {
         self = try validated(decoder.codingPath) {
             try SurfaceShaderGraph(
                 nodes: parts.nodes, uniforms: parts.uniforms, textures: parts.textures, functions: parts.functions,
-                labels: parts.labels, outputs: outputs
+                structs: parts.structs, labels: parts.labels, outputs: outputs
             )
         }
     }
@@ -931,7 +952,8 @@ extension SurfaceShaderGraph: Codable {
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: GraphKeys.self)
         try GraphDeclarations.encode(
-            &container, nodes: nodes, uniforms: uniforms, textures: textures, functions: functions, labels: labels
+            &container, nodes: nodes, uniforms: uniforms, textures: textures, functions: functions, structs: structs,
+            labels: labels
         )
         try container.encode(outputs, forKey: .outputs)
     }
@@ -945,7 +967,7 @@ extension PostProcessGraph: Codable {
         self = try validated(decoder.codingPath) {
             try PostProcessGraph(
                 nodes: parts.nodes, uniforms: parts.uniforms, textures: parts.textures, functions: parts.functions,
-                labels: parts.labels, output: output
+                structs: parts.structs, labels: parts.labels, output: output
             )
         }
     }
@@ -953,7 +975,8 @@ extension PostProcessGraph: Codable {
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: GraphKeys.self)
         try GraphDeclarations.encode(
-            &container, nodes: nodes, uniforms: uniforms, textures: textures, functions: functions, labels: labels
+            &container, nodes: nodes, uniforms: uniforms, textures: textures, functions: functions, structs: structs,
+            labels: labels
         )
         try container.encode(output, forKey: .output)
     }
@@ -967,7 +990,7 @@ extension TextureShaderGraph: Codable {
         self = try validated(decoder.codingPath) {
             try TextureShaderGraph(
                 nodes: parts.nodes, uniforms: parts.uniforms, textures: parts.textures, functions: parts.functions,
-                labels: parts.labels, output: output
+                structs: parts.structs, labels: parts.labels, output: output
             )
         }
     }
@@ -975,7 +998,8 @@ extension TextureShaderGraph: Codable {
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: GraphKeys.self)
         try GraphDeclarations.encode(
-            &container, nodes: nodes, uniforms: uniforms, textures: textures, functions: functions, labels: labels
+            &container, nodes: nodes, uniforms: uniforms, textures: textures, functions: functions, structs: structs,
+            labels: labels
         )
         try container.encode(output, forKey: .output)
     }
@@ -990,7 +1014,7 @@ extension BufferShaderGraph: Codable {
         self = try validated(decoder.codingPath) {
             try BufferShaderGraph(
                 nodes: parts.nodes, fieldCount: fieldCount, uniforms: parts.uniforms, textures: parts.textures,
-                functions: parts.functions, labels: parts.labels, outputs: outputs
+                functions: parts.functions, structs: parts.structs, labels: parts.labels, outputs: outputs
             )
         }
     }
@@ -998,7 +1022,8 @@ extension BufferShaderGraph: Codable {
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: GraphKeys.self)
         try GraphDeclarations.encode(
-            &container, nodes: nodes, uniforms: uniforms, textures: textures, functions: functions, labels: labels
+            &container, nodes: nodes, uniforms: uniforms, textures: textures, functions: functions, structs: structs,
+            labels: labels
         )
         try container.encode(fieldCount, forKey: .fieldCount)
         try container.encode(outputs, forKey: .outputs)

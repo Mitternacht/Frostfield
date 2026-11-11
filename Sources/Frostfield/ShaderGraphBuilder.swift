@@ -97,6 +97,7 @@ public final class ShaderGraphBuilder {
     private(set) var uniforms: [ShaderUniform] = []
     private(set) var textures: [ShaderTextureInput] = []
     private(set) var functions: [ShaderFunction] = []
+    private(set) var structs: [ShaderStruct] = []
     private(set) var labels: [MaterialGraph.NodeID: String] = [:]
     private var constants: [MaterialGraph.Node: MaterialGraph.NodeID] = [:]
     /// Set when a node received an operand that this builder did not make.
@@ -131,6 +132,10 @@ public final class ShaderGraphBuilder {
         guard !hasForeignOperand else {
             throw MaterialGraph.Failure.invalidDeclaration("A graph value belongs to a different builder.")
         }
+    }
+
+    func addStruct(_ structure: ShaderStruct) {
+        structs.append(structure)
     }
 
     func append(_ node: MaterialGraph.Node) -> MaterialGraph.NodeID {
@@ -169,7 +174,7 @@ public final class ShaderGraphBuilder {
     }
 
     var declarations: ShaderDeclarations {
-        ShaderDeclarations(uniforms: uniforms, textures: textures, functions: functions, labels: labels)
+        ShaderDeclarations(uniforms: uniforms, textures: textures, functions: functions, structs: structs, labels: labels)
     }
 
     // MARK: Values
@@ -802,7 +807,7 @@ extension SurfaceShaderGraph {
         let declarations = builder.declarations
         try self.init(
             nodes: builder.nodes, uniforms: declarations.uniforms, textures: declarations.textures,
-            functions: declarations.functions, labels: declarations.labels,
+            functions: declarations.functions, structs: declarations.structs, labels: declarations.labels,
             outputs: Outputs(
                 baseColor: result.baseColor?.id, metallic: result.metallic?.id, roughness: result.roughness?.id,
                 emission: result.emission?.id, transmissionMask: result.transmissionMask?.id,

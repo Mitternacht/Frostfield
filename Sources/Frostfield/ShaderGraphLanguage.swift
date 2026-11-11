@@ -466,6 +466,46 @@ public struct ShaderFunction: Hashable, Sendable {
     }
 }
 
+/// A named group of fields. Construct one with `ShaderGraphBuilder.defineStruct(_:_:)`
+/// and read a field back out. Nested fields name an earlier struct by its index.
+public struct ShaderStruct: Hashable, Sendable, Codable {
+    public struct Field: Hashable, Sendable, Codable {
+        public enum Content: Hashable, Sendable, Codable {
+            /// A scalar, vector, matrix, int, or bool.
+            case value(MaterialGraph.ValueType)
+            /// A struct declared earlier in the same graph.
+            case structure(Int)
+        }
+
+        public var name: String
+        public var content: Content
+
+        public init(_ name: String, _ type: MaterialGraph.ValueType) {
+            self.name = name
+            content = .value(type)
+        }
+
+        public init(_ name: String, structure: Int) {
+            self.name = name
+            content = .structure(structure)
+        }
+    }
+
+    /// Position in the graph's struct list.
+    public let index: Int
+    public let name: String
+    public let fields: [Field]
+
+    public init(index: Int, name: String, fields: [Field]) {
+        self.index = index
+        self.name = name
+        self.fields = fields
+    }
+
+    /// Metal struct name. The index keeps two structs with the same spelling apart.
+    func metalName() -> String { "frostfield_struct_\(index)_\(name)" }
+}
+
 extension MaterialGraph.ValueType {
     func storedColumn(_ value: SIMD4<Float>) -> SIMD4<Float> {
         switch self {
@@ -473,6 +513,7 @@ extension MaterialGraph.ValueType {
         case .vector2: SIMD4(value.x, value.y, 0, 0)
         case .vector3, .matrix3: SIMD4(value.x, value.y, value.z, 0)
         case .vector4, .matrix4: value
+        case .structure: SIMD4(repeating: 0)
         }
     }
 }

@@ -127,6 +127,8 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
     public let uniforms: [ShaderUniform]
     public let textures: [ShaderTextureInput]
     public let functions: [ShaderFunction]
+    /// Structs the graph can construct. Field order is the Metal layout.
+    public let structs: [ShaderStruct]
     /// Optional node names that appear in generated Metal comments and diagnostics.
     public let labels: [MaterialGraph.NodeID: String]
     public let outputs: Outputs
@@ -139,6 +141,7 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
         uniforms: [ShaderUniform] = [],
         textures: [ShaderTextureInput] = [],
         functions: [ShaderFunction] = [],
+        structs: [ShaderStruct] = [],
         labels: [MaterialGraph.NodeID: String] = [:],
         outputs: Outputs
     ) throws {
@@ -147,7 +150,9 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
         guard outputs.castShadowMask == nil || outputs.castShadowColor != nil else { throw Failure.shadowMaskWithoutColor }
         program = try ShaderProgram(
             nodes: nodes,
-            declarations: ShaderDeclarations(uniforms: uniforms, textures: textures, functions: functions, labels: labels),
+            declarations: ShaderDeclarations(
+                uniforms: uniforms, textures: textures, functions: functions, structs: structs, labels: labels
+            ),
             outputs: connected.map { ($0.1, $0.0.stage) },
             allowsSurfaceViewportSamples: true
         ) { index, id, type in
@@ -174,6 +179,7 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
         self.uniforms = uniforms
         self.textures = textures
         self.functions = functions
+        self.structs = structs
         self.labels = labels
         self.outputs = outputs
     }

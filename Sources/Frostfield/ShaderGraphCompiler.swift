@@ -5,6 +5,7 @@ struct ShaderDeclarations: Hashable, Sendable {
     var uniforms: [ShaderUniform] = []
     var textures: [ShaderTextureInput] = []
     var functions: [ShaderFunction] = []
+    var structs: [ShaderStruct] = []
     var labels: [MaterialGraph.NodeID: String] = [:]
 
     /// Float4 slots taken by the declared values. One per scalar or vector, one per matrix column.
@@ -26,6 +27,8 @@ struct ShaderProgram: Hashable, Sendable {
 
     let nodes: [Node]
     let types: [ValueType]
+    /// The declared struct index for each node that produces a struct, otherwise nil.
+    let structIndices: [Int?]
     let declarations: ShaderDeclarations
     /// Every output the graph was validated for, in the order given.
     let roots: [NodeID]
@@ -48,6 +51,7 @@ struct ShaderProgram: Hashable, Sendable {
 
         var types = [ValueType?](repeating: nil, count: nodes.count)
         var visiting = [Bool](repeating: false, count: nodes.count)
+        let identity = StructIdentity()
 
         // Types a node and everything it depends on with an explicit stack, so a
         // long dependency chain cannot overflow the thread's stack. `type(of:)`
@@ -62,7 +66,7 @@ struct ShaderProgram: Hashable, Sendable {
             var stack = [root]
             while let id = stack.last {
                 do {
-                    let type = try Self.type(of: id, in: nodes, declarations: declarations) { input in
+                    let type = try Self.type(of: id, in: nodes, declarations: declarations, identity: identity) { input in
                         guard nodes.indices.contains(input) else {
                             throw Failure.invalidReference(node: id, referenced: input)
                         }
@@ -90,6 +94,7 @@ struct ShaderProgram: Hashable, Sendable {
         }
         self.nodes = nodes
         self.types = types.map { $0! }
+        self.structIndices = (0..<nodes.count).map { identity.index[$0] }
         self.declarations = declarations
         roots = outputs.map(\.0)
 
@@ -209,7 +214,7 @@ struct ShaderProgram: Hashable, Sendable {
     private func emit(scope: Int, schedule: ShaderSchedule, indent: String, prefix: String, into lines: inout [String]) {
         let inner = indent + "    "
         for id in schedule.nodes(in: scope) {
-            let type = types[id].metalType
+            let type = valueName(id)
             switch nodes[id] {
             case .branch(let condition, let ifTrue, let ifFalse):
                 lines.append("\(indent)\(type) n\(id); \(marker(id, "branch"))")
@@ -289,7 +294,31 @@ struct ShaderProgram: Hashable, Sendable {
             }
         }
         let procedural = hasProceduralNoise ? [Self.proceduralNoiseFunctions(prefix: prefix)] : []
-        return (procedural + declared + parallax).joined(separator: "\n\n")
+        return (structDefinitions() + procedural + declared + parallax).filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
+
+    /// Metal layout for every declared struct, in declaration order so a nested field's
+    /// type is already defined.
+    private func structDefinitions() -> [String] {
+        declarations.structs.map { structure in
+            let fields = structure.fields.map { field -> String in
+                let typeName: String
+                switch field.content {
+                case .value(let type): typeName = type.metalType
+                case .structure(let nested): typeName = declarations.structs[nested].metalName()
+                }
+                return "    \(typeName) \(field.name);"
+            }.joined(separator: "\n")
+            return "struct \(structure.metalName()) {\n\(fields)\n};"
+        }
+    }
+
+    /// The Metal type of one node's value. Struct nodes use their declared layout.
+    private func valueName(_ id: NodeID) -> String {
+        if types[id] == .structure, let index = structIndices[id], declarations.structs.indices.contains(index) {
+            return declarations.structs[index].metalName()
+        }
+        return types[id].metalType
     }
 
     /// A fixed-count march with one sample per layer and no early exit or return, so
@@ -329,8 +358,14 @@ struct ShaderProgram: Hashable, Sendable {
 
     // MARK: - Typing
 
+    /// Struct declaration chosen by each struct-producing node. Filled while typing.
+    private final class StructIdentity {
+        var index: [NodeID: Int] = [:]
+    }
+
     private static func type(
         of id: NodeID, in nodes: [Node], declarations: ShaderDeclarations,
+        identity: StructIdentity,
         visit visitAny: (NodeID) throws -> ValueType
     ) throws -> ValueType {
         // Scalar and vector operations reject matrix operands; matrix nodes use visitAny.
@@ -345,10 +380,27 @@ struct ShaderProgram: Hashable, Sendable {
                 throw Failure.typeMismatch(node: id, input: input, expected: expected, actual: actual)
             }
         }
+        func adoptStructure(of origin: NodeID, type: ValueType) {
+            if type == .structure, let index = identity.index[origin] {
+                identity.index[id] = index
+            }
+        }
+        /// Same value type, and the same struct declaration when the type is a struct.
+        func requireMatching(_ input: NodeID, _ origin: NodeID, _ type: ValueType) throws {
+            let actual = try visitAny(input)
+            guard actual == type else {
+                throw Failure.typeMismatch(node: id, input: input, expected: type, actual: actual)
+            }
+            if type == .structure, identity.index[input] != identity.index[origin] {
+                throw Failure.structMismatch(
+                    node: id, expected: identity.index[origin] ?? -1, actual: identity.index[input] ?? -1
+                )
+            }
+        }
         /// Float scalars and vectors. Integers and bools have their own operations.
         func requireFloatOperand(_ input: NodeID) throws -> ValueType {
             let actual = try visit(input)
-            guard actual != .int, actual != .bool else {
+            guard actual != .int, actual != .bool, actual != .structure else {
                 throw Failure.typeMismatch(node: id, input: input, expected: .scalar, actual: actual)
             }
             return actual
@@ -458,14 +510,14 @@ struct ShaderProgram: Hashable, Sendable {
             return .scalar
         case .add(let a, let b), .subtract(let a, let b):
             let type = try visit(a)
-            guard type != .bool else {
+            guard type != .bool, type != .structure else {
                 throw Failure.typeMismatch(node: id, input: a, expected: .scalar, actual: .bool)
             }
             try require(b, type)
             return type
         case .multiply(let a, let b):
             let left = try visit(a)
-            guard left != .bool else {
+            guard left != .bool, left != .structure else {
                 throw Failure.typeMismatch(node: id, input: a, expected: .scalar, actual: .bool)
             }
             let right = try visit(b)
@@ -480,7 +532,7 @@ struct ShaderProgram: Hashable, Sendable {
                 try require(divisor, .int)
                 return .int
             }
-            guard type != .bool else {
+            guard type != .bool, type != .structure else {
                 throw Failure.typeMismatch(node: id, input: dividend, expected: .scalar, actual: type)
             }
             try require(divisor, .scalar)
@@ -533,7 +585,7 @@ struct ShaderProgram: Hashable, Sendable {
             try require(b, type)
             switch operation {
             case .minimum, .maximum:
-                guard type != .bool else {
+                guard type != .bool, type != .structure else {
                     throw Failure.typeMismatch(node: id, input: a, expected: .scalar, actual: type)
                 }
                 return type
@@ -553,7 +605,7 @@ struct ShaderProgram: Hashable, Sendable {
             }
         case .clamp(let value, let minimum, let maximum):
             let type = try visit(value)
-            guard type != .bool else {
+            guard type != .bool, type != .structure else {
                 throw Failure.typeMismatch(node: id, input: value, expected: .scalar, actual: type)
             }
             for bound in [minimum, maximum] {
@@ -570,7 +622,8 @@ struct ShaderProgram: Hashable, Sendable {
                 throw Failure.typeMismatch(node: id, input: condition, expected: .scalar, actual: conditionType)
             }
             let type = try visitAny(ifTrue)
-            try require(ifFalse, type)
+            try requireMatching(ifFalse, ifTrue, type)
+            adoptStructure(of: ifTrue, type: type)
             return type
         case .remap(let value, let fromMinimum, let fromMaximum, let toMinimum, let toMaximum):
             let type = try requireFloatOperand(value)
@@ -632,10 +685,14 @@ struct ShaderProgram: Hashable, Sendable {
                 throw Failure.invalidSwitch(id)
             }
             let selectorType = try visit(selector)
+            guard selectorType != .structure else {
+                throw Failure.typeMismatch(node: id, input: selector, expected: .scalar, actual: selectorType)
+            }
             for match in matches { try require(match, selectorType) }
             let result = try visitAny(values[0])
-            for value in values.dropFirst() { try require(value, result) }
-            try require(fallback, result)
+            for value in values.dropFirst() { try requireMatching(value, values[0], result) }
+            try requireMatching(fallback, values[0], result)
+            adoptStructure(of: values[0], type: result)
             return result
         case .loop(let count, let iterations, let initial, let next, let exit, let skip):
             guard (1...MaterialGraph.maximumLoopIterations).contains(count) else {
@@ -643,18 +700,23 @@ struct ShaderProgram: Hashable, Sendable {
             }
             if let iterations { try require(iterations, .scalar) }
             let type = try visitAny(initial)
-            try require(next, type)
+            try requireMatching(next, initial, type)
             if let exit { try require(exit, .scalar) }
             if let skip { try require(skip, .scalar) }
+            adoptStructure(of: initial, type: type)
             return type
         case .discard(let condition, let value):
             try require(condition, .scalar)
-            return try visitAny(value)
+            let type = try visitAny(value)
+            adoptStructure(of: value, type: type)
+            return type
         case .loopIndex(let loop), .loopValue(let loop):
             guard nodes.indices.contains(loop) else { throw Failure.invalidReference(node: id, referenced: loop) }
             guard case .loop(_, _, let initial, _, _, _) = nodes[loop] else { throw Failure.notALoop(node: id, loop: loop) }
             if case .loopIndex = nodes[id] { return .scalar }
-            return try visitAny(initial)
+            let type = try visitAny(initial)
+            adoptStructure(of: initial, type: type)
+            return type
         case .oscillator(_, let input), .derivative(_, let input):
             return try requireFloatOperand(input)
         case .rotateUV(let uv, let angle, let center):
@@ -728,7 +790,7 @@ struct ShaderProgram: Hashable, Sendable {
             }
         case .hash(let input):
             let source = try visit(input)
-            guard source != .int, source != .bool else {
+            guard source != .int, source != .bool, source != .structure else {
                 throw Failure.typeMismatch(node: id, input: input, expected: .scalar, actual: source)
             }
             return .scalar
@@ -762,6 +824,39 @@ struct ShaderProgram: Hashable, Sendable {
             let count = type == .matrix3 ? 3 : 4
             guard (0..<count).contains(index) else { throw Failure.invalidMatrix(id) }
             return count == 3 ? .vector3 : .vector4
+        case .constructStruct(let index, let fields):
+            guard declarations.structs.indices.contains(index) else { throw Failure.invalidStruct(id) }
+            let structure = declarations.structs[index]
+            guard fields.count == structure.fields.count else {
+                throw Failure.argumentCount(node: id, expected: structure.fields.count, actual: fields.count)
+            }
+            for (input, field) in zip(fields, structure.fields) {
+                switch field.content {
+                case .value(let expected):
+                    try require(input, expected)
+                case .structure(let nested):
+                    let actual = try visitAny(input)
+                    guard actual == .structure, identity.index[input] == nested else {
+                        throw Failure.structMismatch(node: id, expected: nested, actual: identity.index[input] ?? -1)
+                    }
+                }
+            }
+            identity.index[id] = index
+            return .structure
+        case .structField(let value, let field):
+            let actual = try visitAny(value)
+            guard actual == .structure, let index = identity.index[value],
+                  declarations.structs.indices.contains(index),
+                  declarations.structs[index].fields.indices.contains(field) else {
+                throw Failure.invalidStruct(id)
+            }
+            switch declarations.structs[index].fields[field].content {
+            case .value(let type):
+                return type
+            case .structure(let nested):
+                identity.index[id] = nested
+                return .structure
+            }
         }
     }
 
@@ -812,8 +907,10 @@ struct ShaderProgram: Hashable, Sendable {
         // Loop nodes are scope references, not data dependencies.
         case .loopIndex, .loopValue:
             []
-        case .bitcast(let value), .countOneBits(let value), .numericCast(let value):
+        case .bitcast(let value), .countOneBits(let value), .numericCast(let value), .structField(let value, _):
             [value]
+        case .constructStruct(_, let fields):
+            fields
         case .oscillator(_, let a), .checker(let a), .derivative(_, let a), .hash(let a),
              .interleavedGradientNoise(let a), .matrixUnary(_, let a), .matrixColumn(let a, _),
              .bumpMap(_, _, _, let a):
@@ -1094,6 +1191,12 @@ struct ShaderProgram: Hashable, Sendable {
             case .upperLeft: return "float3x3(\(n(input))[0].xyz, \(n(input))[1].xyz, \(n(input))[2].xyz)"
             }
         case .matrixColumn(let input, let index): return "\(n(input))[\(index)]"
+        case .constructStruct(_, let fields):
+            return "{ \(fields.map(n).joined(separator: ", ")) }"
+        case .structField(let value, let field):
+            let index = structIndices[value] ?? 0
+            let name = declarations.structs[index].fields[field].name
+            return "\(n(value)).\(name)"
         }
     }
 
@@ -1126,14 +1229,21 @@ struct ShaderProgram: Hashable, Sendable {
         guard declarations.functions.count <= MaterialGraph.maximumFunctionCount else {
             throw fail("A graph may declare at most \(MaterialGraph.maximumFunctionCount) functions.")
         }
+        guard declarations.structs.count <= MaterialGraph.maximumStructCount else {
+            throw fail("A graph may declare at most \(MaterialGraph.maximumStructCount) structs.")
+        }
         var uniformNames = Set<String>()
         for uniform in declarations.uniforms {
             guard !uniform.name.isEmpty, uniform.name.count <= 64, uniformNames.insert(uniform.name).inserted else {
                 throw fail("Uniform names must be unique and 1–64 characters: \"\(uniform.name)\".")
             }
-            guard uniform.columns.allSatisfy({ column in
+            guard uniform.type != .structure else {
+                throw fail("Uniform \"\(uniform.name)\" cannot be a struct. Build the struct in the graph.")
+            }
+            let finite = uniform.type == .int || uniform.columns.allSatisfy { column in
                 column.x.isFinite && column.y.isFinite && column.z.isFinite && column.w.isFinite
-            }) else {
+            }
+            guard finite else {
                 throw fail("Uniform \"\(uniform.name)\" needs a finite default value.")
             }
         }
@@ -1157,10 +1267,39 @@ struct ShaderProgram: Hashable, Sendable {
             guard function.parameters.count <= 8 else {
                 throw fail("Function \(function.name) may take at most eight parameters.")
             }
+            if function.returnType == .structure || function.parameters.contains(where: { $0.type == .structure }) {
+                throw fail("Function \(function.name) cannot use a struct type. Construct the struct in the graph and pass its fields.")
+            }
             let body = function.body
             guard !body.isEmpty, body.utf8.count <= ShaderFunction.maximumBodyLength, !body.contains("#"),
                   balancedBraces(body) else {
                 throw fail("Function \(function.name) needs a nonempty body with balanced braces and no preprocessor directives.")
+            }
+        }
+        var structNames = Set<String>()
+        for (index, structure) in declarations.structs.enumerated() {
+            guard structure.index == index, isIdentifier(structure.name, limit: 64),
+                  structNames.insert(structure.name).inserted else {
+                throw fail("Struct names must be unique Metal identifiers and stay in declaration order: \"\(structure.name)\".")
+            }
+            guard (1...MaterialGraph.maximumStructFields).contains(structure.fields.count) else {
+                throw fail("Struct \(structure.name) needs 1–\(MaterialGraph.maximumStructFields) fields.")
+            }
+            var fieldNames = Set<String>()
+            for field in structure.fields {
+                guard isIdentifier(field.name, limit: 64), fieldNames.insert(field.name).inserted else {
+                    throw fail("Struct \(structure.name) has an invalid field name \"\(field.name)\".")
+                }
+                switch field.content {
+                case .value(let type):
+                    guard type != .structure else {
+                        throw fail("Struct \(structure.name) field \(field.name) needs a concrete type or an earlier struct.")
+                    }
+                case .structure(let nested):
+                    guard declarations.structs.indices.contains(nested), nested < index else {
+                        throw fail("Struct \(structure.name) field \(field.name) must name a struct declared before it.")
+                    }
+                }
             }
         }
     }

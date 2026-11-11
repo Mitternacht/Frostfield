@@ -255,7 +255,7 @@ public enum AnimationProperty: Hashable, Sendable, CustomStringConvertible {
                 case .vector2: .vector2
                 case .vector3: .vector3
                 case .vector4: .vector4
-                case .matrix3, .matrix4, .int, .bool: nil
+                case .matrix3, .matrix4, .int, .bool, .structure: nil
                 }
             }
         case .material(_, let property):

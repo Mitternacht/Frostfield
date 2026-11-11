@@ -172,7 +172,7 @@ extension AnimationMixer {
                 case .vector2: .vector2(SIMD2(value.x, value.y))
                 case .vector3: .vector3(SIMD3(value.x, value.y, value.z))
                 case .vector4: .vector4(value)
-                case .matrix3, .matrix4, .int, .bool: nil
+                case .matrix3, .matrix4, .int, .bool, .structure: nil
                 }
                 guard let rest else { throw Failure.valueKindMismatch(property.description) }
                 switch try blends[property]?.resolve(rest: rest) ?? rest {

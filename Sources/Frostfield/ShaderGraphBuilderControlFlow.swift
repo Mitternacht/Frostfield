@@ -433,3 +433,135 @@ public func / (left: ShaderValue<Int32>, right: ShaderValue<Int32>) -> ShaderVal
 public func * <M: ShaderMatrixType>(left: ShaderValue<M>, right: ShaderValue<M.Column>) -> ShaderValue<M.Column> {
     left.make(.matrixMultiply(left.id, right.id), with: right)
 }
+
+/// A value of a declared struct. Read fields with `field`.
+public struct ShaderStructValue: ShaderArgument {
+    public let id: MaterialGraph.NodeID
+    /// Index of the struct declaration this value has.
+    public let structure: Int
+    let builder: ShaderGraphBuilder
+
+    public var shaderNodeID: MaterialGraph.NodeID { id }
+
+    /// A scalar, vector, matrix, int, or bool field.
+    public func field<T: ShaderValueType>(_ name: String, as type: T.Type = T.self) -> ShaderValue<T> {
+        let field = fieldIndex(named: name)
+        if let field, builder.structs.indices.contains(structure) {
+            switch builder.structs[structure].fields[field].content {
+            case .value(let declared) where declared != T.shaderType:
+                builder.rejectDeclaration("Field \(name) is \(declared.rawValue), not \(T.shaderType.rawValue).")
+            case .structure:
+                builder.rejectDeclaration("Field \(name) is a struct. Read it by passing that struct to field(_:as:).")
+            case .value:
+                break
+            }
+        }
+        return builder.add(.structField(value: id, field: field ?? 0), operands: [self])
+    }
+
+    /// A field that is itself a struct.
+    public func field(_ name: String, as structure: ShaderStruct) -> ShaderStructValue {
+        let field = fieldIndex(named: name)
+        var nested = structure.index
+        if let field, builder.structs.indices.contains(self.structure) {
+            if case .structure(let index) = builder.structs[self.structure].fields[field].content, index == structure.index {
+                nested = index
+            } else {
+                builder.rejectDeclaration("Field \(name) is not struct \(structure.name).")
+            }
+        }
+        builder.noteOperands([self])
+        return ShaderStructValue(
+            id: builder.append(.structField(value: id, field: field ?? 0)), structure: nested, builder: builder
+        )
+    }
+
+    private func fieldIndex(named name: String) -> Int? {
+        guard builder.structs.indices.contains(structure) else {
+            builder.rejectDeclaration("Struct \(structure) is not declared on this graph.")
+            return nil
+        }
+        guard let index = builder.structs[structure].fields.firstIndex(where: { $0.name == name }) else {
+            builder.rejectDeclaration("Struct \(builder.structs[structure].name) has no field \(name).")
+            return nil
+        }
+        return index
+    }
+}
+
+extension ShaderStructValue: ShaderBuilderOwned {
+    var owner: ShaderGraphBuilder { builder }
+}
+
+extension ShaderGraphBuilder {
+    /// Declares a struct. Nested fields must name a struct this builder already declared.
+    @discardableResult
+    public func defineStruct(_ name: String, _ fields: [ShaderStruct.Field]) -> ShaderStruct {
+        let structure = ShaderStruct(index: structs.count, name: name, fields: fields)
+        addStruct(structure)
+        return structure
+    }
+
+    /// Builds a struct from one value per field name.
+    public func make(_ structure: ShaderStruct, _ values: [String: any ShaderArgument]) -> ShaderStructValue {
+        noteOperands(Array(values.values))
+        if !(structs.indices.contains(structure.index) && structs[structure.index] == structure) {
+            rejectDeclaration("Struct \(structure.name) belongs to a different graph.")
+        }
+        var ordered: [MaterialGraph.NodeID] = []
+        var seen = Set<String>()
+        for field in structure.fields {
+            guard let value = values[field.name] else {
+                rejectDeclaration("Struct \(structure.name) is missing field \(field.name).")
+                ordered.append(0)
+                continue
+            }
+            seen.insert(field.name)
+            ordered.append(value.shaderNodeID)
+        }
+        if values.count != seen.count {
+            rejectDeclaration("Struct \(structure.name) received a field it does not declare.")
+        }
+        return ShaderStructValue(
+            id: append(.constructStruct(index: structure.index, fields: ordered)),
+            structure: structure.index, builder: self
+        )
+    }
+
+    /// Chooses one struct value. Both arms have to be the same struct.
+    public func branch(
+        _ condition: ShaderValue<Float>,
+        then ifTrue: () throws -> ShaderStructValue,
+        else ifFalse: () throws -> ShaderStructValue
+    ) rethrows -> ShaderStructValue {
+        try structBranch(condition, then: ifTrue, else: ifFalse)
+    }
+
+    /// Like `branch(_:then:else:)` for structs, with a boolean condition.
+    public func branch(
+        _ condition: ShaderValue<Bool>,
+        then ifTrue: () throws -> ShaderStructValue,
+        else ifFalse: () throws -> ShaderStructValue
+    ) rethrows -> ShaderStructValue {
+        try structBranch(condition, then: ifTrue, else: ifFalse)
+    }
+
+    private func structBranch<Condition: ShaderArgument>(
+        _ condition: Condition,
+        then ifTrue: () throws -> ShaderStructValue,
+        else ifFalse: () throws -> ShaderStructValue
+    ) rethrows -> ShaderStructValue {
+        let whenTrue = try ifTrue()
+        let whenFalse = try ifFalse()
+        if whenTrue.structure != whenFalse.structure {
+            rejectDeclaration("The arms of a struct branch must be the same struct.")
+        }
+        noteOperands([condition, whenTrue, whenFalse])
+        return ShaderStructValue(
+            id: append(.branch(
+                condition: condition.shaderNodeID, ifTrue: whenTrue.id, ifFalse: whenFalse.id
+            )),
+            structure: whenTrue.structure, builder: self
+        )
+    }
+}

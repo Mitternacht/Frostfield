@@ -28,6 +28,8 @@ public struct PostProcessGraph: Hashable, Sendable {
     public let uniforms: [ShaderUniform]
     public let textures: [ShaderTextureInput]
     public let functions: [ShaderFunction]
+    /// Structs the graph can construct. Field order is the Metal layout.
+    public let structs: [ShaderStruct]
     /// Optional node names that appear in generated Metal comments and diagnostics.
     public let labels: [MaterialGraph.NodeID: String]
     /// A vector4 premultiplied RGBA node or a vector3 premultiplied RGB node.
@@ -41,12 +43,15 @@ public struct PostProcessGraph: Hashable, Sendable {
         uniforms: [ShaderUniform] = [],
         textures: [ShaderTextureInput] = [],
         functions: [ShaderFunction] = [],
+        structs: [ShaderStruct] = [],
         labels: [MaterialGraph.NodeID: String] = [:],
         output: MaterialGraph.NodeID
     ) throws {
         program = try ShaderProgram(
             nodes: nodes,
-            declarations: ShaderDeclarations(uniforms: uniforms, textures: textures, functions: functions, labels: labels),
+            declarations: ShaderDeclarations(
+                uniforms: uniforms, textures: textures, functions: functions, structs: structs, labels: labels
+            ),
             outputs: [(output, .postProcess)]
         ) { _, id, type in
             guard type == .vector4 || type == .vector3 else { throw Failure.outputType(node: id, actual: type) }
@@ -55,6 +60,7 @@ public struct PostProcessGraph: Hashable, Sendable {
         self.uniforms = uniforms
         self.textures = textures
         self.functions = functions
+        self.structs = structs
         self.labels = labels
         self.output = output
     }
@@ -96,7 +102,7 @@ public struct PostProcessGraph: Hashable, Sendable {
         let declarations = builder.declarations
         try self.init(
             nodes: builder.nodes, uniforms: declarations.uniforms, textures: declarations.textures,
-            functions: declarations.functions, labels: declarations.labels, output: output.id
+            functions: declarations.functions, structs: declarations.structs, labels: declarations.labels, output: output.id
         )
     }
 

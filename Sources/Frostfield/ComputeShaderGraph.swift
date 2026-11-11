@@ -12,6 +12,8 @@ public struct TextureShaderGraph: Hashable, Sendable {
     public let uniforms: [ShaderUniform]
     public let textures: [ShaderTextureInput]
     public let functions: [ShaderFunction]
+    /// Structs the graph can construct. Field order is the Metal layout.
+    public let structs: [ShaderStruct]
     /// Optional node names that appear in generated Metal comments and diagnostics.
     public let labels: [MaterialGraph.NodeID: String]
     /// A scalar, vector3, or vector4 node.
@@ -26,12 +28,15 @@ public struct TextureShaderGraph: Hashable, Sendable {
         uniforms: [ShaderUniform] = [],
         textures: [ShaderTextureInput] = [],
         functions: [ShaderFunction] = [],
+        structs: [ShaderStruct] = [],
         labels: [MaterialGraph.NodeID: String] = [:],
         output: MaterialGraph.NodeID
     ) throws {
         program = try ShaderProgram(
             nodes: nodes,
-            declarations: ShaderDeclarations(uniforms: uniforms, textures: textures, functions: functions, labels: labels),
+            declarations: ShaderDeclarations(
+                uniforms: uniforms, textures: textures, functions: functions, structs: structs, labels: labels
+            ),
             outputs: [(output, .compute)],
             allowsInput: { $0 == .gridUV || $0 == .texelSize || $0.readsClock }
         ) { _, id, type in
@@ -48,6 +53,7 @@ public struct TextureShaderGraph: Hashable, Sendable {
         self.uniforms = uniforms
         self.textures = textures
         self.functions = functions
+        self.structs = structs
         self.labels = labels
         self.output = output
     }
@@ -115,6 +121,8 @@ public struct BufferShaderGraph: Hashable, Sendable {
     public let uniforms: [ShaderUniform]
     public let textures: [ShaderTextureInput]
     public let functions: [ShaderFunction]
+    /// Structs the graph can construct. Field order is the Metal layout.
+    public let structs: [ShaderStruct]
     /// Optional node names that appear in generated Metal comments and diagnostics.
     public let labels: [MaterialGraph.NodeID: String]
     /// The vector4 node written to each connected field index.
@@ -133,6 +141,7 @@ public struct BufferShaderGraph: Hashable, Sendable {
         uniforms: [ShaderUniform] = [],
         textures: [ShaderTextureInput] = [],
         functions: [ShaderFunction] = [],
+        structs: [ShaderStruct] = [],
         labels: [MaterialGraph.NodeID: String] = [:],
         outputs: [Int: MaterialGraph.NodeID]
     ) throws {
@@ -144,7 +153,9 @@ public struct BufferShaderGraph: Hashable, Sendable {
         }
         program = try ShaderProgram(
             nodes: nodes,
-            declarations: ShaderDeclarations(uniforms: uniforms, textures: textures, functions: functions, labels: labels),
+            declarations: ShaderDeclarations(
+                uniforms: uniforms, textures: textures, functions: functions, structs: structs, labels: labels
+            ),
             outputs: connected.map { ($0.value, .compute) },
             allowsInput: { input in
                 switch input {
@@ -165,6 +176,7 @@ public struct BufferShaderGraph: Hashable, Sendable {
         self.uniforms = uniforms
         self.textures = textures
         self.functions = functions
+        self.structs = structs
         self.labels = labels
         self.outputs = outputs
     }
@@ -250,7 +262,7 @@ extension TextureShaderGraph {
         let declarations = builder.declarations
         try self.init(
             nodes: builder.nodes, uniforms: declarations.uniforms, textures: declarations.textures,
-            functions: declarations.functions, labels: declarations.labels, output: result.id
+            functions: declarations.functions, structs: declarations.structs, labels: declarations.labels, output: result.id
         )
     }
 }
@@ -277,7 +289,8 @@ extension BufferShaderGraph {
         let declarations = builder.declarations
         try self.init(
             nodes: builder.nodes, fieldCount: fieldCount, uniforms: declarations.uniforms,
-            textures: declarations.textures, functions: declarations.functions, labels: declarations.labels,
+            textures: declarations.textures, functions: declarations.functions, structs: declarations.structs,
+            labels: declarations.labels,
             outputs: result.mapValues(\.id)
         )
     }

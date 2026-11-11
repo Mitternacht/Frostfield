@@ -1759,6 +1759,8 @@ private struct ArchiveLoader {
                 }
                 try set.setInteger(declaration.name, value)
             case .bool: try set.setBoolean(declaration.name, slots[0].x != 0)
+            case .structure:
+                throw SceneArchive.Failure.invalidReference("struct uniform \(declaration.name)")
             }
         }
         if let integerValues = record.integerValues, integerCursor != integerValues.count {
