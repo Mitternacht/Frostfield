@@ -1,7 +1,7 @@
 # What is left, and how to continue
 
-Written on 2026-11-11 for whoever picks Frostfield up next. `main` is at the merge of pull request 2
-(`6667b8c`). Read [AGENTS.md](../AGENTS.md) first, then this page, then the ledger.
+Written on 2026-11-11 and updated on 2026-11-12, when shader work on `codex/matrix-uniforms` stopped with a clean tree.
+`main` is at the merge of pull request 2 (`6667b8c`). Read [AGENTS.md](../AGENTS.md) first, then this page, then the ledger.
 
 ## Where things stand
 
@@ -75,7 +75,46 @@ Each item is also in the ledger row and the evidence page named in brackets.
 - The glTF exporter does not write morph targets (it only warns). Imported `EXT_mesh_gpu_instancing` expands to per-instance nodes instead of an instance set.
 - The path tracer rejects clearcoat normal maps.
 
-## In progress when this was written
+## Stopped on 2026-11-12
+
+Branch `codex/matrix-uniforms`. The working tree was clean. Nothing from this stage was pushed. Builds and tests used `xcodebuild` with Metal API Validation, because the Xcode bridge was not available. Counts below come from `Test run with N tests` lines. There has been no new full-package run since the 2026-11-11 baseline.
+
+This stage, newest commit first:
+
+- Declared functions can take and return a graph struct. The body uses the struct's Swift name. Struct uniforms are still unavailable. macOS `ShaderPatternTests`: 18 tests, 0.226 seconds. iPad Pro (M5) simulator: 18 tests, 1.787 seconds.
+- An analytic line graph replaces the material width in the material's pixel or world units. A later uniform edit does not build a new pipeline. Hairlines stay one pixel wide. macOS `LineRenderingTests`: 13 tests, 0.443 seconds. iPad simulator, that suite plus `PointsAndSpritesTests`: 26 tests, 4.162 seconds.
+- A point graph replaces the material size the same way. macOS `PointsAndSpritesTests`: 13 tests, 0.446 seconds. iPad simulator, that suite plus `LineRenderingTests`: 25 tests, 3.347 seconds.
+- The ledger now records the height bump raster and path tracing already evaluate. The height is the texture's red channel.
+- Compute graphs sample a 3D texture at normalized coordinates, mip 0. macOS `ShaderPatternTests`: 17 tests, 0.487 seconds. iPad simulator: 17 tests, 3.741 seconds.
+- Compute graphs sample a cube map by direction, mip 0. macOS `ShaderPatternTests`: 16 tests, 0.324 seconds. iPad simulator: 16 tests, 2.634 seconds.
+- Graphs sample a texture from explicit UV derivatives. macOS pattern suite plus one raster, post, and deformation compile: 18 tests, 3.027 seconds. iPad simulator: 18 tests, 10.060 seconds.
+- Graphs sample a texture at an explicit mip. macOS, same four suites: 17 tests, 2.353 seconds. iPad simulator: 17 tests, 9.472 seconds.
+
+Raster, post, and path tracing still bind 2D graph textures. A cube or 3D declaration is rejected there.
+
+Leave these alone unless the owner says otherwise: skeletons and bones, property binding paths, physical-device qualification, and Three.js speed comparisons. The animation lane in the other clone is still the owner of those two rows if it has not merged.
+
+## What is left
+
+The ledger is still **307 complete, 147 partial, and 70 missing**. Its section "Priorities: done and remaining" is the ordered queue. The next open shader rows, top to bottom:
+
+- Typed values: struct uniforms. Integer, boolean, matrix, and struct uniforms are not animation tracks.
+- Node materials: sprite size and the remaining classic and primitive slots.
+- Custom shaders: built-in fog, light, and clipping bindings.
+- Texture sampling: cube and 3D samples in raster, post, and the path tracer.
+- Uniforms: per-frame and per-object update hooks.
+- Normals: a bump from an arbitrary scalar, beyond the texture red channel.
+- Matrices and integers: no `uint`, integer vectors, or `mat2`.
+- Built-in PBR: final-color and layer outputs.
+- Vertex position: no clip-space vertex node, and graph offset is not combined with morph targets.
+- Attributes and varyings: missing. Geometry accessors still lack custom attributes, instance index, and front-facing.
+- Screen and time: screen inputs are raster-only, and the renderer does not advance the graph clock.
+- Storage buffers, compute atomics and subgroups, texture feedback, asynchronous pipeline compile, and node isolation.
+- Physical material slots driven by a graph: missing. Path-traced glTF shading still has the gaps in its row.
+
+Then P2 through P5 in the ledger, then the known bugs and the 2026-11-11 lane gaps above. Do not close a row until its tests and evidence page agree with the new behavior.
+
+## In progress when the 2026-11-11 note was written
 
 An animation lane (a `Skeleton` and `Bone` API, and r187 property-path strings such as `.bones[name].position`) was running in a separate clone. If it is not merged, treat
 those two animation rows as open and do not duplicate the work without checking with the owner.
