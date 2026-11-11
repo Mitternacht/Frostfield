@@ -481,6 +481,9 @@ struct ShaderComputeResources: Sendable {
             let cases = (0..<textureCount).map {
                 "    case \($0)u: return frostfield_compute_sample(resources.texture\($0), address, filter, uv, level);"
             }.joined(separator: "\n")
+            let gradientCases = (0..<textureCount).map {
+                "    case \($0)u: return frostfield_compute_sample(resources.texture\($0), address, filter, uv, frostfield_compute_gradient_lod(resources.texture\($0), ddx, ddy));"
+            }.joined(separator: "\n")
             source += """
 
 
@@ -489,6 +492,13 @@ struct ShaderComputeResources: Sendable {
             static inline float frostfield_compute_lod(texture2d<float> texture, float level) {
                 float last = float(texture.get_num_mip_levels() - 1);
                 return isfinite(level) ? clamp(level, 0.0f, last) : 0.0f;
+            }
+            // log2 of the larger UV footprint in texels. A nonfinite derivative reads level 0.
+            static inline float frostfield_compute_gradient_lod(texture2d<float> texture, float2 ddx, float2 ddy) {
+                if (!all(isfinite(ddx)) || !all(isfinite(ddy))) return 0.0f;
+                float2 size = float2(texture.get_width(), texture.get_height());
+                float rho = max(length(ddx * size), length(ddy * size));
+                return rho > 0.0f && isfinite(rho) ? log2(rho) : 0.0f;
             }
             static inline float4 frostfield_compute_sample(
                 texture2d<float> texture, uint address, uint filter, float2 uv, float lod
@@ -524,6 +534,16 @@ struct ShaderComputeResources: Sendable {
                 thread const FrostfieldGraphResources& resources, uint slot, uint address, uint filter, float2 uv
             ) {
                 return frostfield_graph_sample(resources, slot, address, filter, uv, 0.0f);
+            }
+
+            static inline float4 frostfield_graph_sample(
+                thread const FrostfieldGraphResources& resources, uint slot, uint address, uint filter,
+                float2 uv, float2 ddx, float2 ddy
+            ) {
+                switch (slot) {
+            \(gradientCases)
+                default: return float4(0);
+                }
             }
             """
         }

@@ -699,6 +699,20 @@ public struct ShaderTexture {
         )
     }
 
+    /// RGBA from explicit UV derivatives. The mip is log2 of the larger footprint in
+    /// texels, then clamped to the last mip. A nonfinite derivative reads level 0.
+    /// This sample may run inside a branch.
+    public func sample(
+        _ coordinates: ShaderValue<SIMD2<Float>>,
+        ddx: ShaderValue<SIMD2<Float>>,
+        ddy: ShaderValue<SIMD2<Float>>
+    ) -> ShaderValue<SIMD4<Float>> {
+        builder.add(
+            .sampleTextureGradient(slot: slot, coordinates: coordinates.id, ddx: ddx.id, ddy: ddy.id),
+            operands: [coordinates, ddx, ddy]
+        )
+    }
+
     /// Decodes a tangent-space normal map texel from 0...1 storage to -1...1.
     public func sampleNormal(_ coordinates: ShaderValue<SIMD2<Float>>, strength: Float = 1) -> ShaderValue<SIMD3<Float>> {
         let encoded = sample(coordinates).xyz * 2 - 1

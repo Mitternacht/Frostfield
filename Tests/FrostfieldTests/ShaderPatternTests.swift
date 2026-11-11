@@ -723,4 +723,84 @@ struct ShaderPatternTests {
         let encoded = try JSONEncoder().encode(graph)
         #expect(try JSONDecoder().decode(BufferShaderGraph.self, from: encoded) == graph)
     }
+
+    @Test("Explicit UV derivatives select the mip from the larger texel footprint")
+    func textureGradient() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba32Float, width: 4, height: 4, mipmapped: true
+        )
+        descriptor.mipmapLevelCount = 3
+        descriptor.usage = .shaderRead
+        descriptor.storageMode = .shared
+        let texture = try #require(device.makeTexture(descriptor: descriptor))
+        func fill(_ level: Int, _ color: SIMD4<Float>) {
+            let size = 4 >> level
+            let texels = Array(repeating: color, count: size * size)
+            texels.withUnsafeBytes { bytes in
+                texture.replace(
+                    region: MTLRegionMake2D(0, 0, size, size), mipmapLevel: level,
+                    withBytes: bytes.baseAddress!, bytesPerRow: size * 16
+                )
+            }
+        }
+        fill(0, SIMD4(1, 0, 0, 1))
+        fill(1, SIMD4(0, 1, 0, 1))
+        fill(2, SIMD4(0, 0, 1, 1))
+        let graph = try BufferShaderGraph(fieldCount: 1) { b in
+            let map = b.texture("Map", content: .data, addressing: .clampToEdge, filtering: .nearest)
+            let scale = b.uniform("Scale", Float(1))
+            let step = scale * Float(0.25)
+            let sample = map.sample(
+                b.constant(SIMD2<Float>(0.5, 0.5)),
+                ddx: b.vector(step, b.constant(Float(0))),
+                ddy: b.vector(b.constant(Float(0)), step)
+            )
+            return [0: sample]
+        }
+        let uniforms = try ShaderUniforms(graph.uniforms)
+        func read(_ scale: Float) throws -> SIMD4<Float> {
+            try uniforms.set("Scale", to: scale)
+            return try probe.run(
+                graph, elements: [[SIMD4<Float>(0, 0, 0, 0)]], uniforms: uniforms, textures: ["Map": texture]
+            )[0][0]
+        }
+        #expect(try read(0) == SIMD4(1, 0, 0, 1))
+        #expect(try read(1) == SIMD4(1, 0, 0, 1))
+        #expect(try read(2) == SIMD4(0, 1, 0, 1))
+        #expect(try read(4) == SIMD4(0, 0, 1, 1))
+        #expect(try read(8) == SIMD4(0, 0, 1, 1))
+        let encoded = try JSONEncoder().encode(graph)
+        #expect(try JSONDecoder().decode(BufferShaderGraph.self, from: encoded) == graph)
+
+        let overflow = try BufferShaderGraph(fieldCount: 1) { b in
+            let map = b.texture("Map", content: .data, addressing: .clampToEdge, filtering: .nearest)
+            let huge = b.constant(Float(1e20))
+            let sample = map.sample(
+                b.constant(SIMD2<Float>(0.5, 0.5)),
+                ddx: b.vector(huge * huge, b.constant(Float(0))),
+                ddy: b.constant(SIMD2<Float>(0, 0.25))
+            )
+            return [0: sample]
+        }
+        let broken = try probe.run(overflow, elements: [[SIMD4<Float>(0, 0, 0, 0)]], textures: ["Map": texture])[0][0]
+        #expect(broken == SIMD4(1, 0, 0, 1))
+
+        let branched = try BufferShaderGraph(fieldCount: 1) { b in
+            let map = b.texture("Map", content: .data, addressing: .clampToEdge, filtering: .nearest)
+            let sample = map.sample(
+                b.constant(SIMD2<Float>(0.5, 0.5)),
+                ddx: b.constant(SIMD2<Float>(0.5, 0)),
+                ddy: b.constant(SIMD2<Float>(0, 0.5))
+            )
+            return [0: b.branch(b.constant(Float(1))) { sample } else: { b.constant(SIMD4<Float>(0, 0, 0, 0)) }]
+        }
+        let source = try branched.metalFunction(named: "gradient_arm")
+        let sampleAt = try #require(source.range(of: "frostfield_graph_sample"))
+        let branchAt = try #require(source.range(of: "if ("))
+        let elseAt = try #require(source.range(of: "} else {"))
+        #expect(branchAt.lowerBound < sampleAt.lowerBound && sampleAt.lowerBound < elseAt.lowerBound)
+        let chosen = try probe.run(branched, elements: [[SIMD4<Float>(0, 0, 0, 0)]], textures: ["Map": texture])[0][0]
+        #expect(chosen == SIMD4(0, 1, 0, 1))
+    }
 }

@@ -142,6 +142,11 @@ public struct MaterialGraph: Sendable {
         /// Samples a declared texture at an explicit mip level. A nonfinite level reads level 0.
         /// The level is clamped to the texture's last mip. Unlike `sampleTexture`, this may run inside a branch.
         case sampleTextureLevel(slot: Int, coordinates: NodeID, level: NodeID)
+        /// Samples a declared texture with explicit UV derivatives. The mip is
+        /// log2 of the larger footprint in texels, rounded by the nearest mip filter
+        /// and clamped to the last mip. A nonfinite derivative reads level 0.
+        /// Like `sampleTextureLevel`, this may run inside a branch.
+        case sampleTextureGradient(slot: Int, coordinates: NodeID, ddx: NodeID, ddy: NodeID)
         /// Samples the viewport or post-process image at mip zero. Returns premultiplied linear RGBA.
         case sampleScene(coordinates: NodeID)
         /// Samples the viewport or post-process image at a scalar mip level.

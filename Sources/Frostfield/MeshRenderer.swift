@@ -3838,6 +3838,23 @@ public final class MeshRenderer {
             : address == 2u ? texture.sample(mirrorNearest, uv, level(mip)) : texture.sample(repeatNearest, uv, level(mip));
     }
 
+    static inline float frostfield_graph_gradient_lod(texture2d<float> texture, float2 ddx, float2 ddy) {
+        if (!all(isfinite(ddx)) || !all(isfinite(ddy))) return 0.0f;
+        float2 size = float2(texture.get_width(), texture.get_height());
+        float rho = max(length(ddx * size), length(ddy * size));
+        return rho > 0.0f && isfinite(rho) ? log2(rho) : 0.0f;
+    }
+
+    static inline float4 frostfield_graph_sample(
+        thread const FrostfieldGraphResources& resources, uint slot, uint address, uint filtering,
+        float2 uv, float2 ddx, float2 ddy
+    ) {
+        texture2d<float> texture = frostfield_graph_texture(resources, slot);
+        return frostfield_graph_sample(
+            resources, slot, address, filtering, uv, frostfield_graph_gradient_lod(texture, ddx, ddy)
+        );
+    }
+
     // Implemented by the shared material extensions included after the graph source.
     static inline float3 frostfieldBumpNormal(float3 normal, float3 dx, float3 dy, float2 heightDelta);
 

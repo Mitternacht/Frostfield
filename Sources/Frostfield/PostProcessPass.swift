@@ -252,6 +252,9 @@ public final class PostProcessPass {
             let levelCases = textureSlots.map {
                 "        case \($0)u: return frostfield_post_sample(r.texture\($0), address, filter, uv, level);"
             }
+            let gradientCases = textureSlots.map {
+                "        case \($0)u: return frostfield_post_sample(r.texture\($0), address, filter, uv, ddx, ddy);"
+            }
             hooks.append(sampleHelper)
             hooks.append("""
             static inline float4 frostfield_graph_sample(
@@ -267,6 +270,15 @@ public final class PostProcessPass {
             ) {
                 switch (slot) {
             \(levelCases.joined(separator: "\n"))
+                    default: return float4(0);
+                }
+            }
+            static inline float4 frostfield_graph_sample(
+                thread const FrostfieldGraphResources& r, uint slot, uint address, uint filter,
+                float2 uv, float2 ddx, float2 ddy
+            ) {
+                switch (slot) {
+            \(gradientCases.joined(separator: "\n"))
                     default: return float4(0);
                 }
             }
@@ -376,6 +388,17 @@ public final class PostProcessPass {
             case 4u: return t.sample(mirrorLinear, uv, level(mip));
             default: return t.sample(mirrorNearest, uv, level(mip));
         }
+    }
+    static inline float frostfield_post_gradient_lod(texture2d<float> t, float2 ddx, float2 ddy) {
+        if (!all(isfinite(ddx)) || !all(isfinite(ddy))) return 0.0f;
+        float2 size = float2(t.get_width(), t.get_height());
+        float rho = max(length(ddx * size), length(ddy * size));
+        return rho > 0.0f && isfinite(rho) ? log2(rho) : 0.0f;
+    }
+    static inline float4 frostfield_post_sample(
+        texture2d<float> t, uint address, uint filter, float2 uv, float2 ddx, float2 ddy
+    ) {
+        return frostfield_post_sample(t, address, filter, uv, frostfield_post_gradient_lod(t, ddx, ddy));
     }
     """
 

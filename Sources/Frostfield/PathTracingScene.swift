@@ -1754,6 +1754,30 @@ public final class PathTracingScene {
         return float4(linear ? maps.sample(repeatLinear, uv, layer, level(mip)) : maps.sample(repeatNearest, uv, layer, level(mip)));
     }
 
+    static inline float frostfield_graph_gradient_lod(uint width, uint height, float2 ddx, float2 ddy) {
+        if (!all(isfinite(ddx)) || !all(isfinite(ddy))) return 0.0f;
+        float2 size = float2(width, height);
+        float rho = max(length(ddx * size), length(ddy * size));
+        return rho > 0.0f && isfinite(rho) ? log2(rho) : 0.0f;
+    }
+
+    static inline float4 frostfield_graph_sample(
+        thread const FrostfieldGraphResources& resources, uint slot, uint address, uint filtering,
+        float2 uv, float2 ddx, float2 ddy
+    ) {
+        uint entry = resources.table[resources.textureOffset + slot];
+        if (entry >= resources.textureCount) { return float4(1); }
+        device const PTTextureBinding& binding = resources.textures[entry];
+        float requested = 0.0f;
+        if (binding.layer == 0xffffffffu) {
+            texture2d<half> map = binding.texture;
+            requested = frostfield_graph_gradient_lod(map.get_width(), map.get_height(), ddx, ddy);
+        } else {
+            requested = frostfield_graph_gradient_lod(resources.maps.get_width(), resources.maps.get_height(), ddx, ddy);
+        }
+        return frostfield_graph_sample(resources, slot, address, filtering, uv, requested);
+    }
+
     static inline float3 frostfield_graph_bump(
         thread const FrostfieldSurfaceInput& input, thread const FrostfieldGraphResources& resources,
         uint slot, uint address, uint filtering, uint coordinateSet, float4 row0, float4 row1, float scale

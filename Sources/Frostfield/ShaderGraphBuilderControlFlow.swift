@@ -26,8 +26,9 @@ extension ShaderGraphBuilder {
 
     /// Evaluates only the chosen value: `then` where the condition exceeds 0.5, else
     /// `else`. Nodes the closures create that nothing else reads run only in their arm,
-    /// as Three.js `If(...).Else(...)`. Texture samples and derivatives always run
-    /// outside the arms.
+    /// as Three.js `If(...).Else(...)`. Implicit-LOD texture samples and derivatives
+    /// always run outside the arms. An explicit mip level or explicit UV derivatives
+    /// may stay inside the arm that reads them.
     ///
     /// ```swift
     /// let color = s.branch(s.uv0.x.greaterThan(s.constant(0.5))) {

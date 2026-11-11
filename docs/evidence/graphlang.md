@@ -31,6 +31,7 @@ groove and show the face of the next brick, and both renderers agree.
 | Coordinate utilities | `.rotateUV`, `.spherizeUV`, `.polar`, `.checker` and builder methods of the same names | Yes | Yes | All | `ShaderPatternTests.coordinates` |
 | Triplanar weights and sampling, one or three textures | `.triplanarWeights`, `.triplanarSample`, `triplanarWeights(normal:sharpness:)`, `triplanar(x:y:z:position:normal:sharpness:)`, `ShaderTexture.triplanar(position:normal:sharpness:)` | Yes | Yes | All | `ShaderPatternTests.triplanar`, `ShaderGraphViewTests.triplanarInRenderers` |
 | Explicit mip level | `.sampleTextureLevel`, `ShaderTexture.sample(_:level:)` | The sample function is in the raster, deformation, post and path libraries | Same | Compute buffer kernel selects the mip | `ShaderPatternTests.textureLevel` |
+| Explicit UV derivatives | `.sampleTextureGradient`, `ShaderTexture.sample(_:ddx:ddy:)` | The sample function is in the raster, deformation, post and path libraries | Same | Compute buffer kernel selects the mip | `ShaderPatternTests.textureGradient` |
 | Parallax occlusion mapping | `.parallaxOcclusion`, `ShaderTexture.parallaxOcclusion(_:view:depth:steps:)`, `tangentSpace(_:)` | Yes | Yes | All | `ShaderPatternTests.parallaxOcclusion`, `ShaderGraphViewTests.parallaxInRenderers`, capture above |
 | Screen-space derivatives | `.derivative`, `MaterialGraph.Derivative`, `dFdx()`, `dFdy()`, `fwidth()` | Yes | Rejected | Post-process yes; vertex and compute rejected | `ShaderPatternTests.derivatives`, `ShaderGraphInputTests.screenSpace` |
 | Bit operations and value hashing | `.bits`, `MaterialGraph.BitOperation`, `.hash`, `bits(_:_:)`, `hash()` | Yes | Yes | All | `ShaderPatternTests.bitsAndHashes`, `ShaderNoiseTests` |
@@ -84,6 +85,7 @@ least disturbed run as well as the median.
 | Switch, continue and a dynamic loop count | Exact on nine counts, including a count of 2.9 truncating to two iterations and a count above the maximum clamping to eight. A nonfinite count leaves the accumulator at its initial value. The private node of the matching switch arm is generated after that arm's comparison. Discard keeps the low-U half and clears the high-U half in raster and path tracing. macOS and the iPad Pro (M5) simulator each passed the control-flow, rendering and input suites (21 tests) |
 | Nested structs | A `Point` inside a `Sample` scales x by the struct's scale and a branch chooses the other struct's y and scale. Compute readback is exact for (1, 4), (0, 9) and (0.2, −3). A missing field, a field read as the wrong type, and a branch of two different structs are rejected. JSON round-trips the graph. An integer uniform may default to −2. macOS and the iPad Pro (M5) simulator each passed the language and pattern suites (26 tests) |
 | Explicit texture level | A 4×4 texture with three constant mips (red, green, blue) sampled at UV (0.5, 0.5) with nearest filtering. Level 0 is red, level 1 is green, and level 8 clamps to the last mip and is blue. The graph JSON round-trips. macOS passed the pattern suite plus one raster, post-process, and deformation compile (17 tests, 2.353 seconds). The iPad Pro (M5) simulator passed the same four suites (17 tests, 9.472 seconds). Both runs had Metal API Validation on |
+| Explicit UV derivatives | The same 4×4 texture. A footprint of 0 or 1 texel reads red, 2 texels reads green, and 4 or 8 texels read blue. A product of two 1×10²⁰ values overflows and reads mip 0. The sample used only by one branch arm is generated inside that arm and reads green. The graph JSON round-trips. macOS passed the pattern suite plus one raster, post-process, and deformation compile (18 tests, 3.027 seconds). The iPad Pro (M5) simulator passed the same four suites (18 tests, 10.060 seconds). Both runs had Metal API Validation on |
 
 ## Semantics
 
@@ -217,7 +219,8 @@ GPU shades with the same pattern.
 | `rotateUV`, `spherizeUV`, `checker`, `remap` | Same names | Match; `checker(uv)` in TSL is `checker(uv * 2)` here |
 | Polar coordinates (`polarCoordinates` in other node systems) | `polar` | Match |
 | `triplanarTexture`, `triplanarTextures` | `ShaderTexture.triplanar`, `triplanar(x:y:z:...)`, `triplanarWeights` | One or three textures, adjustable weights and stable normalization at high sharpness |
-| `textureLevel` | `ShaderTexture.sample(_:level:)` | Partial: an explicit mip, clamped to the last level, with a nonfinite level reading 0. It may run inside a branch. Gradients, cube maps and 3D textures remain open |
+| `textureLevel` | `ShaderTexture.sample(_:level:)` | Partial: an explicit mip, clamped to the last level, with a nonfinite level reading 0. It may run inside a branch. Cube maps and 3D textures remain open |
+| `texture().grad` | `ShaderTexture.sample(_:ddx:ddy:)` | Partial: the mip is log2 of the larger UV footprint in texels, clamped to the last mip. A nonfinite derivative reads level 0. The sample may stay inside the branch arm that reads it |
 | `parallaxUV` | `ShaderTexture.parallaxOcclusion` | Layered occlusion mapping with intersection refinement |
 | `dFdx`, `dFdy`, `fwidth` | Same | Match in raster; the path tracer rejects them by name |
 | `time`, `deltaTime`, `frameId` | `time`, `deltaTime`, `frame` | Match; driven per graph by `ShaderUniforms` rather than a renderer clock |
@@ -249,7 +252,9 @@ GPU shades with the same pattern.
   samples, derivatives, or calls to declared functions that mention derivative
   or lane functions; those always run. An explicit mip level may run inside a
   branch. A nonfinite level reads level 0, and a level past the last mip reads
-  that mip. Discard is a surface-stage coverage decision.
+  that mip. Explicit UV derivatives select that same mip from log2 of the larger
+  footprint in texels. A nonfinite derivative reads level 0. Discard is a
+  surface-stage coverage decision.
 - Signed 32-bit integers and bools are values. Integer division truncates toward
   zero and a zero divisor yields zero. `toInt` truncates toward zero and maps a
   nonfinite float to zero. `countOneBits` counts the float's IEEE bits or the
