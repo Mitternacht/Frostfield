@@ -165,7 +165,7 @@ struct ClassicMaterialTests {
         let edited = try ClassicMaterial(model: .lambert, surfaceGraph: graph, surfaceUniforms: uniforms)
         let gray = try ClassicMaterial(model: .lambert, color: SIMD3(repeating: 0.5))
         #expect(isNearly(try center(edited, lights: lights), try center(gray, lights: lights)))
-        #expect(throws: ClassicMaterial.Failure.nodeGraph("A classic node material reads only its base color.")) {
+        #expect(throws: ClassicMaterial.Failure.nodeGraph("A classic node material reads base color and opacity.")) {
             try ClassicMaterial(
                 model: .lambert,
                 surfaceGraph: try SurfaceShaderGraph { s in
@@ -173,6 +173,23 @@ struct ClassicMaterialTests {
                 }
             )
         }
+    }
+
+    @Test("A classic node graph scales opacity before blending and alpha test")
+    func nodeGraphOpacity() throws {
+        let color = SIMD3<Float>(0.8, 0.6, 0.4)
+        let graph = try SurfaceShaderGraph { s in
+            .init(baseColor: s.constant(color), opacity: s.uniform("Opacity", Float(0.25)))
+        }
+        let uniforms = try ShaderUniforms(graph: graph)
+        let node = try ClassicMaterial(model: .basic, surfaceGraph: graph, surfaceUniforms: uniforms)
+        let blended = try ClassicMaterial(model: .basic, color: color, opacity: 0.25)
+        #expect(isNearly(try center(node, state: .transparent), try center(blended, state: .transparent)))
+        let tested = try ClassicMaterial(model: .basic, alphaTest: 0.5, surfaceGraph: graph, surfaceUniforms: uniforms)
+        #expect(isNearly(try center(tested), .zero))
+        try uniforms.set("Opacity", to: 0.8)
+        let visible = try ClassicMaterial(model: .basic, color: color, opacity: 0.8, alphaTest: 0.5)
+        #expect(isNearly(try center(tested), try center(visible)))
     }
 
     @Test("Classic lighting reads a spot cookie through the shared light tables")

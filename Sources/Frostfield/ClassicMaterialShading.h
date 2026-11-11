@@ -259,6 +259,10 @@ fragment float4 frostfield_mesh_classic(
     };
     frostfield_generated_surface(graphInput, graphResources, graphOutput);
     diffuse.rgb = graphOutput.baseColor;
+    diffuse.a = saturate(diffuse.a * saturate(graphOutput.opacity));
+    if (!frostfield_alpha_to_coverage && material.ambient.w > 0.0f && diffuse.a < material.ambient.w) {
+        discard_fragment();
+    }
 #endif
 
     float4 relativeReceiver = pbrRelativeReceiver(input.shadowLocalPosition, relativeLightModel);

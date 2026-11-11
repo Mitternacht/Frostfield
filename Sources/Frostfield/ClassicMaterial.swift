@@ -284,9 +284,9 @@ public struct ClassicMaterial {
         }
         guard normalScale.x.isFinite, normalScale.y.isFinite else { throw Failure.invalidValue("normalScale") }
         if let surfaceGraph {
-            let channels = surfaceGraph.outputs.connected.map(\.0)
-            guard channels == [.baseColor] else {
-                throw Failure.nodeGraph("A classic node material reads only its base color.")
+            let channels = Set(surfaceGraph.outputs.connected.map(\.0))
+            guard channels.contains(.baseColor), channels.isSubset(of: [.baseColor, .opacity]) else {
+                throw Failure.nodeGraph("A classic node material reads base color and opacity.")
             }
             for node in surfaceGraph.nodes {
                 switch node {
