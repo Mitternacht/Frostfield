@@ -10,10 +10,14 @@ public struct ShaderLoopStep<Value: ShaderGraphValue> {
     public var next: ShaderValue<Value>
     /// The loop stops after this iteration when the scalar exceeds 0.5.
     public var exit: ShaderValue<Float>
+    /// When this exceeds 0.5 the iteration keeps the accumulator, as Three.js `Continue()`.
+    /// Nodes that only `next` reads do not run on a continued iteration.
+    public var skip: ShaderValue<Float>?
 
-    public init(next: ShaderValue<Value>, exit: ShaderValue<Float>) {
+    public init(next: ShaderValue<Value>, exit: ShaderValue<Float>, skip: ShaderValue<Float>? = nil) {
         self.next = next
         self.exit = exit
+        self.skip = skip
     }
 }
 
@@ -58,6 +62,48 @@ extension ShaderGraphBuilder {
         }
     }
 
+    /// The value of the first case whose match equals `selector`, otherwise the fallback.
+    /// Only the chosen arm's private nodes run, as Three.js `Switch`. Equality is exact.
+    ///
+    /// ```swift
+    /// let color = s.switch(s.uniform("Kind", Float(0)), cases: [
+    ///     (match: s.constant(0), value: { s.constant(SIMD3<Float>(1, 0, 0)) }),
+    ///     (match: s.constant(1), value: { s.baseColor }),
+    /// ], otherwise: { s.constant(SIMD3<Float>(0, 0, 1)) })
+    /// ```
+    public func `switch`<S: ShaderValueType, T: ShaderGraphValue>(
+        _ selector: ShaderValue<S>,
+        cases: [(match: ShaderValue<S>, value: () throws -> ShaderValue<T>)],
+        otherwise: () throws -> ShaderValue<T>
+    ) throws -> ShaderValue<T> {
+        guard (1...MaterialGraph.maximumSwitchCases).contains(cases.count) else {
+            rejectDeclaration("A switch needs 1–\(MaterialGraph.maximumSwitchCases) cases.")
+            return try otherwise()
+        }
+        var matches: [MaterialGraph.NodeID] = []
+        var values: [MaterialGraph.NodeID] = []
+        var operands: [any ShaderArgument] = [selector]
+        for item in cases {
+            matches.append(item.match.id)
+            operands.append(item.match)
+            let value = try item.value()
+            values.append(value.id)
+            operands.append(value)
+        }
+        let fallback = try otherwise()
+        operands.append(fallback)
+        return add(
+            .switchSelect(selector: selector.id, matches: matches, values: values, fallback: fallback.id),
+            operands: operands
+        )
+    }
+
+    /// Yields `value`, and discards the fragment where `condition` exceeds 0.5.
+    /// Raster coverage and the path tracer both reject that fragment. Surface stage.
+    public func discard<T: ShaderGraphValue>(_ condition: ShaderValue<Float>, _ value: ShaderValue<T>) -> ShaderValue<T> {
+        add(.discard(condition: condition.id, value: value.id), operands: [condition, value])
+    }
+
     /// Runs `count` iterations (1...`MaterialGraph.maximumLoopIterations`). The body
     /// receives the zero-based iteration as a scalar and the running value, starting
     /// at `initial`, and returns the next value, as Three.js `Loop` with an accumulator.
@@ -73,24 +119,67 @@ extension ShaderGraphBuilder {
         count: Int, initial: ShaderValue<T>,
         _ body: (_ index: ShaderValue<Float>, _ value: ShaderValue<T>) throws -> ShaderValue<T>
     ) rethrows -> ShaderValue<T> {
+        try makeLoop(count: count, iterations: nil, initial: initial, body)
+    }
+
+    /// Like `loop(count:initial:_:)`, but the iteration count is `iterations` truncated
+    /// toward zero and clamped to 0...`count`. A nonfinite count runs no iterations.
+    /// `count` is the most the loop may run, so the graph can still bound its work.
+    public func loop<T: ShaderGraphValue>(
+        count: Int, iterations: ShaderValue<Float>, initial: ShaderValue<T>,
+        _ body: (_ index: ShaderValue<Float>, _ value: ShaderValue<T>) throws -> ShaderValue<T>
+    ) rethrows -> ShaderValue<T> {
+        try makeLoop(count: count, iterations: iterations, initial: initial, body)
+    }
+
+    private func makeLoop<T: ShaderGraphValue>(
+        count: Int, iterations: ShaderValue<Float>?, initial: ShaderValue<T>,
+        _ body: (_ index: ShaderValue<Float>, _ value: ShaderValue<T>) throws -> ShaderValue<T>
+    ) rethrows -> ShaderValue<T> {
         let id = reserve()
         let next = try body(add(.loopIndex(loop: id)), add(.loopValue(loop: id)))
-        noteOperands([initial, next])
-        fill(id, with: .loop(count: count, initial: initial.id, next: next.id, exit: nil))
+        var operands: [any ShaderArgument] = [initial, next]
+        if let iterations { operands.append(iterations) }
+        noteOperands(operands)
+        fill(id, with: .loop(
+            count: count, iterations: iterations?.id, initial: initial.id, next: next.id, exit: nil, skip: nil
+        ))
         return ShaderValue(id: id, builder: self)
     }
 
     /// Runs up to `count` iterations and stops after the first iteration whose `exit`
-    /// exceeds 0.5, as Three.js `Break()`. Texture samples and derivatives cannot depend
+    /// exceeds 0.5, as Three.js `Break()`. Set `ShaderLoopStep.skip` to continue an
+    /// iteration without storing `next`. Texture samples and derivatives cannot depend
     /// on a loop that exits early; the graph rejects them.
     public func loop<T: ShaderGraphValue>(
         count: Int, initial: ShaderValue<T>,
         until body: (_ index: ShaderValue<Float>, _ value: ShaderValue<T>) throws -> ShaderLoopStep<T>
     ) rethrows -> ShaderValue<T> {
+        try makeExitingLoop(count: count, iterations: nil, initial: initial, until: body)
+    }
+
+    /// The early-exit loop with a dynamic iteration count. See `loop(count:iterations:initial:_:)`.
+    public func loop<T: ShaderGraphValue>(
+        count: Int, iterations: ShaderValue<Float>, initial: ShaderValue<T>,
+        until body: (_ index: ShaderValue<Float>, _ value: ShaderValue<T>) throws -> ShaderLoopStep<T>
+    ) rethrows -> ShaderValue<T> {
+        try makeExitingLoop(count: count, iterations: iterations, initial: initial, until: body)
+    }
+
+    private func makeExitingLoop<T: ShaderGraphValue>(
+        count: Int, iterations: ShaderValue<Float>?, initial: ShaderValue<T>,
+        until body: (_ index: ShaderValue<Float>, _ value: ShaderValue<T>) throws -> ShaderLoopStep<T>
+    ) rethrows -> ShaderValue<T> {
         let id = reserve()
         let step = try body(add(.loopIndex(loop: id)), add(.loopValue(loop: id)))
-        noteOperands([initial, step.next, step.exit])
-        fill(id, with: .loop(count: count, initial: initial.id, next: step.next.id, exit: step.exit.id))
+        var operands: [any ShaderArgument] = [initial, step.next, step.exit]
+        if let iterations { operands.append(iterations) }
+        if let skip = step.skip { operands.append(skip) }
+        noteOperands(operands)
+        fill(id, with: .loop(
+            count: count, iterations: iterations?.id, initial: initial.id, next: step.next.id,
+            exit: step.exit.id, skip: step.skip?.id
+        ))
         return ShaderValue(id: id, builder: self)
     }
 

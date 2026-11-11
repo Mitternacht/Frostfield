@@ -5,7 +5,7 @@ Written on 2026-11-11 for whoever picks Frostfield up next. `main` is at the mer
 
 ## Where things stand
 
-- The ledger [`docs/parity/threejs.md`](parity/threejs.md) tracks 524 capabilities against Three.js r187: **306 done, 148 partial, 70 missing**.
+- The ledger [`docs/parity/threejs.md`](parity/threejs.md) tracks 524 capabilities against Three.js r187: **307 done, 147 partial, 70 missing**.
   Its section "Priorities: done and remaining" is the ordered queue and is current. Do not trust a row until its evidence page and tests agree.
 - The last full run passed on macOS (2,183 tests in 426 suites), the iPad Pro (M5) simulator and the Vision Pro simulator (345 tests in 46 suites each).
   Frostfield Lab built for all three, and three Asset Studio captures were byte-identical to the previous ones. All of it ran under Metal API Validation.

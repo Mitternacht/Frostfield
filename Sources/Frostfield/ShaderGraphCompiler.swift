@@ -199,6 +199,12 @@ struct ShaderProgram: Hashable, Sendable {
         return marker
     }
 
+    /// Exact equality for a switch arm. Vectors match when every component is equal.
+    private static func switchEqual(_ selector: NodeID, _ match: NodeID, types: [ValueType]) -> String {
+        let comparison = "n\(selector) == n\(match)"
+        return types[selector] == .scalar ? comparison : "all(\(comparison))"
+    }
+
     /// Emits one scope's nodes in dependency order, recursing into branch arms and loop bodies.
     private func emit(scope: Int, schedule: ShaderSchedule, indent: String, prefix: String, into lines: inout [String]) {
         let inner = indent + "    "
@@ -214,13 +220,45 @@ struct ShaderProgram: Hashable, Sendable {
                 emit(scope: schedule.falseScope[id]!, schedule: schedule, indent: inner, prefix: prefix, into: &lines)
                 lines.append("\(inner)n\(id) = n\(ifFalse);")
                 lines.append("\(indent)}")
-            case .loop(let count, let initial, let next, let exit):
+            case .switchSelect(let selector, let matches, let values, let fallback):
+                lines.append("\(indent)\(type) n\(id); \(marker(id, "switch"))")
+                let arms = schedule.caseScopes[id]!
+                for (index, match) in matches.enumerated() {
+                    let keyword = index == 0 ? "if" : "} else if"
+                    lines.append("\(indent)\(keyword) (\(Self.switchEqual(selector, match, types: types))) {")
+                    emit(scope: arms[index], schedule: schedule, indent: inner, prefix: prefix, into: &lines)
+                    lines.append("\(inner)n\(id) = n\(values[index]);")
+                }
+                lines.append("\(indent)} else {")
+                emit(scope: arms[matches.count], schedule: schedule, indent: inner, prefix: prefix, into: &lines)
+                lines.append("\(inner)n\(id) = n\(fallback);")
+                lines.append("\(indent)}")
+            case .loop(let count, let iterations, let initial, let next, let exit, let skip):
                 lines.append("\(indent)\(type) n\(id) = n\(initial); \(marker(id, "loop \(count)"))")
-                lines.append("\(indent)for (int n\(id)_i = 0; n\(id)_i < \(count); ++n\(id)_i) {")
+                if let iterations {
+                    lines.append("\(indent)float n\(id)_count = n\(iterations);")
+                    lines.append(
+                        "\(indent)int n\(id)_limit = frostfield_graph_finite(n\(id)_count) && n\(id)_count > 0.0f "
+                            + "? min((int)n\(id)_count, \(count)) : 0;"
+                    )
+                    lines.append("\(indent)for (int n\(id)_i = 0; n\(id)_i < n\(id)_limit; ++n\(id)_i) {")
+                } else {
+                    lines.append("\(indent)for (int n\(id)_i = 0; n\(id)_i < \(count); ++n\(id)_i) {")
+                }
                 emit(scope: schedule.bodyScope[id]!, schedule: schedule, indent: inner, prefix: prefix, into: &lines)
-                lines.append("\(inner)n\(id) = n\(next);")
+                if let skip, let update = schedule.updateScope[id] {
+                    lines.append("\(inner)if (!(n\(skip) > 0.5f)) {")
+                    emit(scope: update, schedule: schedule, indent: inner + "    ", prefix: prefix, into: &lines)
+                    lines.append("\(inner)    n\(id) = n\(next);")
+                    lines.append("\(inner)}")
+                } else {
+                    lines.append("\(inner)n\(id) = n\(next);")
+                }
                 if let exit { lines.append("\(inner)if (n\(exit) > 0.5f) { break; }") }
                 lines.append("\(indent)}")
+            case .discard(let condition, let value):
+                lines.append("\(indent)if (n\(condition) > 0.5f) { surface.mask = false; } \(marker(id, "discard"))")
+                lines.append("\(indent)\(type) n\(id) = n\(value);")
             default:
                 lines.append("\(indent)\(type) n\(id) = \(expression(id, prefix: prefix)); \(marker(id))")
             }
@@ -538,17 +576,32 @@ struct ShaderProgram: Hashable, Sendable {
                 try require(argument, parameter.type)
             }
             return function.returnType
-        case .loop(let count, let initial, let next, let exit):
+        case .switchSelect(let selector, let matches, let values, let fallback):
+            guard matches.count == values.count, (1...MaterialGraph.maximumSwitchCases).contains(matches.count) else {
+                throw Failure.invalidSwitch(id)
+            }
+            let selectorType = try visit(selector)
+            for match in matches { try require(match, selectorType) }
+            let result = try visitAny(values[0])
+            for value in values.dropFirst() { try require(value, result) }
+            try require(fallback, result)
+            return result
+        case .loop(let count, let iterations, let initial, let next, let exit, let skip):
             guard (1...MaterialGraph.maximumLoopIterations).contains(count) else {
                 throw Failure.invalidLoopCount(node: id, count: count)
             }
+            if let iterations { try require(iterations, .scalar) }
             let type = try visitAny(initial)
             try require(next, type)
             if let exit { try require(exit, .scalar) }
+            if let skip { try require(skip, .scalar) }
             return type
+        case .discard(let condition, let value):
+            try require(condition, .scalar)
+            return try visitAny(value)
         case .loopIndex(let loop), .loopValue(let loop):
             guard nodes.indices.contains(loop) else { throw Failure.invalidReference(node: id, referenced: loop) }
-            guard case .loop(_, let initial, _, _) = nodes[loop] else { throw Failure.notALoop(node: id, loop: loop) }
+            guard case .loop(_, _, let initial, _, _, _) = nodes[loop] else { throw Failure.notALoop(node: id, loop: loop) }
             if case .loopIndex = nodes[id] { return .scalar }
             return try visitAny(initial)
         case .oscillator(_, let input), .derivative(_, let input):
@@ -675,9 +728,13 @@ struct ShaderProgram: Hashable, Sendable {
         case .branch(let a, let b, let c), .rotateUV(let a, let b, let c), .spherizeUV(let a, let b, let c),
              .triplanarSample(_, let a, let b, let c), .parallaxOcclusion(_, let a, let b, let c, _):
             [a, b, c]
-        // A loop's operands keep this order: initial, next, then exit.
-        case .loop(_, let initial, let next, let exit):
-            [initial, next] + (exit.map { [$0] } ?? [])
+        case .switchSelect(let selector, let matches, let values, let fallback):
+            [selector] + matches + values + [fallback]
+        case .discard(let condition, let value):
+            [condition, value]
+        // A loop's operands: initial, next, exit, skip, then the dynamic count.
+        case .loop(_, let iterations, let initial, let next, let exit, let skip):
+            [initial, next] + [exit, skip, iterations].compactMap { $0 }
         // Loop nodes are scope references, not data dependencies.
         case .loopIndex, .loopValue:
             []
@@ -708,6 +765,7 @@ struct ShaderProgram: Hashable, Sendable {
         case .viewPositionFromDepth, .normalFromDepth, .linearDepth, .denoise:
             return stage == .postProcess
         case .derivative: return stage == .surface || stage == .postProcess
+        case .discard: return stage == .surface
         case .bumpMap: return stage == .surface && provides(.tangent)
         default: return true
         }
@@ -874,7 +932,7 @@ struct ShaderProgram: Hashable, Sendable {
             return "\(prefix)_voronoi(\(n(position)), \(n(time)))"
         case .function(let index, let arguments):
             return "\(prefix)_fn_\(declarations.functions[index].name)(\(arguments.map(n).joined(separator: ", ")))"
-        case .branch, .loop:
+        case .branch, .loop, .switchSelect, .discard:
             // Generated as blocks by `emit(scope:schedule:indent:prefix:into:)`.
             return ""
         case .loopIndex(let loop): return "float(n\(loop)_i)"

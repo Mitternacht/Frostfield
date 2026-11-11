@@ -183,10 +183,22 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
     /// Whether the graph deforms vertices.
     public var hasVertexOutputs: Bool { outputs.positionOffset != nil }
     var hasCoverageOutputs: Bool { outputs.opacity != nil || hasCutoutOutputs }
-    var hasCutoutOutputs: Bool { outputs.alphaTest != nil || outputs.mask != nil }
+    var hasCutoutOutputs: Bool { outputs.alphaTest != nil || outputs.mask != nil || discardsFragment }
     /// Coverage in the raster shadow passes. Differs from the color pass only when `castShadowMask` replaces `mask`.
     var hasShadowCoverageOutputs: Bool { outputs.opacity != nil || hasShadowCutoutOutputs }
-    var hasShadowCutoutOutputs: Bool { outputs.alphaTest != nil || (outputs.castShadowMask ?? outputs.mask) != nil }
+    var hasShadowCutoutOutputs: Bool {
+        outputs.alphaTest != nil || (outputs.castShadowMask ?? outputs.mask) != nil || discardsFragment
+    }
+
+    /// Outputs whose evaluation can discard. Coverage passes re-run these roots, not the
+    /// discard node alone, so a discard inside a branch stays inside that branch.
+    private var discardsFragment: Bool { !discardRoots.isEmpty }
+
+    private var discardRoots: [MaterialGraph.NodeID] {
+        outputs.connected.map(\.1).filter { root in
+            program.order(for: [root]).contains { if case .discard = program.nodes[$0] { true } else { false } }
+        }
+    }
     var hasCastShadowOutput: Bool { outputs.castShadowColor != nil }
 
     /// Declarations every generated graph function depends on. Place this source
@@ -213,22 +225,23 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
     }
 
     func metalCoverageFunction(named name: String) throws -> String {
-        try metalFunction(named: name, outputs: outputs.connected.filter { $0.0.isCoverage })
+        try metalFunction(named: name, outputs: outputs.connected.filter { $0.0.isCoverage }, extraRoots: discardRoots)
     }
 
     /// The coverage function of the raster shadow passes. Identical to `metalCoverageFunction`
     /// unless the graph authors `castShadowMask`, which replaces `mask` here.
     func metalShadowCoverageFunction(named name: String) throws -> String {
-        try metalFunction(named: name, outputs: outputs.shadowCoverageChannels)
+        try metalFunction(named: name, outputs: outputs.shadowCoverageChannels, extraRoots: discardRoots)
     }
 
     func metalCastShadowFunction(named name: String) throws -> String? {
         guard let color = outputs.castShadowColor else { return nil }
-        return try metalFunction(named: name, outputs: outputs.shadowCoverageChannels, castShadow: color)
+        return try metalFunction(named: name, outputs: outputs.shadowCoverageChannels, castShadow: color, extraRoots: discardRoots)
     }
 
     private func metalFunction(
-        named name: String, outputs surfaceOutputs: [(Channel, MaterialGraph.NodeID)], castShadow: MaterialGraph.NodeID? = nil
+        named name: String, outputs surfaceOutputs: [(Channel, MaterialGraph.NodeID)],
+        castShadow: MaterialGraph.NodeID? = nil, extraRoots: [MaterialGraph.NodeID] = []
     ) throws -> String {
         try Self.checkName(name)
         let assignments = surfaceOutputs.map { channel, id -> String in
@@ -260,7 +273,7 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
             }
         }.joined(separator: "\n")
 
-        let roots = surfaceOutputs.map(\.1) + (castShadow.map { [$0] } ?? [])
+        let roots = surfaceOutputs.map(\.1) + extraRoots + (castShadow.map { [$0] } ?? [])
         let result = castShadow.map { id in
             "\n    return all(frostfield_graph_finite(n\(id))) ? saturate(n\(id)) : float4(0);"
         } ?? ""

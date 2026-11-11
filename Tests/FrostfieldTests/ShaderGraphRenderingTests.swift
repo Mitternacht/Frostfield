@@ -138,6 +138,42 @@ struct ShaderGraphRenderingTests {
         #expect(ShaderLibraryCache.compilationCount(containing: marker) == compiled)
     }
 
+    @Test("Discard rejects one side of a surface in raster and path tracing")
+    func discardFragment() throws {
+        let graph = try SurfaceShaderGraph { s in
+            let color = s.branch(s.uv0.x.greaterThan(s.constant(Float(0.5)))) {
+                s.discard(s.constant(Float(1)), s.constant(SIMD3<Float>(1, 0, 0))).named("discarded")
+            } else: {
+                s.constant(SIMD3<Float>(0, 1, 0))
+            }
+            return .init(emission: color)
+        }
+        let source = try graph.metalFunction(named: "discard_probe")
+        let lines = source.components(separatedBy: "\n")
+        let discarded = try #require(lines.firstIndex { $0.contains("surface.mask = false") })
+        let otherwise = try #require(lines[discarded...].firstIndex { $0.contains("} else {") })
+        #expect(discarded < otherwise, "\(source)")
+        let material = try PhysicallyBasedMaterial(
+            lightIntensity: 0, ambientIntensity: 0, alphaMode: .opaque, surfaceGraph: graph
+        )
+        let mesh = try MeshRenderer(
+            device: device, colorPixelFormat: .rgba16Float, geometry: .plane(width: 2, height: 4),
+            material: .physicallyBased(material)
+        )
+        let scene = SceneGraph(roots: [SceneNode(transform: .init(translation: SIMD3(0, 0, -2)), mesh: mesh)], camera: camera)
+        try render(scene)
+        let kept = try readPixel(x: 16)
+        let rejected = try readPixel(x: 48)
+        #expect(near(kept, SIMD3(0, 1, 0)), "kept \(kept)")
+        #expect(rejected.y < 0.02 && rejected.x < 0.02, "raster discard \(rejected)")
+        let tracer = try PathTracer(queue: queue, scene: PathTracingScene(queue: queue, graph: scene))
+        let accumulation = try tracer.makeAccumulation(width: Self.size, height: Self.size)
+        let history = try trace(tracer, accumulation: accumulation, previous: nil)
+        #expect(near(try readPixel(from: history.texture, x: 16), SIMD3(0, 1, 0)))
+        let traced = try readPixel(from: history.texture, x: 48)
+        #expect(traced.y < 0.02 && traced.x < 0.02, "path discard \(traced)")
+    }
+
     @Test("Graph normals and occlusion change raster lighting in the UV0 tangent frame")
     func graphNormalAndOcclusion() throws {
         func brightness(tilt: Float?, occlusion: Float? = nil, ambient: Float = 0) throws -> Float {

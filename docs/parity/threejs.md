@@ -43,7 +43,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`cameras-controls`](#cameras-controls) | 6 | 2 | 1 | 3 | 1 | 0 | 0 | 3 | 0 |
 | [`geometry`](#geometry) | 20 | 3 | 0 | 14 | 2 | 0 | 0 | 5 | 1 |
 | [`materials-textures`](#materials-textures) | 33 | 19 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
-| [`shader-authoring`](#shader-authoring) | 20 | 22 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
+| [`shader-authoring`](#shader-authoring) | 21 | 21 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 21 | 4 | 0 | 5 | 2 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 0 | 3 | 1 |
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
 | [`performance-scale`](#performance-scale) | 5 | 5 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **174** | **80** | **15** | **109** | **28** | **31** | **23** | **40** | **24** |
+| **Total** | **175** | **79** | **15** | **109** | **28** | **31** | **23** | **40** | **24** |
 
-306 of 524 capabilities are complete, with 148 partial and 70 missing.
+307 of 524 capabilities are complete, with 147 partial and 70 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -361,7 +361,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Backdrop slots | `backdropNode`, `viewportSharedTexture` | — | ❌ | The transmission backdrop is not exposed to surface graphs; only post-process graphs read the frame |
 | Shadow node customization | `castShadowNode`, `receivedShadowNode` | `SurfaceShaderGraph` `castShadowColor` and `castShadowMask` outputs, `directionalShadowVisibility` input | 🟡 | A PBR surface graph authors its caster's colored transmission and a separate shadow mask for every raster shadow pass. It can read the directional shadow visibility its fragment receives. A graph cannot replace the shadow term that lights apply, so `receivedShadowNode` has no equivalent, and path tracing ignores the cast outputs. `GraphCastShadowTests`. [Graph caster evidence](../evidence/directional-transmitted-shadows.md#graph-authored-casters) |
 | Typed values and Swift builder | TSL `Fn`, `float`, `vec2`–`vec4`, `mat*`, swizzles, `struct` | `SurfaceShaderGraph(building:)`, `ShaderGraphBuilder`, `ShaderValue`, `MaterialGraph.ValueType.matrix3`, `.matrix4`, `ShaderGraphBuilder.uniform(_:simd_float3x3)`, `uniform(_:simd_float4x4)`, `ShaderUniforms.set(_:to:)`, `matrix3(named:)`, `matrix4(named:)` | 🟡 | Typed scalar, vector, and 3 × 3 and 4 × 4 matrix expressions, including column-major matrix uniforms edited without recompiling. First-class int, bool and struct types remain open. Matrix uniforms are not animation tracks. `ShaderPatternTests`, `ShaderGraphRenderingTests`, `MeshDeformationTests`, `SceneArchiveTests`. [Graph evidence](../evidence/graphlang.md) |
-| Control flow | `If`, `Switch`, `Loop`, `Discard` | `MaterialGraph.Node.branch`, `ShaderGraphBuilder.branch(_:then:else:)`, `ShaderGraphBuilder.loop(count:initial:until:)` | 🟡 | Lazy branch arms and bounded loops with an accumulator and optional exit. Switch, continue, dynamic loop counts and discard remain open. `ShaderControlFlowTests`. [Graph evidence](../evidence/graphlang.md) |
+| Control flow | `If`, `Switch`, `Loop`, `Discard` | `MaterialGraph.Node.branch`, `.switchSelect`, `.discard`, `ShaderGraphBuilder.branch(_:then:else:)`, `` `switch` ``, `discard(_:_:)`, `loop(count:iterations:initial:_:)`, `ShaderLoopStep.skip` | ✅ | Lazy branch arms, an exact switch of one to 16 arms, and bounded loops with an accumulator, break, continue and a dynamic count clamped to the loop's maximum. Discard clears coverage so raster and path tracing reject the fragment. `ShaderControlFlowTests`, `ShaderGraphRenderingTests`. [Graph evidence](../evidence/graphlang.md) |
 | Uniform nodes and update events | `uniform()`, `onFrameUpdate`, `onObjectUpdate` | `ShaderGraphBuilder.uniform(_:_:)`, `MaterialGraph.Node.uniform(_:)`, `ShaderUniforms.revision` | 🟡 | Named, typed, editable without recompiling in both renderers, post-process and compute; no per-frame or per-object hooks (the app sets values; `materialParameters` gives one float4 per node); `ShaderGraphRenderingTests` |
 | Attribute and varying nodes | `attribute()`, `varying()`, `vertexStage()` | — | ❌ | Fixed built-in inputs only |
 | Geometry and camera accessors | `positionWorld`, `normalWorld`, `tangentView`, `uv(n)`, `cameraPosition`, `instanceIndex` | `MaterialGraph.Input`, `ShaderGraphCamera`, `GLTFScene.Camera.View.graphCamera` | 🟡 | Built-in geometry, tangent frame, camera position, near/far and planar view/projection inputs. Custom attributes, instance index and front-facing flag remain open. `ShaderGraphViewTests`. [Graph evidence](../evidence/graphlang.md) |
@@ -942,9 +942,9 @@ that remain, with their area and tier.
 
 Typed graphs drive raster PBR, the path tracer, vertex deformation, post-processing and compute from one language, with uniforms that edit without recompiling, a shared library cache and inspectable Metal ([shader-graphs](../evidence/shader-graphs.md)).
 
-- **Finish the typed graph core** (1 of 5 ✅)
+- **Finish the typed graph core** (2 of 5 ✅)
   - 🟡 Typed values and Swift builder (`shader-authoring`, core)
-  - 🟡 Control flow (`shader-authoring`, core)
+  - ✅ Control flow (`shader-authoring`, core)
   - 🟡 Node material family (`shader-authoring`, core)
   - 🟡 Custom shader material (`shader-authoring`, core)
 - **Textures, vector math, normals and displacement, editable uniforms** (6 of 12 ✅)

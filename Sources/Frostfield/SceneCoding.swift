@@ -412,6 +412,7 @@ extension MaterialGraph.Input: Codable {
 extension MaterialGraph.Node: Codable {
     private enum CodingKeys: String, CodingKey {
         case node, value, inputs, index, operation, components, noise, octaves, lacunarity, gain, count, exit, slots
+        case iterations, skip
         case coordinateSet, transform, reversedDepth
     }
 
@@ -516,9 +517,22 @@ extension MaterialGraph.Node: Codable {
         case "loop":
             let x = try operands(2)
             self = .loop(
-                count: try container.decode(Int.self, forKey: .count), initial: x[0], next: x[1],
-                exit: try container.decodeIfPresent(Int.self, forKey: .exit)
+                count: try container.decode(Int.self, forKey: .count),
+                iterations: try container.decodeIfPresent(Int.self, forKey: .iterations),
+                initial: x[0], next: x[1],
+                exit: try container.decodeIfPresent(Int.self, forKey: .exit),
+                skip: try container.decodeIfPresent(Int.self, forKey: .skip)
             )
+        case "switch":
+            let count = try container.decode(Int.self, forKey: .count)
+            let x = try operands(2 + count * 2)
+            self = .switchSelect(
+                selector: x[0], matches: Array(x[1..<(1 + count)]),
+                values: Array(x[(1 + count)..<(1 + count * 2)]), fallback: x[x.count - 1]
+            )
+        case "discard":
+            let x = try operands(2)
+            self = .discard(condition: x[0], value: x[1])
         case "loopIndex": self = .loopIndex(loop: try operands(1)[0])
         case "loopValue": self = .loopValue(loop: try operands(1)[0])
         case "oscillator":
@@ -647,10 +661,16 @@ extension MaterialGraph.Node: Codable {
         case .curlNoise(let position): try write("curlNoise", [position])
         case .animatedVoronoi(let position, let time): try write("animatedVoronoi", [position, time])
         case .branch(let condition, let yes, let no): try write("branch", [condition, yes, no])
-        case .loop(let count, let initial, let next, let exit):
+        case .switchSelect(let selector, let matches, let values, let fallback):
+            try write("switch", [selector] + matches + values + [fallback])
+            try container.encode(matches.count, forKey: .count)
+        case .loop(let count, let iterations, let initial, let next, let exit, let skip):
             try write("loop", [initial, next])
             try container.encode(count, forKey: .count)
             try container.encodeIfPresent(exit, forKey: .exit)
+            try container.encodeIfPresent(iterations, forKey: .iterations)
+            try container.encodeIfPresent(skip, forKey: .skip)
+        case .discard(let condition, let value): try write("discard", [condition, value])
         case .loopIndex(let loop): try write("loopIndex", [loop])
         case .loopValue(let loop): try write("loopValue", [loop])
         case .oscillator(let operation, let value):

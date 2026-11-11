@@ -23,8 +23,9 @@ groove and show the face of the next brick, and both renderers agree.
 | Capability | Public API | Raster PBR | Path tracer | Other stages | Verified by |
 | --- | --- | --- | --- | --- | --- |
 | If / else-if / else that run only the chosen arm | `MaterialGraph.Node.branch`, `ShaderGraphBuilder.branch(_:then:else:)`, `branch(_:otherwise:)` | Yes | Yes | Vertex, post-process, compute | `ShaderControlFlowTests`, `ShaderGraphInputTests.controlFlowInRenderers` |
-| Bounded loops with an index, an accumulator and an optional exit | `.loop`, `.loopIndex`, `.loopValue`, `loop(count:initial:_:)`, `loop(count:initial:until:)`, `ShaderLoopStep` | Yes | Yes | All | Same |
+| Bounded loops with an index, an accumulator, break, continue and a dynamic count | `.loop`, `.loopIndex`, `.loopValue`, `loop(count:initial:_:)`, `loop(count:iterations:initial:_:)`, `loop(count:initial:until:)`, `ShaderLoopStep.skip` | Yes | Yes | All | Same |
 | A budget of 65,536 loop iterations and parallax layers per evaluation, nested counts multiplied | `MaterialGraph.maximumTotalIterations`, `Failure.tooManyIterations` | Yes | Yes | All | `ShaderControlFlowTests.iterationBudget` |
+| Exact switch and fragment discard | `` `switch` ``, `.switchSelect`, `discard(_:_:)` | Switch: all stages. Discard: surface | Discard clears the surface mask, so raster and path coverage reject the fragment | Switch: all. Discard is rejected in vertex, compute and post-process | `ShaderControlFlowTests.switchContinueAndDynamicCount`, `ShaderGraphRenderingTests.discardFragment` |
 | Declared functions that take derivatives stay outside branch arms | `ShaderFunction` bodies that mention `dfdx`, `dfdy`, `fwidth`, `quad_` or `simd_`, directly or through another declared function | Yes | Yes | All | `ShaderControlFlowTests.functionPlacement` |
 | Oscillators | `.oscillator`, `MaterialGraph.Oscillator`, `oscillator(_:_:)`, `ShaderValue.oscillated(_:)` | Yes | Yes | All | `ShaderPatternTests.oscillators` |
 | Coordinate utilities | `.rotateUV`, `.spherizeUV`, `.polar`, `.checker` and builder methods of the same names | Yes | Yes | All | `ShaderPatternTests.coordinates` |
@@ -76,6 +77,7 @@ least disturbed run as well as the median.
 | Oscillators at 12 times from −1.3 to 17.125 | Square, triangle and sawtooth exact; sine within 10⁻⁵ of a double-precision reference |
 | Raster against path tracing for clock, camera, view, projection, model, normal-matrix, loop, branch and noise outputs | Equal to the analytic or `ShaderNoise` value within 2 × 10⁻³ + 10⁻³ · |value| in RGBA16Float |
 | Matrix uniforms, one float4 slot per column, against `simd` at four points including a direction with w = 0 | Compute readback within 10⁻⁵. A translated point's emission matches in raster and path, and a vertex offset matches, within the half-float and deformation thresholds. Reading each matrix4 column one slot late failed the generated-source check and all eight GPU comparisons. macOS passed the language, pattern, rendering and deformation suites together (38 tests) and `SceneArchiveTests` (12 tests). The iPad Pro (M5) simulator passed all five suites (50 tests) |
+| Switch, continue and a dynamic loop count | Exact on nine counts, including a count of 2.9 truncating to two iterations and a count above the maximum clamping to eight. A nonfinite count leaves the accumulator at its initial value. The private node of the matching switch arm is generated after that arm's comparison. Discard keeps the low-U half and clears the high-U half in raster and path tracing. macOS and the iPad Pro (M5) simulator each passed the control-flow, rendering and input suites (21 tests) |
 
 ## Semantics
 
@@ -202,7 +204,9 @@ GPU shades with the same pattern.
 | Three.js | Frostfield | Status |
 | --- | --- | --- |
 | `If`, `ElseIf`, `Else`, `select` | `branch`, `branch(_:otherwise:)`, `select` | Match. Arms run only when taken, as in TSL; unlike TSL, samples and derivatives are moved out of arms automatically and divergent ones are rejected |
-| `Loop` with `Break` | `loop(count:initial:_:)`, `loop(count:initial:until:)` | Partial. Bounded counts with an accumulator and an exit after an iteration; no `Continue`, no dynamic counts. Unlike TSL, validation caps the work of one evaluation at 65,536 iterations |
+| `Switch` | `` `switch` `` | Match. Exact equality, one through 16 arms, and only the chosen arm's private nodes run |
+| `Loop` with `Break` and `Continue` | `loop(count:initial:_:)`, `loop(count:iterations:initial:_:)`, `loop(count:initial:until:)`, `ShaderLoopStep.skip` | Match within the iteration budget. A dynamic count truncates toward zero and clamps to 0...the declared maximum; a nonfinite count runs none. Continue keeps the accumulator and skips nodes only the update reads |
+| `Discard` | `discard(_:_:)` | Surface stage. Sets the coverage mask false, which raster `discard_fragment` and path-traced hit acceptance both honor |
 | `oscSine`, `oscSquare`, `oscTriangle`, `oscSawtooth` | `oscillator(_:_:)` | Match; any scalar or vector |
 | `rotateUV`, `spherizeUV`, `checker`, `remap` | Same names | Match; `checker(uv)` in TSL is `checker(uv * 2)` here |
 | Polar coordinates (`polarCoordinates` in other node systems) | `polar` | Match |
@@ -228,11 +232,13 @@ GPU shades with the same pattern.
 
 - Custom vertex attributes and `instanceIndex` remain open. The raster and
   path-tracing stages use fixed vertex layouts.
-- Loops have constant counts of at most 1,024, an exit evaluated after each
-  iteration, and no `continue`. One evaluation may run at most 65,536 loop
+- A loop declares a maximum of 1,024 iterations. A dynamic count truncates
+  toward zero and clamps to that maximum, and the budget still uses the maximum.
+  Continue keeps the accumulator. One evaluation may run at most 65,536 loop
   iterations and parallax layers, counted at their worst case even inside
-  branch arms. Branches cannot contain texture samples, derivatives, or calls to
-  declared functions that mention derivative or lane functions; those always run.
+  branch arms. Branches and switch arms cannot contain texture samples,
+  derivatives, or calls to declared functions that mention derivative or lane
+  functions; those always run. Discard is a surface-stage coverage decision.
 - There is no integer type. Bit operations clamp operands to 0–16,777,215 and
   keep 24-bit results.
 - A matrix uniform is one float4 slot per column, column-major, then any later

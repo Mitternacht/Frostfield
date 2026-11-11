@@ -89,13 +89,13 @@ struct ShaderControlFlowTests {
         // A loop index read by the output outside its loop.
         #expect(throws: MaterialGraph.Failure.loopValueEscapes(node: 5, loop: 2)) {
             try SurfaceShaderGraph(nodes: [
-                .scalar(0), .loopIndex(loop: 2), .loop(count: 4, initial: 0, next: 3, exit: nil),
+                .scalar(0), .loopIndex(loop: 2), .loop(count: 4, iterations: nil, initial: 0, next: 3, exit: nil, skip: nil),
                 .add(4, 1), .loopValue(loop: 2), .add(1, 0),
             ], outputs: .init(roughness: 5))
         }
         for count in [0, MaterialGraph.maximumLoopIterations + 1] {
             #expect(throws: MaterialGraph.Failure.invalidLoopCount(node: 1, count: count)) {
-                try SurfaceShaderGraph(nodes: [.scalar(0), .loop(count: count, initial: 0, next: 0, exit: nil)],
+                try SurfaceShaderGraph(nodes: [.scalar(0), .loop(count: count, iterations: nil, initial: 0, next: 0, exit: nil, skip: nil)],
                                        outputs: .init(roughness: 1))
             }
         }
@@ -105,13 +105,13 @@ struct ShaderControlFlowTests {
         // The initial value reads the loop's own iteration.
         #expect(throws: MaterialGraph.Failure.loopValueEscapes(node: 0, loop: 1)) {
             try SurfaceShaderGraph(nodes: [
-                .loopIndex(loop: 1), .loop(count: 2, initial: 0, next: 2, exit: nil), .loopValue(loop: 1),
+                .loopIndex(loop: 1), .loop(count: 2, iterations: nil, initial: 0, next: 2, exit: nil, skip: nil), .loopValue(loop: 1),
             ], outputs: .init(roughness: 1))
         }
         // Mixing the iterations of two sibling loops.
         let mixing = #expect(throws: MaterialGraph.Failure.self) {
             try SurfaceShaderGraph(nodes: [
-                .scalar(0), .loop(count: 2, initial: 0, next: 3, exit: nil), .loop(count: 2, initial: 0, next: 4, exit: nil),
+                .scalar(0), .loop(count: 2, iterations: nil, initial: 0, next: 3, exit: nil, skip: nil), .loop(count: 2, iterations: nil, initial: 0, next: 4, exit: nil, skip: nil),
                 .add(5, 6), .loopValue(loop: 2), .loopIndex(loop: 1), .loopIndex(loop: 2), .add(1, 2),
             ], outputs: .init(roughness: 7))
         }
@@ -245,5 +245,65 @@ struct ShaderControlFlowTests {
         _ = try marching(508)
         let parallax = #expect(throws: MaterialGraph.Failure.self) { try marching(509) }
         if case .tooManyIterations = parallax {} else { Issue.record("Unexpected failure \(String(describing: parallax))") }
+    }
+
+    @Test("Switch runs only the matching arm, continue skips the update, and a dynamic count clamps",
+          .enabled(if: MTLCreateSystemDefaultDevice() != nil, "Requires a Metal device"))
+    func switchContinueAndDynamicCount() throws {
+        let graph = try BufferShaderGraph(fieldCount: 2) { b in
+            let x = b.elementField(0).x
+            let chosen = try b.switch(x, cases: [
+                (match: b.constant(Float(0)), value: { (x + 10).named("case_zero") }),
+                (match: b.constant(Float(1)), value: { x + 20 }),
+                (match: b.constant(Float(2)), value: { (x * 3).named("only_two") }),
+            ], otherwise: { x + 30 })
+            let continued = b.loop(count: 5, initial: b.constant(Float(0))) { i, total in
+                ShaderLoopStep(next: (total + (i + 1)).named("kept"), exit: b.constant(Float(0)), skip: i.mod(2))
+            }
+            let dynamic = b.loop(count: 8, iterations: x, initial: b.constant(Float(0))) { i, total in total + i + 1 }
+            return [1: b.vector(chosen, continued, dynamic, x)]
+        }
+        let source = try graph.metalFunction(named: "switch_probe")
+        let lines = source.components(separatedBy: "\n")
+        let opened = try #require(lines.firstIndex { $0.contains("== n") && $0.contains("if (") })
+        let zero = try #require(lines.firstIndex { $0.contains("case_zero") })
+        let two = try #require(lines.firstIndex { $0.contains("only_two") })
+        let fallback = try #require(lines[two...].firstIndex { $0.contains("} else {") })
+        #expect(opened < zero && zero < two && two < fallback, "\(source)")
+        let kept = try #require(lines.firstIndex { $0.contains("kept") })
+        let continuedIf = try #require(lines[..<kept].lastIndex { $0.contains("if (!(n") })
+        #expect(continuedIf < kept, "\(source)")
+        #expect(source.contains("min((int)n"), "\(source)")
+
+        let inputs: [Float] = [-1, 0, 0.5, 1, 2, 2.9, 3, 8, 100]
+        let output = try GraphProbe().run(graph, elements: inputs.map { [SIMD4($0, 0, 0, 0), .zero] }).map { $0[1] }
+        for (x, value) in zip(inputs, output) {
+            let chosen: Float = x == 0 ? 10 : x == 1 ? 21 : x == 2 ? 6 : x + 30
+            let continued: Float = 9
+            let steps = x > 0 ? min(Int(x), 8) : 0
+            let dynamic = Float(steps == 0 ? 0 : (1...steps).reduce(0, +))
+            #expect(value.x == chosen, "switch at \(x): \(value.x) vs \(chosen)")
+            #expect(value.y == continued, "continue at \(x): \(value.y)")
+            #expect(value.z == dynamic, "count at \(x): \(value.z) vs \(dynamic)")
+        }
+        let nonfinite = try BufferShaderGraph(fieldCount: 2) { b in
+            let sum = b.loop(count: 4, iterations: b.elementField(0).x, initial: b.constant(Float(3))) { _, total in total + 1 }
+            return [1: b.vector(sum, b.constant(Float(0)), b.constant(Float(0)), b.constant(Float(0)))]
+        }
+        let nonfiniteResult = try GraphProbe().run(nonfinite, elements: [[SIMD4(.nan, 0, 0, 0), .zero]])[0][1]
+        #expect(nonfiniteResult.x == 3, "a nonfinite count runs no iterations: \(nonfiniteResult.x)")
+
+        let preserved = MaterialGraph.Node.loop(count: 4, iterations: nil, initial: 0, next: 1, exit: nil, skip: nil)
+        let encoded = try JSONEncoder().encode(preserved)
+        #expect(!String(decoding: encoded, as: UTF8.self).contains("iterations"))
+        #expect(try JSONDecoder().decode(MaterialGraph.Node.self, from: encoded) == preserved)
+        #expect(throws: MaterialGraph.Failure.self) {
+            try BufferShaderGraph(fieldCount: 1) { b in [0: b.discard(b.constant(Float(1)), b.elementField(0))] }
+        }
+        #expect(throws: MaterialGraph.Failure.self) {
+            try SurfaceShaderGraph { s in
+                .init(positionOffset: s.discard(s.constant(Float(1)), s.constant(SIMD3<Float>.zero)))
+            }
+        }
     }
 }

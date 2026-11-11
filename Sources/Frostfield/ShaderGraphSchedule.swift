@@ -43,6 +43,10 @@ struct ShaderSchedule {
     private(set) var trueScope: [NodeID: Int] = [:]
     private(set) var falseScope: [NodeID: Int] = [:]
     private(set) var bodyScope: [NodeID: Int] = [:]
+    /// The arm that stores a loop's next value. Absent when the loop has no continue.
+    private(set) var updateScope: [NodeID: Int] = [:]
+    /// One scope per switch arm, with the fallback last.
+    private(set) var caseScopes: [NodeID: [Int]] = [:]
     /// Reachable nodes per scope, in dependency order.
     private var members: [Int: [NodeID]] = [:]
 
@@ -59,13 +63,19 @@ struct ShaderSchedule {
             switch nodes[id] {
             case .loopIndex(let loop), .loopValue(let loop):
                 free[id] = [loop]
-            case .loop(_, let initial, let next, let exit):
+            case .loop(_, let iterations, let initial, let next, let exit, let skip):
                 if let loop = free[initial].first(where: { $0 == id }) {
                     throw Failure.loopValueEscapes(node: initial, loop: loop)
                 }
+                if let iterations, let loop = free[iterations].first(where: { $0 == id }) {
+                    throw Failure.loopValueEscapes(node: iterations, loop: loop)
+                }
                 var body = free[next]
                 if let exit { body = Self.union(body, free[exit]) }
-                free[id] = Self.union(free[initial], body.filter { $0 != id })
+                if let skip { body = Self.union(body, free[skip]) }
+                var outside = free[initial]
+                if let iterations { outside = Self.union(outside, free[iterations]) }
+                free[id] = Self.union(outside, body.filter { $0 != id })
                 loops.append(id)
             default:
                 free[id] = ShaderProgram.inputs(of: nodes[id]).reduce(into: []) { $0 = Self.union($0, free[$1]) }
@@ -118,7 +128,7 @@ struct ShaderSchedule {
             default: break
             }
             guard uniform[id], let loop = required[id] else { continue }
-            if case .loop(_, _, _, let exit?) = nodes[loop] {
+            if case .loop(_, _, _, _, let exit?, _) = nodes[loop] {
                 _ = exit
                 throw Failure.divergentDerivative(node: id, loop: loop)
             }
@@ -128,15 +138,31 @@ struct ShaderSchedule {
         // Uses of each node: the scope of an ordinary consumer, a branch arm, or a loop body.
         var uses = [[UseSite]](repeating: [], count: nodes.count)
         for consumer in order {
-            for (position, input) in ShaderProgram.inputs(of: nodes[consumer]).enumerated() {
-                let site: UseSite
-                switch nodes[consumer] {
-                case .branch where position == 1: site = .trueArm(consumer)
-                case .branch where position == 2: site = .falseArm(consumer)
-                case .loop where position >= 1: site = .body(consumer)
-                default: site = .scope(of: consumer)
+            switch nodes[consumer] {
+            case .switchSelect(let selector, let matches, let values, let fallback):
+                uses[selector].append(.scope(of: consumer))
+                for match in matches { uses[match].append(.scope(of: consumer)) }
+                for (index, value) in values.enumerated() { uses[value].append(.switchArm(consumer, index)) }
+                uses[fallback].append(.switchArm(consumer, values.count))
+            case .discard(let condition, let value):
+                uses[condition].append(.scope(of: consumer))
+                uses[value].append(.scope(of: consumer))
+            case .loop(_, let iterations, let initial, let next, let exit, let skip):
+                uses[initial].append(.scope(of: consumer))
+                if let iterations { uses[iterations].append(.scope(of: consumer)) }
+                uses[next].append(skip == nil ? .body(consumer) : .update(consumer))
+                if let exit { uses[exit].append(.body(consumer)) }
+                if let skip { uses[skip].append(.body(consumer)) }
+            default:
+                for (position, input) in ShaderProgram.inputs(of: nodes[consumer]).enumerated() {
+                    let site: UseSite
+                    switch nodes[consumer] {
+                    case .branch where position == 1: site = .trueArm(consumer)
+                    case .branch where position == 2: site = .falseArm(consumer)
+                    default: site = .scope(of: consumer)
+                    }
+                    uses[input].append(site)
                 }
-                uses[input].append(site)
             }
         }
         let roots = Set(outputs)
@@ -151,6 +177,8 @@ struct ShaderSchedule {
                 case .trueArm(let branch): scopesOfUse.append(trueScope[branch]!)
                 case .falseArm(let branch): scopesOfUse.append(falseScope[branch]!)
                 case .body(let loop): scopesOfUse.append(bodyScope[loop]!)
+                case .update(let loop): scopesOfUse.append(updateScope[loop]!)
+                case .switchArm(let selection, let index): scopesOfUse.append(caseScopes[selection]![index])
                 }
             }
             let deepest = scopesOfUse.dropFirst().reduce(scopesOfUse.first ?? 0) { lowestCommonAncestor($0, $1) }
@@ -177,8 +205,14 @@ struct ShaderSchedule {
             case .branch:
                 trueScope[id] = try addScope(.branchArm, parent: placed, owner: id)
                 falseScope[id] = try addScope(.branchArm, parent: placed, owner: id)
-            case .loop(let count, _, _, _):
-                bodyScope[id] = try addScope(.loopBody, parent: placed, owner: id, count: count)
+            case .switchSelect(_, _, let values, _):
+                var arms: [Int] = []
+                for _ in 0...values.count { arms.append(try addScope(.branchArm, parent: placed, owner: id)) }
+                caseScopes[id] = arms
+            case .loop(let count, _, _, _, _, let skip):
+                let body = try addScope(.loopBody, parent: placed, owner: id, count: count)
+                bodyScope[id] = body
+                if skip != nil { updateScope[id] = try addScope(.branchArm, parent: body, owner: id) }
                 iterations += scopes[placed].repetitions * count
             case .parallaxOcclusion(_, _, _, _, let steps):
                 iterations += scopes[placed].repetitions * (steps + 1)
@@ -198,6 +232,8 @@ struct ShaderSchedule {
         case trueArm(NodeID)
         case falseArm(NodeID)
         case body(NodeID)
+        case update(NodeID)
+        case switchArm(NodeID, Int)
     }
 
     private mutating func addScope(_ kind: ScopeKind, parent: Int, owner: NodeID, count: Int = 1) throws -> Int {

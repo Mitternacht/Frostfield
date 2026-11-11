@@ -15,8 +15,10 @@ public struct MaterialGraph: Sendable {
     public static let maximumUniformCount = 32
     public static let maximumTextureCount = 8
     public static let maximumFunctionCount = 16
-    /// The most iterations one `.loop` node may run.
+    /// The most iterations one `.loop` node may run, including a dynamic count's maximum.
     public static let maximumLoopIterations = 1_024
+    /// The most arms one `.switchSelect` node may have, besides its fallback.
+    public static let maximumSwitchCases = 16
     /// The deepest nesting of branch arms and loop bodies in generated code.
     public static let maximumNestingDepth = 16
     /// The most layers a `.parallaxOcclusion` node may march.
@@ -200,12 +202,22 @@ public struct MaterialGraph: Sendable {
         /// so that their screen-space derivatives remain defined. Nest branches in
         /// `ifFalse` for else-if chains.
         case branch(condition: NodeID, ifTrue: NodeID, ifFalse: NodeID)
+        /// Chooses the value whose match equals `selector`, or `fallback`. Only the chosen
+        /// arm's private nodes run. Matches are exact, so a scalar selector should be an
+        /// integer-valued float. One through `maximumSwitchCases` arms.
+        case switchSelect(selector: NodeID, matches: [NodeID], values: [NodeID], fallback: NodeID)
         /// Runs a bounded loop of 1...`maximumLoopIterations` iterations. The value starts
         /// at `initial`; each iteration evaluates `next` from this loop's `loopIndex` and
-        /// `loopValue` nodes and stores it as the new value. When `exit` is set, the loop
-        /// stops after the first iteration whose `exit` scalar exceeds 0.5. Nodes that read
-        /// neither loop node are evaluated once before the loop.
-        case loop(count: Int, initial: NodeID, next: NodeID, exit: NodeID?)
+        /// `loopValue` nodes and stores it as the new value. When `iterations` is set, the
+        /// loop runs that many times after truncating toward zero, clamped to 0...`count`,
+        /// and a nonfinite count runs none. When `exit` exceeds 0.5 the loop stops after
+        /// that iteration. When `skip` exceeds 0.5 the iteration keeps the accumulator and
+        /// does not run the nodes only `next` reads. Nodes that read neither loop node are
+        /// evaluated once before the loop.
+        case loop(count: Int, iterations: NodeID?, initial: NodeID, next: NodeID, exit: NodeID?, skip: NodeID?)
+        /// Sets the surface mask false where `condition` exceeds 0.5, which raster and path
+        /// coverage treat as a discarded fragment, and otherwise yields `value`. Surface stage.
+        case discard(condition: NodeID, value: NodeID)
         /// The zero-based iteration number of the `.loop` node `loop`, as a scalar.
         /// Valid only in nodes that reach that loop through its `next` or `exit`.
         case loopIndex(loop: NodeID)
@@ -330,6 +342,8 @@ public struct MaterialGraph: Sendable {
         case invalidMatrix(NodeID)
         /// A loop count outside 1...`maximumLoopIterations`.
         case invalidLoopCount(node: NodeID, count: Int)
+        /// A switch with no cases, too many cases, or cases that do not line up.
+        case invalidSwitch(NodeID)
         /// A `loopIndex` or `loopValue` node names a node that is not a `.loop`.
         case notALoop(node: NodeID, loop: NodeID)
         /// A value computed from a loop's iteration is read outside that loop's `next` or `exit`.
@@ -381,6 +395,8 @@ public struct MaterialGraph: Sendable {
                 "Material graph node \(node) combines matrices or vectors of different sizes, or selects a missing column."
             case .invalidLoopCount(let node, let count):
                 "Material graph loop \(node) runs \(count) iterations; use 1–\(MaterialGraph.maximumLoopIterations)."
+            case .invalidSwitch(let node):
+                "Material graph switch \(node) needs 1–\(MaterialGraph.maximumSwitchCases) cases."
             case .notALoop(let node, let loop):
                 "Material graph node \(node) reads the iteration of node \(loop), which is not a loop."
             case .loopValueEscapes(let node, let loop):
