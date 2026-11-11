@@ -1,0 +1,73 @@
+name: Package build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check Xcode and SDKs
+        shell: bash
+        run: |
+          if [[ ! -x "$DEVELOPER_DIR/usr/bin/xcodebuild" ]]; then
+            echo "::error::Required Xcode installation is missing at $DEVELOPER_DIR. Check the xcode-27 runner image manifest."
+            exit 1
+          fi
+
+          xcodebuild -version
+          xcrun swift --version
+          for sdk in macosx iphoneos iphonesimulator xros xrsimulator; do
+            if ! sdk_version=$(xcrun --sdk "$sdk" --show-sdk-version) || [[ "${sdk_version%%.*}" -lt 27 ]]; then
+              echo "::error::Xcode at $DEVELOPER_DIR must provide SDK $sdk version 27 or later."
+              exit 1
+            fi
+            echo "$sdk SDK $sdk_version"
+          done
+
+      - name: Check Metal compiler
+        shell: bash
+        run: |
+          if ! xcrun --sdk macosx metal -v; then
+            xcodebuild -downloadComponent metalToolchain
+            xcrun --sdk macosx metal -v
+          fi
+          xcrun --sdk iphonesimulator metal -v
+          xcrun --sdk xrsimulator metal -v
+
+      - name: Build macOS Debug
+        run: >-
+          xcodebuild -scheme Frostfield-Package -configuration Debug
+          -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO build
+
+      - name: Test macOS Debug
+        run: >-
+          xcodebuild -scheme Frostfield-Package -configuration Debug
+          -destination 'platform=macOS,arch=arm64' test
+
+      - name: Build macOS Release
+        run: >-
+          xcodebuild -scheme Frostfield-Package -configuration Release
+          -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO build
+
+      - name: Build iOS Simulator Release
+        run: >-
+          xcodebuild -scheme Frostfield-Package -configuration Release
+          -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+
+      - name: Build visionOS Simulator Release
+        run: >-
+          xcodebuild -scheme Frostfield-Package -configuration Release
+          -destination 'generic/platform=visionOS Simulator' CODE_SIGNING_ALLOWED=NO build

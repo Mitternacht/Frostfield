@@ -1,0 +1,14 @@
+Antique Camera
+Model by Maximillan Kamps, © 2018 UX3D. Licensed under CC0 1.0 Universal.
+https://creativecommons.org/publicdomain/zero/1.0/
+
+The UX3D mark on the tripod is retained in its original context. See the
+upstream notice for the mark, © 2017 UX3D.
+https://github.com/KhronosGroup/glTF-Sample-Assets/blob/8f492390ddc7a2ae221a1369ef560589cf8c70fb/LICENSES/LicenseRef-LegalMark-UX3D.txt
+
+Source asset and licensing record from Khronos glTF Sample Assets.
+https://github.com/KhronosGroup/glTF-Sample-Assets/blob/8f492390ddc7a2ae221a1369ef560589cf8c70fb/Models/AntiqueCamera/glTF-Binary/AntiqueCamera.glb
+https://github.com/KhronosGroup/glTF-Sample-Assets/blob/8f492390ddc7a2ae221a1369ef560589cf8c70fb/Models/AntiqueCamera/LICENSE.md
+
+Frostfield repacked the GLB with all six maps resampled from 2048 × 2048
+to 1024 × 1024. Geometry and material bindings are as authored.

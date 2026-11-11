@@ -1,6 +1,8 @@
 # Frostfield validation
 
-Status: validation plan, 2026-11-08. No package build, GPU performance, rendered-image correctness, device compatibility, or energy claim has been established by this planning work. A future empty package build will validate packaging only.
+The [build baseline](evidence/build-baseline.md) records package compilation checks.
+Rendering, device compatibility, performance, and energy claims require separate
+evidence under this protocol.
 
 ## Evidence levels
 
@@ -12,7 +14,7 @@ Status: validation plan, 2026-11-08. No package build, GPU performance, rendered
 | Physical-device render | Observed behavior for the recorded hardware/OS/fixture | Universal device coverage |
 | Sustained device profile | Timing, memory, thermal, and interaction behavior under recorded conditions | A permanent performance guarantee under arbitrary app workloads |
 
-Simulator translates graphics work to the host Mac and can differ from the selected simulated device; never substitute its timings for a phone or tablet benchmark. [Apple's Simulator guidance](https://developer.apple.com/documentation/metal/developing-metal-apps-that-run-in-simulator).
+Simulator translates graphics work to the host Mac and can differ from the selected simulated device. Use iPhone, iPad, and Apple Vision Pro hardware for qualification of those platforms. [Apple's Simulator guidance](https://developer.apple.com/documentation/metal/developing-metal-apps-that-run-in-simulator)
 
 ## Tool workflow
 
@@ -32,6 +34,7 @@ For the limited standalone v0.1 at Checkpoint C, require the triangle, fixed cam
 | Directional light at known angles | Normal transforms and linear-light behavior |
 | Seeded bounded particles | Determinism, update/draw ordering, capacity and time-step behavior |
 | Bypassed/enabled color grade | Intermediate-texture hazards, alpha and conversion errors |
+| Blender-exported studio asset with HDR lighting | Imported normal and material detail, highlights, penumbra, lens focus, and final display conversion |
 | Frame-stamped offscreen texture | Stale frames, reuse before completion, UV/crop/scale mismatch |
 | Native app with scrolling and overlay controls | Event routing, lifecycle, surrounding UI responsiveness |
 
@@ -41,7 +44,7 @@ Capture fixed camera, seed, time, resolution, quality, and color settings. Compa
 
 The initial target is a sustained 60 Hz reference scene, not a current performance claim. The nominal 16.67 ms frame interval is the whole app's display budget; Frostfield must leave room for native UI and other work. Set a smaller numeric CPU/GPU budget after FF-02–FF-05 establish device-specific baselines. A later 120 Hz target requires separate evidence.
 
-1. Name the oldest intended physical test device and one recent device. Record model/chip, OS, display refresh mode, Xcode/SDK, commit, backend, build configuration, dimensions, scale, quality, particle count, and content seed.
+1. Name the test hardware for every advertised platform. Include the oldest supported hardware and one recent model where available. Record model/chip, OS, display refresh mode, Xcode/SDK, commit, backend, build configuration, dimensions, scale, quality, particle count, and content seed.
 2. Use a Release-equivalent build and a controlled environment. Record battery/power state, Low Power Mode, initial thermal state, brightness, and whether a cable, screen recording, or profiling attachment changes the workload.
 3. Run a native-only baseline, then the triangle, then the full reference fixture at matching resolution and duration. Keep scrolling and control-interaction scripts reproducible. Compare backends at identical visual quality.
 4. Warm up for 30 seconds, then collect a 10-minute run. Record CPU frame/submission time and GPU duration distributions (p50/p95/p99), actual presented frame intervals, missed-frame counts, resident/allocated memory, peak in-flight resources, thermal transitions, and any available energy indicators.

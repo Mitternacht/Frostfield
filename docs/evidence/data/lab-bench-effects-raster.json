@@ -1,0 +1,35 @@
+{
+  "controls" : {
+    "core.energy" : 14,
+    "core.scale" : 3,
+    "post.bloom" : 0.90000000000000002,
+    "post.tone" : 0.40000000000000002,
+    "scene.exposure" : -0.40000000000000002,
+    "scene.paused" : 0,
+    "vortex.glow" : 1.6000000000000001,
+    "vortex.hue" : 0.55000000000000004,
+    "vortex.lift" : 0.29999999999999999,
+    "vortex.swirl" : 2.3999999999999999,
+    "vortex.turbulence" : 0.80000000000000004
+  },
+  "cpuEncodeMs" : {
+    "p50" : 0.063333332946058363,
+    "p95" : 0.096583331469446421,
+    "p99" : 0.15787499432917684
+  },
+  "device" : "Apple M4 Max",
+  "deviceAllocatedMB" : 95.96875,
+  "frames" : 300,
+  "gpuMs" : {
+    "max" : 1.5436666653840803,
+    "p50" : 0.83412499952828512,
+    "p95" : 1.3001249972148798,
+    "p99" : 1.4532083296217024
+  },
+  "height" : 1080,
+  "note" : "Offscreen, one command buffer in flight, waits each frame; excludes presentation and display timing.",
+  "os" : "Version 27.2 (Build 26B123)",
+  "scene" : "--effects-lab",
+  "warmupFrames" : 30,
+  "width" : 1920
+}

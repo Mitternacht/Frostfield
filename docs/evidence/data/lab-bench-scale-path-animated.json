@@ -1,0 +1,85 @@
+{
+  "controls" : {
+    "field.animate" : 1,
+    "field.count" : 20000,
+    "field.culling" : 1,
+    "field.hysteresis" : 0.10000000000000001,
+    "field.lod" : 1,
+    "mat.aniso" : 0.84999999999999998,
+    "mat.anisoTurn" : 0,
+    "mat.dispersion" : 3,
+    "mat.film" : 680,
+    "mat.glow" : 14,
+    "mat.sheen" : 0.45000000000000001,
+    "post.bloom" : 0.34999999999999998,
+    "post.radius" : 4,
+    "scene.exposure" : 0,
+    "scene.path" : 1,
+    "scene.samples" : 2048,
+    "scene.view" : 0,
+    "sky.intensity" : 1,
+    "sky.rotation" : 0,
+    "sun.azimuth" : -35,
+    "sun.elevation" : 38,
+    "sun.lux" : 5,
+    "tex.tiling" : 2,
+    "tex.turn" : 20
+  },
+  "cpuEncodeMs" : {
+    "p50" : 5.6206249937531538,
+    "p95" : 6.2705833333893679,
+    "p99" : 6.4947499995469116
+  },
+  "details" : {
+    "animationCPUMeanMs" : 0.30320027814013883,
+    "chunkNodes" : 764,
+    "fieldInstances" : 20000,
+    "levelTriangles" : {
+      "crystal" : [
+        210,
+        45,
+        18
+      ],
+      "rock" : [
+        624,
+        100,
+        20
+      ],
+      "tree" : [
+        156,
+        22,
+        14
+      ]
+    },
+    "path" : {
+      "bottomLevelCount" : 19,
+      "bufferBytes" : 10100804,
+      "instanceCount" : 20010,
+      "lastSceneBuildMs" : 35.992124998301733,
+      "lastTraceGPUMs" : 43.852666000000006,
+      "samplesPerPixel" : 1,
+      "sceneBuilds" : 1,
+      "storedTriangles" : 29427,
+      "textureBytes" : 4227072,
+      "topLevelBuilds" : 1,
+      "topLevelRefits" : 149,
+      "tracedTriangles" : 881380,
+      "updateTransformsMeanMs" : 4.75524440731997
+    }
+  },
+  "device" : "Apple M4 Max",
+  "deviceAllocatedMB" : 180.703125,
+  "frames" : 120,
+  "gpuMs" : {
+    "max" : 45.160000001487788,
+    "p50" : 42.850083336816169,
+    "p95" : 44.601458328543231,
+    "p99" : 44.990499998675659
+  },
+  "height" : 720,
+  "note" : "Offscreen, one command buffer in flight, waits each frame; excludes presentation and display timing.",
+  "os" : "Version 27.2 (Build 26B123)",
+  "scene" : "--scale-lab",
+  "warmupFrames" : 30,
+  "width" : 1280
+}
