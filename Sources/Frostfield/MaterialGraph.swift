@@ -149,6 +149,8 @@ public struct MaterialGraph: Sendable {
         case sampleTextureGradient(slot: Int, coordinates: NodeID, ddx: NodeID, ddy: NodeID)
         /// Samples a cube map along a direction and returns RGBA. Compute graphs read mip 0.
         case sampleCube(slot: Int, direction: NodeID)
+        /// Samples a 3D texture at normalized coordinates and returns RGBA. Compute graphs read mip 0.
+        case sampleTexture3D(slot: Int, coordinates: NodeID)
         /// Samples the viewport or post-process image at mip zero. Returns premultiplied linear RGBA.
         case sampleScene(coordinates: NodeID)
         /// Samples the viewport or post-process image at a scalar mip level.

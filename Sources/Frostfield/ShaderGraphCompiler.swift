@@ -417,14 +417,25 @@ struct ShaderProgram: Hashable, Sendable {
         }
         func requireFlatTexture(_ slot: Int) throws {
             try requireTexture(slot)
-            if declarations.textures[slot].shape == .cube {
+            switch declarations.textures[slot].shape {
+            case .twoDimensional:
+                return
+            case .cube:
                 throw Failure.invalidDeclaration("Cube map \(declarations.textures[slot].name) is sampled with a direction.")
+            case .texture3D:
+                throw Failure.invalidDeclaration("3D texture \(declarations.textures[slot].name) is sampled with a vector3.")
             }
         }
         func requireCube(_ slot: Int) throws {
             try requireTexture(slot)
             guard declarations.textures[slot].shape == .cube else {
-                throw Failure.invalidDeclaration("Texture \(declarations.textures[slot].name) is 2D. Sample it with a vector2.")
+                throw Failure.invalidDeclaration("Texture \(declarations.textures[slot].name) is not a cube map.")
+            }
+        }
+        func requireVolume(_ slot: Int) throws {
+            try requireTexture(slot)
+            guard declarations.textures[slot].shape == .texture3D else {
+                throw Failure.invalidDeclaration("Texture \(declarations.textures[slot].name) is not a 3D texture.")
             }
         }
         func requireVector(_ input: NodeID) throws -> ValueType {
@@ -485,6 +496,10 @@ struct ShaderProgram: Hashable, Sendable {
         case .sampleCube(let slot, let direction):
             try requireCube(slot)
             try require(direction, .vector3)
+            return .vector4
+        case .sampleTexture3D(let slot, let coordinates):
+            try requireVolume(slot)
+            try require(coordinates, .vector3)
             return .vector4
         case .sampleScene(let coordinates):
             try require(coordinates, .vector2)
@@ -897,6 +912,8 @@ struct ShaderProgram: Hashable, Sendable {
             [coordinates, ddx, ddy]
         case .sampleCube(_, let direction):
             [direction]
+        case .sampleTexture3D(_, let coordinates):
+            [coordinates]
         case .sampleSceneLevel(let coordinates, let level):
             [coordinates, level]
         case .viewportSafeUV(let coordinates, let fallback):
@@ -1045,6 +1062,10 @@ struct ShaderProgram: Hashable, Sendable {
             let texture = declarations.textures[slot]
             return "frostfield_graph_sample(resources, \(slot)u, \(texture.addressing.code)u, "
                 + "\(texture.filtering.code)u, \(n(direction)))"
+        case .sampleTexture3D(let slot, let coordinates):
+            let texture = declarations.textures[slot]
+            return "frostfield_graph_sample(resources, \(slot)u, \(texture.addressing.code)u, "
+                + "\(texture.filtering.code)u, \(n(coordinates)))"
         case .sampleScene(let coordinates): return "frostfield_graph_scene(resources, \(n(coordinates)))"
         case .sampleSceneLevel(let coordinates, let level): return "frostfield_graph_scene(resources, \(n(coordinates)), \(n(level)))"
         case .sampleDepth(let coordinates): return "frostfield_graph_depth(resources, \(n(coordinates)))"

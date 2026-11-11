@@ -870,4 +870,61 @@ struct ShaderPatternTests {
             try PhysicallyBasedMaterial(surfaceGraph: surface, surfaceTextures: ["Map": image])
         }
     }
+
+    @Test("A compute graph samples a 3D texture by normalized coordinates")
+    func texture3D() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let descriptor = MTLTextureDescriptor()
+        descriptor.textureType = .type3D
+        descriptor.pixelFormat = .rgba32Float
+        descriptor.width = 1
+        descriptor.height = 1
+        descriptor.depth = 2
+        descriptor.mipmapLevelCount = 1
+        descriptor.usage = .shaderRead
+        descriptor.storageMode = .shared
+        let volume = try #require(device.makeTexture(descriptor: descriptor))
+        let slices = [SIMD4<Float>(1, 0, 0, 1), SIMD4<Float>(0, 0, 1, 1)]
+        for (depth, color) in slices.enumerated() {
+            let texel = [color]
+            texel.withUnsafeBytes { bytes in
+                volume.replace(
+                    region: MTLRegion(origin: MTLOrigin(x: 0, y: 0, z: depth), size: MTLSize(width: 1, height: 1, depth: 1)),
+                    mipmapLevel: 0, slice: 0, withBytes: bytes.baseAddress!, bytesPerRow: 16, bytesPerImage: 16
+                )
+            }
+        }
+        let graph = try BufferShaderGraph(fieldCount: 1) { b in
+            let map = b.texture3D("Map", addressing: .clampToEdge, filtering: .nearest)
+            return [0: map.sample(b.uniform("UVW", SIMD3<Float>(0.5, 0.5, 0.25)))]
+        }
+        let uniforms = try ShaderUniforms(graph.uniforms)
+        func read(_ uvw: SIMD3<Float>) throws -> SIMD4<Float> {
+            try uniforms.set("UVW", to: uvw)
+            return try probe.run(
+                graph, elements: [[SIMD4<Float>(0, 0, 0, 0)]], uniforms: uniforms, textures: ["Map": volume]
+            )[0][0]
+        }
+        #expect(try read(SIMD3(0.5, 0.5, 0.25)) == slices[0])
+        #expect(try read(SIMD3(0.5, 0.5, 0.75)) == slices[1])
+        let encoded = try JSONEncoder().encode(graph)
+        #expect(try JSONDecoder().decode(BufferShaderGraph.self, from: encoded) == graph)
+        #expect(throws: MaterialGraph.Failure.invalidDeclaration("A 3D texture is sampled with a vector3.")) {
+            try BufferShaderGraph(fieldCount: 1) { b in
+                let map = b.texture3D("Map")
+                return [0: map.sample(b.constant(SIMD2<Float>(0.5, 0.5)))]
+            }
+        }
+        let surface = try SurfaceShaderGraph { s in
+            let map = s.texture3D("Map", addressing: .clampToEdge, filtering: .nearest)
+            return .init(baseColor: map.sample(s.constant(SIMD3<Float>(0.5, 0.5, 0.25))).rgb)
+        }
+        let flat = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba32Float, width: 1, height: 1, mipmapped: false)
+        flat.usage = .shaderRead
+        flat.storageMode = .shared
+        let image = try #require(device.makeTexture(descriptor: flat))
+        #expect(throws: PhysicallyBasedMaterial.Failure.surfaceTexture("Map")) {
+            try PhysicallyBasedMaterial(surfaceGraph: surface, surfaceTextures: ["Map": image])
+        }
+    }
 }

@@ -436,7 +436,7 @@ public enum ShaderComputeFailure: LocalizedError, Equatable {
         case .unknownTexture(let name): "The graph does not declare a texture named \"\(name)\"."
         case .invalidTexture(let name):
             "Texture \"\(name)\" must be a single-sample, shaderRead, float-sampled texture from the graph's device, "
-                + "and a 2D image or a cube map as declared; "
+                + "and a 2D image, cube map, or 3D texture as declared; "
                 + "data textures cannot use sRGB formats, and linear filtering of 32-bit float textures needs GPU support."
         case .textureAliasesOutput(let name):
             "Texture \"\(name)\" shares storage with the output texture. Read from a separate texture."
@@ -460,23 +460,28 @@ public enum ShaderComputeFailure: LocalizedError, Equatable {
 struct ShaderComputeResources: Sendable {
     let uniformCount: Int
     let textureCount: Int
-    let cubeSlots: Set<Int>
+    let shapes: [ShaderTextureInput.Shape]
 
     init(uniformCount: Int, textures: [ShaderTextureInput]) {
         self.uniformCount = uniformCount
         self.textureCount = textures.count
-        self.cubeSlots = Set(textures.enumerated().compactMap { index, texture in
-            texture.shape == .cube ? index : nil
-        })
+        self.shapes = textures.map(\.shape)
+    }
+
+    private static func sampledType(_ shape: ShaderTextureInput.Shape) -> String {
+        switch shape {
+        case .twoDimensional: "texture2d<float>"
+        case .cube: "texturecube<float>"
+        case .texture3D: "texture3d<float>"
+        }
     }
 
     /// `FrostfieldGraphResources` and the `frostfield_graph_uniform` and `frostfield_graph_sample` hooks.
     var declarations: String {
         var members: [String] = []
         if uniformCount > 0 { members.append("    constant float4* uniforms;") }
-        for slot in 0..<textureCount {
-            let type = cubeSlots.contains(slot) ? "texturecube<float>" : "texture2d<float>"
-            members.append("    \(type) texture\(slot);")
+        for (slot, shape) in shapes.enumerated() {
+            members.append("    \(Self.sampledType(shape)) texture\(slot);")
         }
         var source = members.isEmpty
             ? "struct FrostfieldGraphResources {};"
@@ -491,7 +496,7 @@ struct ShaderComputeResources: Sendable {
             """
         }
         if textureCount > 0 {
-            let flatSlots = (0..<textureCount).filter { !cubeSlots.contains($0) }
+            let flatSlots = shapes.enumerated().compactMap { $0.element == .twoDimensional ? $0.offset : nil }
             let cases = flatSlots.map {
                 "    case \($0)u: return frostfield_compute_sample(resources.texture\($0), address, filter, uv, level);"
             }.joined(separator: "\n")
@@ -560,11 +565,18 @@ struct ShaderComputeResources: Sendable {
                 }
             }
             """
-            if !cubeSlots.isEmpty {
-                let cubeCases = cubeSlots.sorted().map {
-                    "    case \($0)u: return frostfield_compute_cube(resources.texture\($0), address, filter, direction);"
+            if shapes.contains(where: { $0 != .twoDimensional }) {
+                let spatialCases = shapes.enumerated().compactMap { slot, shape -> String? in
+                    let function: String
+                    switch shape {
+                    case .twoDimensional: return nil
+                    case .cube: function = "frostfield_compute_cube"
+                    case .texture3D: function = "frostfield_compute_volume"
+                    }
+                    return "    case \(slot)u: return \(function)(resources.texture\(slot), address, filter, coordinates);"
                 }.joined(separator: "\n")
-                source += """
+                if shapes.contains(.cube) {
+                    source += """
 
 
             // A nonfinite or zero direction reads the +X face. Compute reads mip 0.
@@ -587,12 +599,42 @@ struct ShaderComputeResources: Sendable {
                 default: return texture.sample(mirrorNearest, coordinates, level(0.0f));
                 }
             }
+            """
+                }
+                if shapes.contains(.texture3D) {
+                    source += """
+
+
+            // A nonfinite coordinate reads zero. Compute reads mip 0.
+            static inline float4 frostfield_compute_volume(
+                texture3d<float> texture, uint address, uint filter, float3 uv
+            ) {
+                constexpr sampler repeatLinear(address::repeat, filter::linear, mip_filter::nearest);
+                constexpr sampler repeatNearest(address::repeat, filter::nearest, mip_filter::nearest);
+                constexpr sampler clampLinear(address::clamp_to_edge, filter::linear, mip_filter::nearest);
+                constexpr sampler clampNearest(address::clamp_to_edge, filter::nearest, mip_filter::nearest);
+                constexpr sampler mirrorLinear(address::mirrored_repeat, filter::linear, mip_filter::nearest);
+                constexpr sampler mirrorNearest(address::mirrored_repeat, filter::nearest, mip_filter::nearest);
+                float3 coordinates = all(isfinite(uv)) ? uv : float3(0);
+                switch (address * 2u + filter) {
+                case 0u: return texture.sample(repeatLinear, coordinates, level(0.0f));
+                case 1u: return texture.sample(repeatNearest, coordinates, level(0.0f));
+                case 2u: return texture.sample(clampLinear, coordinates, level(0.0f));
+                case 3u: return texture.sample(clampNearest, coordinates, level(0.0f));
+                case 4u: return texture.sample(mirrorLinear, coordinates, level(0.0f));
+                default: return texture.sample(mirrorNearest, coordinates, level(0.0f));
+                }
+            }
+            """
+                }
+                source += """
+
 
             static inline float4 frostfield_graph_sample(
-                thread const FrostfieldGraphResources& resources, uint slot, uint address, uint filter, float3 direction
+                thread const FrostfieldGraphResources& resources, uint slot, uint address, uint filter, float3 coordinates
             ) {
                 switch (slot) {
-            \(cubeCases)
+            \(spatialCases)
                 default: return float4(0);
                 }
             }
@@ -606,9 +648,8 @@ struct ShaderComputeResources: Sendable {
     func kernelParameters(firstBuffer: Int, firstTexture: Int) -> String {
         var parameters: [String] = []
         if uniformCount > 0 { parameters.append("constant float4* graphUniforms [[buffer(\(firstBuffer))]]") }
-        for slot in 0..<textureCount {
-            let type = cubeSlots.contains(slot) ? "texturecube<float>" : "texture2d<float>"
-            parameters.append("\(type) graphTexture\(slot) [[texture(\(firstTexture + slot))]]")
+        for (slot, shape) in shapes.enumerated() {
+            parameters.append("\(Self.sampledType(shape)) graphTexture\(slot) [[texture(\(firstTexture + slot))]]")
         }
         return parameters.map { ",\n    \($0)" }.joined() + ","
     }
@@ -668,7 +709,11 @@ struct ShaderComputeResources: Sendable {
             let format = texture.pixelFormat
             let isSRGB = format == .rgba8Unorm_srgb || format == .bgra8Unorm_srgb
             let isFloat32 = format == .r32Float || format == .rg32Float || format == .rgba32Float
-            let expected: MTLTextureType = declaration.shape == .cube ? .typeCube : .type2D
+            let expected: MTLTextureType = switch declaration.shape {
+            case .twoDimensional: .type2D
+            case .cube: .typeCube
+            case .texture3D: .type3D
+            }
             guard texture.device === device, texture.textureType == expected, texture.sampleCount == 1,
                   texture.usage.isEmpty || texture.usage.contains(.shaderRead),
                   sampledFormats.contains(format),

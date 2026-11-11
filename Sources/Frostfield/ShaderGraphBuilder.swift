@@ -300,6 +300,15 @@ public final class ShaderGraphBuilder {
         declareTexture(name, content: content, addressing: addressing, filtering: filtering, shape: .cube)
     }
 
+    /// Declares, or reuses by name, a 3D texture. Compute graphs sample it at normalized
+    /// coordinates and mip 0.
+    public func texture3D(
+        _ name: String, content: ShaderTextureInput.Content = .data,
+        addressing: ShaderTextureInput.Addressing = .clampToEdge, filtering: ShaderTextureInput.Filtering = .linear
+    ) -> ShaderTexture {
+        declareTexture(name, content: content, addressing: addressing, filtering: filtering, shape: .texture3D)
+    }
+
     private func declareTexture(
         _ name: String, content: ShaderTextureInput.Content, addressing: ShaderTextureInput.Addressing,
         filtering: ShaderTextureInput.Filtering, shape: ShaderTextureInput.Shape
@@ -736,19 +745,32 @@ public struct ShaderTexture {
         )
     }
 
-    /// RGBA of a cube map along a direction. Compute graphs read mip 0. A nonfinite or
-    /// zero direction reads the +X face.
-    public func sample(_ direction: ShaderValue<SIMD3<Float>>) -> ShaderValue<SIMD4<Float>> {
-        guard builder.textures.indices.contains(slot), builder.textures[slot].shape == .cube else {
+    /// RGBA of a cube map along a direction, or of a 3D texture at normalized coordinates.
+    /// Compute graphs read mip 0. A nonfinite or zero cube direction reads the +X face.
+    /// A nonfinite 3D coordinate reads zero.
+    public func sample(_ coordinates: ShaderValue<SIMD3<Float>>) -> ShaderValue<SIMD4<Float>> {
+        let shape = builder.textures.indices.contains(slot) ? builder.textures[slot].shape : .twoDimensional
+        switch shape {
+        case .cube:
+            return builder.add(.sampleCube(slot: slot, direction: coordinates.id), operands: [coordinates])
+        case .texture3D:
+            return builder.add(.sampleTexture3D(slot: slot, coordinates: coordinates.id), operands: [coordinates])
+        case .twoDimensional:
             builder.rejectDeclaration("A 2D texture is sampled with a vector2.")
-            return builder.add(.sampleCube(slot: slot, direction: direction.id), operands: [direction])
+            return builder.add(.sampleCube(slot: slot, direction: coordinates.id), operands: [coordinates])
         }
-        return builder.add(.sampleCube(slot: slot, direction: direction.id), operands: [direction])
     }
 
-    private func require2D(_ reason: String) {
-        guard builder.textures.indices.contains(slot), builder.textures[slot].shape == .cube else { return }
-        builder.rejectDeclaration(reason)
+    private func require2D(_ cubeReason: String) {
+        guard builder.textures.indices.contains(slot) else { return }
+        switch builder.textures[slot].shape {
+        case .twoDimensional:
+            return
+        case .cube:
+            builder.rejectDeclaration(cubeReason)
+        case .texture3D:
+            builder.rejectDeclaration("A 3D texture is sampled with a vector3.")
+        }
     }
 
     /// Decodes a tangent-space normal map texel from 0...1 storage to -1...1.

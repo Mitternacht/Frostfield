@@ -338,7 +338,7 @@ public struct ClassicMaterial {
         }
         self.surfaceTextures = try declaredTextures.map { declaration in
             guard declaration.shape == .twoDimensional else {
-                throw Failure.nodeGraph("Texture \(declaration.name) is a cube map. Compute graphs sample cube maps.")
+                throw Failure.nodeGraph("Texture \(declaration.name) is not a 2D image. Compute graphs sample cube and 3D textures.")
             }
             guard let texture = surfaceTextures[declaration.name] else {
                 throw Failure.nodeGraph("The graph is missing texture \(declaration.name).")

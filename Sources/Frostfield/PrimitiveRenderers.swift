@@ -1149,7 +1149,7 @@ enum PrimitivePipeline {
         }
         for node in colorGraph.nodes {
             switch node {
-            case .sampleTexture, .sampleTextureLevel, .sampleTextureGradient, .sampleCube, .sampleScene, .sampleSceneLevel,
+            case .sampleTexture, .sampleTextureLevel, .sampleTextureGradient, .sampleCube, .sampleTexture3D, .sampleScene, .sampleSceneLevel,
                  .sampleDepth, .viewportSafeUV, .softParticleOpacity,
                  .viewPositionFromDepth, .normalFromDepth, .denoise, .linearDepth, .derivative, .bumpMap, .triplanarSample:
                 throw PrimitiveRendererError.colorGraph("A primitive color graph cannot sample a texture or the frame.")

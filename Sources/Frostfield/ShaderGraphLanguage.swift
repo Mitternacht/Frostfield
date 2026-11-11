@@ -426,6 +426,7 @@ public struct ShaderTextureInput: Hashable, Sendable {
     public enum Shape: String, Hashable, Sendable {
         case twoDimensional
         case cube
+        case texture3D
     }
 
     public let name: String

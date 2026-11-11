@@ -457,6 +457,8 @@ extension MaterialGraph.Node: Codable {
             )
         case "sampleCube":
             self = .sampleCube(slot: try container.decode(Int.self, forKey: .index), direction: try operands(1)[0])
+        case "sampleTexture3D":
+            self = .sampleTexture3D(slot: try container.decode(Int.self, forKey: .index), coordinates: try operands(1)[0])
         case "sampleScene": self = .sampleScene(coordinates: try operands(1)[0])
         case "sampleSceneLevel":
             let values = try operands(2)
@@ -639,6 +641,8 @@ extension MaterialGraph.Node: Codable {
             try write("sampleTextureGradient", [coordinates, ddx, ddy]); try container.encode(slot, forKey: .index)
         case .sampleCube(let slot, let direction):
             try write("sampleCube", [direction]); try container.encode(slot, forKey: .index)
+        case .sampleTexture3D(let slot, let coordinates):
+            try write("sampleTexture3D", [coordinates]); try container.encode(slot, forKey: .index)
         case .sampleScene(let coordinates): try write("sampleScene", [coordinates])
         case .sampleSceneLevel(let coordinates, let level): try write("sampleSceneLevel", [coordinates, level])
         case .sampleDepth(let coordinates): try write("sampleDepth", [coordinates])

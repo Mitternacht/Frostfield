@@ -33,6 +33,7 @@ groove and show the face of the next brick, and both renderers agree.
 | Explicit mip level | `.sampleTextureLevel`, `ShaderTexture.sample(_:level:)` | The sample function is in the raster, deformation, post and path libraries | Same | Compute buffer kernel selects the mip | `ShaderPatternTests.textureLevel` |
 | Explicit UV derivatives | `.sampleTextureGradient`, `ShaderTexture.sample(_:ddx:ddy:)` | The sample function is in the raster, deformation, post and path libraries | Same | Compute buffer kernel selects the mip | `ShaderPatternTests.textureGradient` |
 | Cube map by direction | `.sampleCube`, `ShaderGraphBuilder.cube(_:content:addressing:filtering:)`, `ShaderTexture.sample(_: SIMD3<Float>)` | Rejected at material setup | Rejected while graph textures are packed as 2D | Compute buffer kernel reads mip 0 | `ShaderPatternTests.cubeTexture` |
+| 3D texture | `.sampleTexture3D`, `ShaderGraphBuilder.texture3D(_:content:addressing:filtering:)`, `ShaderTexture.sample(_: SIMD3<Float>)` | Rejected at material setup | Rejected while graph textures are packed as 2D | Compute buffer kernel reads mip 0 | `ShaderPatternTests.texture3D` |
 | Parallax occlusion mapping | `.parallaxOcclusion`, `ShaderTexture.parallaxOcclusion(_:view:depth:steps:)`, `tangentSpace(_:)` | Yes | Yes | All | `ShaderPatternTests.parallaxOcclusion`, `ShaderGraphViewTests.parallaxInRenderers`, capture above |
 | Screen-space derivatives | `.derivative`, `MaterialGraph.Derivative`, `dFdx()`, `dFdy()`, `fwidth()` | Yes | Rejected | Post-process yes; vertex and compute rejected | `ShaderPatternTests.derivatives`, `ShaderGraphInputTests.screenSpace` |
 | Bit operations and value hashing | `.bits`, `MaterialGraph.BitOperation`, `.hash`, `bits(_:_:)`, `hash()` | Yes | Yes | All | `ShaderPatternTests.bitsAndHashes`, `ShaderNoiseTests` |
@@ -88,6 +89,7 @@ least disturbed run as well as the median.
 | Explicit texture level | A 4×4 texture with three constant mips (red, green, blue) sampled at UV (0.5, 0.5) with nearest filtering. Level 0 is red, level 1 is green, and level 8 clamps to the last mip and is blue. The graph JSON round-trips. macOS passed the pattern suite plus one raster, post-process, and deformation compile (17 tests, 2.353 seconds). The iPad Pro (M5) simulator passed the same four suites (17 tests, 9.472 seconds). Both runs had Metal API Validation on |
 | Explicit UV derivatives | The same 4×4 texture. A footprint of 0 or 1 texel reads red, 2 texels reads green, and 4 or 8 texels read blue. A product of two 1×10²⁰ values overflows and reads mip 0. The sample used only by one branch arm is generated inside that arm and reads green. The graph JSON round-trips. macOS passed the pattern suite plus one raster, post-process, and deformation compile (18 tests, 3.027 seconds). The iPad Pro (M5) simulator passed the same four suites (18 tests, 10.060 seconds). Both runs had Metal API Validation on |
 | Cube map | Six 1×1 faces, +X through −Z, read back as red, green, blue, yellow, magenta, and cyan along those axes. A zero direction reads +X. A 2D sample of a cube and a direction sample of a 2D texture are rejected. A physically based material rejects the cube declaration. The graph JSON round-trips. macOS passed `ShaderPatternTests` (16 tests, 0.324 seconds) and the iPad Pro (M5) simulator passed the same suite (16 tests, 2.634 seconds), both with Metal API Validation |
+| 3D texture | A 1×1×2 volume, red then blue. Normalized z of 0.25 reads red and 0.75 reads blue with nearest filtering. A vector2 sample is rejected, and a physically based material rejects the declaration. The graph JSON round-trips. macOS passed `ShaderPatternTests` (17 tests, 0.487 seconds) and the iPad Pro (M5) simulator passed the same suite (17 tests, 3.741 seconds), both with Metal API Validation |
 
 ## Semantics
 
@@ -223,7 +225,8 @@ GPU shades with the same pattern.
 | `triplanarTexture`, `triplanarTextures` | `ShaderTexture.triplanar`, `triplanar(x:y:z:...)`, `triplanarWeights` | One or three textures, adjustable weights and stable normalization at high sharpness |
 | `textureLevel` | `ShaderTexture.sample(_:level:)` | Partial: an explicit mip, clamped to the last level, with a nonfinite level reading 0. It may run inside a branch |
 | `texture().grad` | `ShaderTexture.sample(_:ddx:ddy:)` | Partial: the mip is log2 of the larger UV footprint in texels, clamped to the last mip. A nonfinite derivative reads level 0. The sample may stay inside the branch arm that reads it |
-| `cubeTexture` | `ShaderGraphBuilder.cube`, `ShaderTexture.sample(_: SIMD3<Float>)` | Partial: compute graphs read mip 0 along a direction. Raster, post, and path tracing still bind 2D graph textures. 3D textures remain open |
+| `cubeTexture` | `ShaderGraphBuilder.cube`, `ShaderTexture.sample(_: SIMD3<Float>)` | Partial: compute graphs read mip 0 along a direction. Raster, post, and path tracing still bind 2D graph textures |
+| `texture3D` | `ShaderGraphBuilder.texture3D`, `ShaderTexture.sample(_: SIMD3<Float>)` | Partial: compute graphs read mip 0 at normalized coordinates. A nonfinite coordinate reads zero. Raster, post, and path tracing still bind 2D graph textures |
 | `parallaxUV` | `ShaderTexture.parallaxOcclusion` | Layered occlusion mapping with intersection refinement |
 | `dFdx`, `dFdy`, `fwidth` | Same | Match in raster; the path tracer rejects them by name |
 | `time`, `deltaTime`, `frameId` | `time`, `deltaTime`, `frame` | Match; driven per graph by `ShaderUniforms` rather than a renderer clock |
@@ -258,8 +261,9 @@ GPU shades with the same pattern.
   that mip. Explicit UV derivatives select that same mip from log2 of the larger
   footprint in texels. A nonfinite derivative reads level 0. A compute graph can
   sample a cube map by direction at mip 0; a nonfinite or zero direction reads
-  the +X face. Raster, post, and path tracing still bind 2D graph textures.
-  Discard is a surface-stage coverage decision.
+  the +X face. A compute graph samples a 3D texture at normalized coordinates
+  and mip 0; a nonfinite coordinate reads zero. Raster, post, and path tracing
+  still bind 2D graph textures. Discard is a surface-stage coverage decision.
 - Signed 32-bit integers and bools are values. Integer division truncates toward
   zero and a zero divisor yields zero. `toInt` truncates toward zero and maps a
   nonfinite float to zero. `countOneBits` counts the float's IEEE bits or the
