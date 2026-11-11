@@ -182,6 +182,13 @@ public struct ClassicMaterial {
     public let normalMap: TextureBinding?
     /// Signed X and Y multipliers for tangent-space normals.
     public let normalScale: SIMD2<Float>
+    /// Replaces the diffuse color after maps and before Lambert, Phong, toon, or basic lighting.
+    /// Other graph outputs are rejected.
+    public let surfaceGraph: SurfaceShaderGraph?
+    /// Live values for `surfaceGraph`, shared by every renderer prepared with this material.
+    public let surfaceUniforms: ShaderUniforms?
+    /// Textures for `surfaceGraph`, in declaration order.
+    public let surfaceTextures: [any MTLTexture]
 
     /// Creates a transparent, black-by-default shadow catcher. It receives punctual
     /// shadows assigned to the graph. Enable directional reception when the graph
@@ -220,7 +227,10 @@ public struct ClassicMaterial {
         distanceOutput: DistanceOutput = .grayscale,
         bumpMap: BumpMap? = nil,
         normalMap: TextureBinding? = nil,
-        normalScale: SIMD2<Float> = SIMD2(repeating: 1)
+        normalScale: SIMD2<Float> = SIMD2(repeating: 1),
+        surfaceGraph: SurfaceShaderGraph? = nil,
+        surfaceUniforms: ShaderUniforms? = nil,
+        surfaceTextures: [String: any MTLTexture] = [:]
     ) throws {
         func nonnegative(_ value: SIMD3<Float>) -> Bool { (0..<3).allSatisfy { value[$0].isFinite && value[$0] >= 0 } }
         guard nonnegative(color) else { throw Failure.invalidValue("color") }
@@ -273,6 +283,25 @@ public struct ClassicMaterial {
             if bumpMap != nil || normalMap != nil { throw Failure.unusedProperty("bumpMap or normalMap") }
         }
         guard normalScale.x.isFinite, normalScale.y.isFinite else { throw Failure.invalidValue("normalScale") }
+        if let surfaceGraph {
+            let channels = surfaceGraph.outputs.connected.map(\.0)
+            guard channels == [.baseColor] else {
+                throw Failure.nodeGraph("A classic node material reads only its base color.")
+            }
+            for node in surfaceGraph.nodes {
+                switch node {
+                case .sampleScene, .sampleSceneLevel, .sampleDepth, .viewportSafeUV, .softParticleOpacity,
+                     .viewPositionFromDepth, .normalFromDepth, .denoise, .linearDepth, .derivative, .bumpMap:
+                    throw Failure.nodeGraph("A classic node material cannot sample the frame, take a derivative, or read a bump map.")
+                case .input(let input) where input.isScreenSpace:
+                    throw Failure.nodeGraph("A classic node material cannot read screen coordinates.")
+                default:
+                    break
+                }
+            }
+        } else if surfaceUniforms != nil || !surfaceTextures.isEmpty {
+            throw Failure.nodeGraph("Surface uniforms and textures need a surface graph.")
+        }
         self.model = model
         self.color = color
         self.opacity = opacity
@@ -294,6 +323,28 @@ public struct ClassicMaterial {
         self.bumpMap = bumpMap
         self.normalMap = normalMap
         self.normalScale = normalScale
+        self.surfaceGraph = surfaceGraph
+        let declaredUniforms = surfaceGraph?.uniforms ?? []
+        if let surfaceUniforms {
+            guard surfaceGraph != nil, surfaceUniforms.matches(declaredUniforms) else { throw Failure.nodeGraph("Surface uniforms must match the graph.") }
+            self.surfaceUniforms = surfaceUniforms
+        } else {
+            let readsClock = surfaceGraph?.program.readsClock ?? false
+            self.surfaceUniforms = declaredUniforms.isEmpty && !readsClock ? nil : try ShaderUniforms(declaredUniforms)
+        }
+        let declaredTextures = surfaceGraph?.textures ?? []
+        if let extra = surfaceTextures.keys.first(where: { name in !declaredTextures.contains { $0.name == name } }) {
+            throw Failure.nodeGraph("The graph does not declare a texture named \(extra).")
+        }
+        self.surfaceTextures = try declaredTextures.map { declaration in
+            guard let texture = surfaceTextures[declaration.name] else {
+                throw Failure.nodeGraph("The graph is missing texture \(declaration.name).")
+            }
+            guard PhysicallyBasedMaterial.isSurfaceTexture(texture, content: declaration.content) else {
+                throw Failure.nodeGraph("Texture \(declaration.name) cannot be sampled by the graph.")
+            }
+            return texture
+        }
     }
 
     /// Whether the model reads scene lights.
@@ -366,6 +417,7 @@ public struct ClassicMaterial {
         case unusedProperty(String)
         case environmentTexture
         case texture(Int)
+        case nodeGraph(String)
 
         public var errorDescription: String? {
             switch self {
@@ -375,6 +427,7 @@ public struct ClassicMaterial {
             case .texture(6): "Classic surface detail needs a linear, shader-readable 2D normal or bump map and sampler on the renderer's device."
             case .texture(let index):
                 "Classic material map \(index) (0 map, 1 alpha, 2 occlusion, 3 light, 4 emissive, 5 gradient or matcap) needs a shader-readable 2D texture on the renderer's device in RGBA8, BGRA8 (linear or sRGB), RGBA16Float, RG8, R8 or a block-compressed format; the alpha map needs a green channel, so not R8, BC4 or EAC R11."
+            case .nodeGraph(let detail): detail
             }
         }
     }
@@ -406,6 +459,7 @@ public struct ClassicMaterial {
         let environment: any MTLTexture
         let environmentSampler: any MTLSamplerState
         let shadowFallback: any MTLTexture
+        let graphTextures: [any MTLTexture]
         let packed: Packed
 
         init(material: ClassicMaterial, device: any MTLDevice, depthMode: MeshDepthMode) throws {
@@ -512,6 +566,15 @@ public struct ClassicMaterial {
                 flags: SIMD4(bound, secondary, blend, options),
                 transforms: transforms
             )
+            if material.surfaceGraph != nil {
+                guard material.surfaceTextures.allSatisfy({ $0.device === device }) else { throw MeshRenderer.Failure.wrongDevice }
+                graphTextures = material.surfaceTextures
+                    + Array(repeating: white, count: MaterialGraph.maximumTextureCount - material.surfaceTextures.count)
+                materialUniforms = material.surfaceUniforms
+            } else {
+                graphTextures = []
+                materialUniforms = nil
+            }
         }
 
         func encode(into encoder: any MTLRenderCommandEncoder) {
@@ -525,6 +588,23 @@ public struct ClassicMaterial {
             var packed = packed
             encoder.setFragmentBytes(&packed, length: MemoryLayout<Packed>.stride, index: 1)
         }
+
+        /// Binds the node graph's uniforms and textures. The color fragment declares them;
+        /// the attribute fragment does not, so call this only for the color pass.
+        func encodeNodeGraph(into encoder: any MTLRenderCommandEncoder) {
+            guard !graphTextures.isEmpty else { return }
+            let values = materialUniforms?.bufferSnapshot().values ?? []
+            if values.isEmpty {
+                var unused = SIMD4<Float>.zero
+                encoder.setFragmentBytes(&unused, length: MemoryLayout<SIMD4<Float>>.stride, index: 19)
+            } else {
+                values.withUnsafeBytes { encoder.setFragmentBytes($0.baseAddress!, length: $0.count, index: 19) }
+            }
+            encoder.setFragmentTextures(graphTextures, range: 16..<(16 + graphTextures.count))
+        }
+
+        /// The uniforms bound with the graph textures. Nil when the material has no node graph.
+        var materialUniforms: ShaderUniforms?
 
         private static func isNormalTexture(_ binding: TextureBinding) -> Bool {
             let texture = binding.texture

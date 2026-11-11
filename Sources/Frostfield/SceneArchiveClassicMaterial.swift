@@ -63,6 +63,9 @@ struct ArchiveClassicMaterial: Codable {
     var bumpMap: ArchivePBR.BumpMap?
     var normalMap: ArchiveBinding?
     var normalScale: SIMD2<Float>?
+    var surfaceGraph: Int?
+    var surfaceUniforms: Int?
+    var surfaceTextures: [String: Int]?
 
     var hasExplicitDepthOutput: Bool { depthPacking != nil || distanceOutput == .red }
     var hasSurfaceDetail: Bool { bumpMap != nil || normalMap != nil || normalScale != nil }

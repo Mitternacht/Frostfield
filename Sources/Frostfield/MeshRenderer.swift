@@ -214,6 +214,7 @@ public final class MeshRenderer {
             for texture in classic.textures { inventory.recordTexture(texture) }
             inventory.recordTexture(classic.environment)
             inventory.recordTexture(classic.shadowFallback)
+            for texture in classic.graphTextures { inventory.recordTexture(texture) }
         }
         pbrBindings?.recordResources(in: &inventory)
     }
@@ -631,7 +632,13 @@ public final class MeshRenderer {
             constants.setConstantValue(&objectNormal, type: .bool, index: 8)
             constants.setConstantValue(&detail, type: .bool, index: 44)
             do {
-                descriptor.fragmentFunction = try library.makeFunction(name: "frostfield_mesh_classic", constantValues: constants)
+                let fragmentLibrary: any MTLLibrary
+                if let graph = material.surfaceGraph {
+                    fragmentLibrary = try Self.classicNodeLibrary(graph, device: device)
+                } else {
+                    fragmentLibrary = library
+                }
+                descriptor.fragmentFunction = try fragmentLibrary.makeFunction(name: "frostfield_mesh_classic", constantValues: constants)
                 let attributeConstants = MTLFunctionConstantValues()
                 Self.setCoverageConstants(attributeConstants, colored: colored, state: state)
                 attributeConstants.setConstantValue(&objectNormal, type: .bool, index: 8)
@@ -2920,6 +2927,11 @@ public final class MeshRenderer {
                 }
                 encoder.setFragmentTexture(classic.prepared.shadowFallback, index: 1)
             }
+            if classic.material.surfaceGraph != nil {
+                classic.prepared.encodeNodeGraph(into: encoder)
+                var view = graphView.packed(model: draw.world, normal: draw.normal)
+                encoder.setFragmentBytes(&view, length: MemoryLayout<PackedGraphView>.stride, index: 24)
+            }
         }
         if requiresTransmissionBackdrop, var transmission {
             encoder.setFragmentTexture(transmission.backdrop, index: 13)
@@ -3633,6 +3645,39 @@ public final class MeshRenderer {
         \(graphSource)
         \(targets?.metalSource ?? "")
         \(shading)
+        """
+        do {
+            return try ShaderLibraryCache.library(source: source, device: device)
+        } catch {
+            throw Failure.library(ShaderProgram.diagnose(error, source: source))
+        }
+    }
+
+    /// Compiles `frostfield_mesh_classic` with the graph's base color wired in before lighting.
+    /// The bundled classic shader stays unchanged for materials without a graph.
+    private static func classicNodeLibrary(_ graph: SurfaceShaderGraph, device: any MTLDevice) throws -> any MTLLibrary {
+        guard let shadowURL = Bundle.module.url(forResource: "FrostfieldShadowSampling", withExtension: "h"),
+              let screenURL = Bundle.module.url(forResource: "FrostfieldScreenSpace", withExtension: "h"),
+              let probeURL = Bundle.module.url(forResource: "FrostfieldLightProbe", withExtension: "h"),
+              let pbrURL = Bundle.module.url(forResource: "PhysicallyBasedShading", withExtension: "h"),
+              let classicURL = Bundle.module.url(forResource: "ClassicMaterialShading", withExtension: "h") else {
+            throw Failure.library("The package is missing its classic shader sources.")
+        }
+        let function = try graph.metalFunction(named: "frostfield_generated_surface")
+        let shading = try MaterialExtensionsSource.splice(into: String(contentsOf: pbrURL, encoding: .utf8))
+        let source = """
+        #include <metal_stdlib>
+        using namespace metal;
+        #define FROSTFIELD_CLASSIC_NODE 1
+        #define FROSTFIELD_PBR_HELPERS_ONLY 1
+        \(SurfaceShaderGraph.supportSource)
+        \(rasterGraphResources)
+        \(function)
+        \(try String(contentsOf: shadowURL, encoding: .utf8))
+        \(try String(contentsOf: screenURL, encoding: .utf8))
+        \(try String(contentsOf: probeURL, encoding: .utf8))
+        \(shading)
+        \(try String(contentsOf: classicURL, encoding: .utf8))
         """
         do {
             return try ShaderLibraryCache.library(source: source, device: device)

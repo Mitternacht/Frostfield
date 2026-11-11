@@ -127,6 +127,54 @@ struct ClassicMaterialTests {
         }
     }
 
+    @Test("Lambert and Phong node graphs replace the diffuse color before lighting")
+    func nodeGraphColor() throws {
+        let color = SIMD3<Float>(0.2, 0.4, 0.6)
+        let graph = try SurfaceShaderGraph { s in
+            .init(baseColor: s.uniform("Tint", color))
+        }
+        let uniforms = try ShaderUniforms(graph: graph)
+        let lights = [try light(angle: .pi / 3)]
+        let models: [ClassicMaterial.Model] = [
+            .lambert, .phong(specular: SIMD3(0.2, 0.3, 0.4), shininess: 30),
+        ]
+        for model in models {
+            let node = try ClassicMaterial(
+                model: model, color: SIMD3(repeating: 1), surfaceGraph: graph, surfaceUniforms: uniforms
+            )
+            let reference = try ClassicMaterial(model: model, color: color)
+            #expect(isNearly(try center(node, lights: lights), try center(reference, lights: lights)), "\(model)")
+        }
+        let scene = SceneGraph(
+            roots: [
+                SceneNode(
+                    transform: SceneTransform(translation: SIMD3(0, 0, -2)),
+                    mesh: try mesh(try ClassicMaterial(
+                        model: .lambert, color: SIMD3(repeating: 1), surfaceGraph: graph, surfaceUniforms: uniforms
+                    ))
+                ),
+            ] + lights,
+            camera: fixture.camera
+        )
+        let archive = try SceneArchive(capturing: scene, commandQueue: fixture.queue)
+        let loaded = try archive.load(device: fixture.device, commandQueue: fixture.queue).graph
+        let restored = try fixture.render(loaded).pixels
+        let original = try fixture.render(scene).pixels
+        #expect(restored == original)
+        try uniforms.set("Tint", to: SIMD3(repeating: 0.5))
+        let edited = try ClassicMaterial(model: .lambert, surfaceGraph: graph, surfaceUniforms: uniforms)
+        let gray = try ClassicMaterial(model: .lambert, color: SIMD3(repeating: 0.5))
+        #expect(isNearly(try center(edited, lights: lights), try center(gray, lights: lights)))
+        #expect(throws: ClassicMaterial.Failure.nodeGraph("A classic node material reads only its base color.")) {
+            try ClassicMaterial(
+                model: .lambert,
+                surfaceGraph: try SurfaceShaderGraph { s in
+                    .init(baseColor: s.constant(SIMD3(1, 0, 0)), emission: s.constant(SIMD3(1, 0, 0)))
+                }
+            )
+        }
+    }
+
     @Test("Classic lighting reads a spot cookie through the shared light tables")
     func spotCookie() throws {
         let material = try ClassicMaterial(model: .lambert, color: SIMD3(repeating: 1))

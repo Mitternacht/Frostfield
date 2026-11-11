@@ -28,7 +28,7 @@ import simd
 public struct SceneArchive: Sendable, Equatable {
     /// The newest manifest version this build reads and writes. Captures use the
     /// earliest version that can store the scene.
-    public static let formatVersion = 29
+    public static let formatVersion = 30
     /// Maximum root-to-leaf node count. Keeps nested scene values safe to release
     /// on a Swift task stack even though archive traversal itself is iterative.
     public static let maximumHierarchyDepth = 1_024
@@ -219,6 +219,9 @@ public struct SceneArchive: Sendable, Equatable {
         }
         if document.version < 29, document.surfaceGraphs.contains(where: \.hasCastShadowOutput) {
             throw Failure.decoding("surface graph colored shadow outputs require archive version 29")
+        }
+        if document.version < 30, document.materials.contains(where: { $0.classic?.surfaceGraph != nil }) {
+            throw Failure.decoding("classic node graphs require archive version 30")
         }
         let rotation = (document.scene.environmentEulerRotation ?? .zero) + SIMD3(0, document.scene.environmentRotation, 0)
         guard rotation.isFiniteVector else { throw Failure.decoding("scene environment rotation angles must be finite") }
@@ -772,7 +775,8 @@ private struct ArchiveCapture {
         let needsVersion2 = clips.contains { $0.propertyTracks != nil } || materials.contains { $0.liveFactors != nil }
         let rig = photometry.rig(lightRig, writer: &writer)
         let lighting = photometry.record
-        let version = if graphs.contains(where: \.hasCastShadowOutput) { 29 }
+        let version = if materials.contains(where: { $0.classic?.surfaceGraph != nil }) { 30 }
+        else if graphs.contains(where: \.hasCastShadowOutput) { 29 }
         else if graphs.contains(where: \.hasViewportSafeUVNode) { 28 }
         else if materials.contains(where: { $0.physicallyBased?.unlitUsesGraphEmission == true }) { 27 }
         else if nodes.contains(where: \.hasPunctualShadowStrength) { 26 }
@@ -1043,6 +1047,14 @@ private struct ArchiveCapture {
         case .distance(let reference, let near, let far): .distance(reference: reference, near: near, far: far)
         case .shadow: .shadow
         }
+        var nodeTextures: [String: Int]?
+        if let graph = material.surfaceGraph, !graph.textures.isEmpty {
+            var indices: [String: Int] = [:]
+            for (name, image) in zip(graph.textures.map(\.name), material.surfaceTextures) {
+                indices[name] = try texture(image)
+            }
+            nodeTextures = indices
+        }
         return ArchiveClassicMaterial(
             model: model, color: material.color, opacity: material.opacity, map: try binding(material.map, "color"),
             alphaMap: try binding(material.alphaMap, "alpha"), alphaTest: material.alphaTest,
@@ -1057,7 +1069,14 @@ private struct ArchiveCapture {
             depthPacking: material.depthPacking, distanceOutput: material.distanceOutput == .red ? .red : nil,
             bumpMap: try material.bumpMap.map { .init(texture: try archiveBinding($0.texture, "classic bump"), scale: $0.scale) },
             normalMap: try binding(material.normalMap, "classic normal"),
-            normalScale: material.normalScale == SIMD2(repeating: 1) ? nil : material.normalScale
+            normalScale: material.normalScale == SIMD2(repeating: 1) ? nil : material.normalScale,
+            surfaceGraph: material.surfaceGraph.map { graph in
+                if let index = graphs.firstIndex(of: graph) { return index }
+                graphs.append(graph)
+                return graphs.count - 1
+            },
+            surfaceUniforms: try material.surfaceUniforms.map { try uniformSet($0) },
+            surfaceTextures: nodeTextures
         )
     }
 
@@ -1613,7 +1632,10 @@ private struct ArchiveLoader {
             ambient: record.ambient, receivesShadows: record.receivesShadows, flatShading: record.flatShading,
             depthPacking: record.depthPacking, distanceOutput: record.distanceOutput ?? .grayscale,
             bumpMap: try record.bumpMap.map { try .init(texture: textureBinding($0.texture), scale: $0.scale) },
-            normalMap: try binding(record.normalMap), normalScale: record.normalScale ?? SIMD2(repeating: 1)
+            normalMap: try binding(record.normalMap), normalScale: record.normalScale ?? SIMD2(repeating: 1),
+            surfaceGraph: try record.surfaceGraph.map { try element(document.surfaceGraphs, $0, "surface graph") },
+            surfaceUniforms: try record.surfaceUniforms.map { try uniformSet($0) },
+            surfaceTextures: try record.surfaceTextures?.mapValues { try texture($0) } ?? [:]
         )
     }
 
