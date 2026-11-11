@@ -445,6 +445,63 @@ struct ShaderPatternTests {
         }
     }
 
+    @Test("Matrix uniforms use one slot per column, leave scalar slots unchanged, and match simd on the GPU")
+    func matrixUniforms() throws {
+        let marker = "matrix-uniform-slots-9c2d"
+        let model = simd_float4x4(columns: (
+            SIMD4(1.5, 0.25, -0.5, 0), SIMD4(0, 0.5, 0.125, 0), SIMD4(0.25, 0, 2, 0), SIMD4(0.5, -1, 0.25, 1)
+        ))
+        let basis = simd_float3x3(SIMD3(0, 1, 0), SIMD3(0, 0, 1), SIMD3(1, 0, 0))
+        let graph = try BufferShaderGraph(fieldCount: 2) { b in
+            let transform = b.uniform("Model", simd_float4x4(1))
+            let turned = b.uniform("Basis", simd_float3x3(1))
+            let gain = b.uniform("Gain", Float(1))
+            let point = b.elementField(0)
+            let moved = (transform * point).xyz * gain
+            return [1: b.vector(moved, (turned * point.xyz).y).named(marker)]
+        }
+        let source = try graph.metalFunction(named: "matrix_uniforms")
+        #expect(source.contains(
+            "float4x4(frostfield_graph_uniform(resources, 0u), frostfield_graph_uniform(resources, 1u), "
+                + "frostfield_graph_uniform(resources, 2u), frostfield_graph_uniform(resources, 3u))"
+        ), "\(source)")
+        #expect(source.contains(
+            "float3x3(frostfield_graph_uniform(resources, 4u).xyz, frostfield_graph_uniform(resources, 5u).xyz, "
+                + "frostfield_graph_uniform(resources, 6u).xyz)"
+        ), "\(source)")
+        #expect(source.contains("frostfield_graph_uniform(resources, 7u).x"), "\(source)")
+
+        let scalar = try BufferShaderGraph(fieldCount: 1) { b in
+            [0: b.elementField(0) * b.uniform("Gain", Float(2)) + b.vector(b.time, b.constant(0), b.constant(0), b.constant(0))]
+        }
+        let scalarSource = try scalar.metalFunction(named: "scalar_uniform_layout")
+        #expect(scalarSource.contains("frostfield_graph_uniform(resources, 0u).x"), "\(scalarSource)")
+        #expect(scalarSource.contains("frostfield_graph_uniform(resources, 1u).x"), "\(scalarSource)")
+        #expect(!scalarSource.contains("frostfield_graph_uniform(resources, 2u)"), "\(scalarSource)")
+
+        let points: [SIMD4<Float>] = [
+            SIMD4(0.5, -1, 2, 1), SIMD4(0, 0, 0, 1), SIMD4(-2, 0.25, 0.5, 1), SIMD4(1, 1, 1, 0),
+        ]
+        ShaderLibraryCache.countCompilations(containing: marker)
+        let identity = try probe.run(graph, elements: points.map { [$0, .zero] }).map { $0[1] }
+        for (point, value) in zip(points, identity) {
+            let expected = SIMD4(SIMD3(point.x, point.y, point.z), point.y)
+            #expect(GraphProbe.maximumDifference(value, expected) <= 1e-5, "identity \(point): \(value)")
+        }
+        let uniforms = try ShaderUniforms(graph.uniforms)
+        try uniforms.set("Model", to: model)
+        try uniforms.set("Basis", to: basis)
+        try uniforms.set("Gain", to: 0.5)
+        let transformed = try probe.run(graph, elements: points.map { [$0, .zero] }, uniforms: uniforms).map { $0[1] }
+        for (point, value) in zip(points, transformed) {
+            let moved = (model * point) * 0.5
+            let turned = basis * SIMD3(point.x, point.y, point.z)
+            let expected = SIMD4(SIMD3(moved.x, moved.y, moved.z), turned.y)
+            #expect(GraphProbe.maximumDifference(value, expected) <= 1e-5, "uniform \(point): \(value) vs \(expected)")
+        }
+        #expect(ShaderLibraryCache.compilationCount(containing: marker) == 1)
+    }
+
     @Test("Derivatives measure per-pixel change in post-processing and are rejected outside fragment stages")
     func derivatives() throws {
         let fixture = try PostProcessFixture()

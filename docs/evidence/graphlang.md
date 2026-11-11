@@ -33,7 +33,7 @@ groove and show the face of the next brick, and both renderers agree.
 | Screen-space derivatives | `.derivative`, `MaterialGraph.Derivative`, `dFdx()`, `dFdy()`, `fwidth()` | Yes | Rejected | Post-process yes; vertex and compute rejected | `ShaderPatternTests.derivatives`, `ShaderGraphInputTests.screenSpace` |
 | Bit operations and value hashing | `.bits`, `MaterialGraph.BitOperation`, `.hash`, `bits(_:_:)`, `hash()` | Yes | Yes | All | `ShaderPatternTests.bitsAndHashes`, `ShaderNoiseTests` |
 | Dithering | `.interleavedGradientNoise`, `interleavedGradientNoise(_:)`, `dither(_:pixel:levels:)`, `bayerDither(_:pixel:levels:)` | Yes | Yes | All | `ShaderPatternTests.dithering`, `bayerDithering` |
-| 3 × 3 and 4 × 4 matrices | `ValueType.matrix3`, `.matrix4`, `.matrix`, `.matrixMultiply`, `.matrixUnary`, `.matrixColumn`, `ShaderMatrixType`, `constant(_:)` for `simd_float3x3` and `simd_float4x4`, `*`, `inverse()`, `transposed()`, `determinant()`, `column(_:)`, `upperLeft`, `transformPoint(_:)`, `transformDirection(_:)` | Yes | Yes | All | `ShaderPatternTests.matrices` |
+| 3 × 3 and 4 × 4 matrices | `ValueType.matrix3`, `.matrix4`, `.matrix`, `.matrixMultiply`, `.matrixUnary`, `.matrixColumn`, `ShaderMatrixType`, `constant(_:)` and `uniform(_:_:)` for `simd_float3x3` and `simd_float4x4`, `ShaderUniforms.set(_:to:)`, `matrix3(named:)`, `matrix4(named:)`, `*`, `inverse()`, `transposed()`, `determinant()`, `column(_:)`, `upperLeft`, `transformPoint(_:)`, `transformDirection(_:)` | Yes | Yes | All | `ShaderPatternTests.matrices`, `matrixUniforms` |
 | Graph clock | `Input.time`, `.deltaTime`, `.frame`, `ShaderFrame`, `ShaderUniforms.frame`, `setFrame(_:)`, `advanceFrame(by:)`, `frameRevision` | Yes | Yes | Vertex, post-process, texture and buffer compute, particles | `ShaderGraphInputTests.clock`, `.clockConsumers`, `.particleClock` |
 | Camera | `Input.cameraPosition`, `.cameraNear`, `.cameraFar`, `.viewMatrix`, `.projectionMatrix`; `ShaderGraphCamera` and `GLTFScene.Camera.View.graphCamera` for clip-matrix encodes | Yes, every encode path | Planar matrices use the full image projection, including lens shift and orthographic scale. Panoramas support view and clip inputs. | Rejected | `ShaderGraphInputTests.cameraAndModel`, `ShaderGraphViewTests.graphCameras`, `.pathCameraProjection` |
 | Model | `Input.modelMatrix`, `.normalMatrix` | Yes, the node matrix | Yes, except instanced nodes | Rejected | `ShaderGraphInputTests.cameraAndModel`, `ShaderGraphViewTests.modelMatrices` |
@@ -53,8 +53,8 @@ bitangent flipped in both renderers, the normal matrix transposed in both, raste
 graph camera ignored, the old triplanar formula, declared derivative functions
 allowed into branch arms, the iteration budget removed or not multiplied through
 nested loops, deformation and path accumulation reacting to every clock tick or to
-none, a particle system left without live values, and the parallax helper's early
-return restored.
+none, a particle system left without live values, the parallax helper's early
+return restored, and a matrix uniform's columns read one slot late.
 
 ## Measured results
 
@@ -75,6 +75,7 @@ least disturbed run as well as the median.
 | Offset viewport (origin 10, 6; size 40 × 52 in a 65 × 65 target) | `screenUV`, `fragmentCoordinate`, `viewportSize`, `screenCoordinate` and `screenSize` equal their closed forms at four pixels |
 | Oscillators at 12 times from −1.3 to 17.125 | Square, triangle and sawtooth exact; sine within 10⁻⁵ of a double-precision reference |
 | Raster against path tracing for clock, camera, view, projection, model, normal-matrix, loop, branch and noise outputs | Equal to the analytic or `ShaderNoise` value within 2 × 10⁻³ + 10⁻³ · |value| in RGBA16Float |
+| Matrix uniforms, one float4 slot per column, against `simd` at four points including a direction with w = 0 | Compute readback within 10⁻⁵. A translated point's emission matches in raster and path, and a vertex offset matches, within the half-float and deformation thresholds. Reading each matrix4 column one slot late failed the generated-source check and all eight GPU comparisons. macOS passed the language, pattern, rendering and deformation suites together (38 tests) and `SceneArchiveTests` (12 tests). The iPad Pro (M5) simulator passed all five suites (50 tests) |
 
 ## Semantics
 
@@ -213,7 +214,7 @@ GPU shades with the same pattern.
 | `screenUV`, `screenSize`, `screenCoordinate` | `screenCoordinate / screenSize`, `screenSize`, `screenCoordinate` | Match in raster and post-processing; Frostfield's `screenUV` is the viewport-relative one |
 | `cameraPosition`, `cameraNear`, `cameraFar`, `cameraViewMatrix`, `cameraProjectionMatrix` | Same meanings | Raster default, glTF, and explicit camera views. Path-traced perspective and orthographic cameras provide projection inputs, including for render tiles. |
 | `modelWorldMatrix`, `modelNormalMatrix` | `modelMatrix`, `normalMatrix` | Match; path tracer except instanced nodes |
-| `mat2`, `mat3`, `mat4`, matrix operations | `matrix3`, `matrix4` nodes | Partial: 3 × 3 and 4 × 4 with multiply, transpose, inverse, determinant and columns; no `mat2` and no matrix uniforms |
+| `mat2`, `mat3`, `mat4`, matrix operations and `uniform(mat3)` / `uniform(mat4)` | `matrix3`, `matrix4` nodes and `uniform(_:simd_float3x3)`, `uniform(_:simd_float4x4)` | Partial: 3 × 3 and 4 × 4 with multiply, transpose, inverse, determinant, columns and live uniforms; no `mat2`. Matrix uniforms are not animation tracks |
 | `hash`, bitwise operators | `hash`, `bits` | Partial: 24-bit unsigned integers carried in floats, no integer type |
 | `interleavedGradientNoise`, `bayerDither` | `interleavedGradientNoise`, `dither`, `bayerDither` | The ordered RGB offset uses the r187 4×4 phase with caller pixel coordinates and a default of 32 levels. Metal readback matches all phases across 144 samples, including negative coordinates and a live level count. [Three.js r187 Bayer shader](https://github.com/mrdoob/three.js/blob/r187/examples/jsm/tsl/math/Bayer.js) |
 | `snoise`, `curlNoise`, `voronoi3d` | `simplexNoise`, `curlNoise`, `animatedVoronoi` | Three-dimensional simplex and curl, plus animated squared cell distance in two or three dimensions. [Procedural pattern evidence](shader-procedural-patterns.md) |
@@ -234,8 +235,11 @@ GPU shades with the same pattern.
   declared functions that mention derivative or lane functions; those always run.
 - There is no integer type. Bit operations clamp operands to 0–16,777,215 and
   keep 24-bit results.
-- Matrices cannot be uniforms; declare four vector4 uniforms and build the
-  matrix with `matrix(_:_:_:_:)`. There is no 2 × 2 matrix type.
+- A matrix uniform is one float4 slot per column, column-major, then any later
+  uniforms. Scalar and vector uniforms keep one slot each, so a graph that
+  declares none of these matrices binds the same buffer as before. There is no
+  2 × 2 matrix type. `AnimationTrack` rejects a matrix uniform
+  (`unknownUniform`); set it on `ShaderUniforms` instead.
 - The clock reaches graphs as 32-bit floats. After t seconds the oscillator
   phase carries about t × 2⁻²² radians of rounding.
 - Parallax reads the red channel and clamps the view's z to 0.05.
@@ -251,8 +255,9 @@ GPU shades with the same pattern.
   combinations are rejected.
 - `MaterialGraph`, the original unlit graph, still reads only UV0, the normal,
   world position and parameters.
-- Simulator and physical iPhone, iPad and Vision Pro runs of these features have
-  not been made. The lane adds no new dispatches or texture views.
+- The matrix-uniform suites passed on the iPad Pro (M5) simulator. Physical
+  iPhone, iPad and Vision Pro runs have not been made. The lane adds no new
+  dispatches or texture views.
 
 ## Vector directions
 

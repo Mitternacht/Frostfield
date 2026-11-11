@@ -149,6 +149,77 @@ struct ShaderGraphLanguageTests {
         }
     }
 
+    @Test("Matrix uniforms keep every column, reject the wrong type, and stay out of scalar archives")
+    func matrixUniformValues() throws {
+        let model = simd_float4x4(columns: (
+            SIMD4(1.5, 0.25, -0.5, 0), SIMD4(0, 0.5, 0.125, 0), SIMD4(0.25, 0, 2, 0), SIMD4(0.5, -1, 0.25, 1)
+        ))
+        let basis = simd_float3x3(SIMD3(0, 1, 0), SIMD3(0, 0, 1), SIMD3(1, 0, 0))
+        let graph = try BufferShaderGraph(fieldCount: 1) { b in
+            let transform = b.uniform("Model", simd_float4x4(1))
+            let again = b.uniform("Model", model)
+            let turned = b.uniform("Basis", basis) * b.elementField(0).xyz
+            return [0: transform * b.elementField(0) + b.vector(turned, again.column(3).w)]
+        }
+        #expect(graph.uniforms.map(\.name) == ["Model", "Basis"])
+        #expect(graph.uniforms[0].columns == [
+            SIMD4(1, 0, 0, 0), SIMD4(0, 1, 0, 0), SIMD4(0, 0, 1, 0), SIMD4(0, 0, 0, 1),
+        ])
+        #expect(graph.uniforms[1].columns == [SIMD4(0, 1, 0, 0), SIMD4(0, 0, 1, 0), SIMD4(1, 0, 0, 0)])
+
+        let uniforms = try ShaderUniforms(graph.uniforms)
+        #expect(uniforms.revision == 0)
+        #expect(uniforms.matrix4(named: "Model") == simd_float4x4(1))
+        #expect(uniforms.matrix3(named: "Basis") == basis)
+        #expect(uniforms.value(named: "Model") == SIMD4(1, 0, 0, 0))
+        try uniforms.set("Model", to: model)
+        #expect(uniforms.revision == 1)
+        try uniforms.set("Model", to: model)
+        #expect(uniforms.revision == 1)
+        #expect(uniforms.matrix4(named: "Model") == model)
+        #expect(uniforms.snapshot().values == model.shaderColumns + basis.shaderColumns.map { SIMD4($0, 0) })
+        let singular = simd_float4x4(columns: (SIMD4(.nan, 0.25, -0.5, 0), model.columns.1, model.columns.2, model.columns.3))
+        #expect(throws: ShaderUniforms.Failure.nonfinite("Model")) { try uniforms.set("Model", to: singular) }
+        #expect(uniforms.revision == 1)
+        #expect(throws: ShaderUniforms.Failure.type(name: "Model", expected: .matrix4, actual: .scalar)) {
+            try uniforms.set("Model", to: Float(1))
+        }
+        #expect(uniforms.matrix3(named: "Model") == nil)
+        uniforms.reset()
+        #expect(uniforms.matrix4(named: "Model") == simd_float4x4(1))
+        #expect(uniforms.revision == 2)
+
+        let scalar = try JSONEncoder().encode(ShaderUniform("Gain", Float(1.5)))
+        #expect(!String(decoding: scalar, as: UTF8.self).contains("columns"))
+        let decodedScalar = try JSONDecoder().decode(ShaderUniform.self, from: Data(
+            #"{"name":"Gain","type":"scalar","defaultValue":[1.5,0,0,0]}"#.utf8
+        ))
+        #expect(decodedScalar == ShaderUniform("Gain", Float(1.5)))
+        let decodedMatrix = try JSONDecoder().decode(ShaderUniform.self, from: Data(
+            #"{"name":"Basis","type":"matrix3","defaultValue":[0,1,0,0],"columns":[[0,1,0,0],[0,0,1,0],[1,0,0,0]]}"#.utf8
+        ))
+        #expect(decodedMatrix == ShaderUniform("Basis", basis))
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(ShaderUniform.self, from: Data(
+                #"{"name":"M","type":"matrix4","defaultValue":[1,0,0,0],"columns":[[1,0,0,0]]}"#.utf8
+            ))
+        }
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(ShaderUniform.self, from: Data(
+                #"{"name":"M","type":"matrix4","defaultValue":[0,0,0,1],"columns":[[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]}"#.utf8
+            ))
+        }
+        #expect(throws: MaterialGraph.Failure.self) {
+            try BufferShaderGraph(fieldCount: 1) { b in
+                _ = b.uniform("Model", simd_float4x4(1))
+                return [0: b.elementField(0) * b.uniform("Model", Float(1))]
+            }
+        }
+        #expect(throws: AnimationTrack.Failure.unknownUniform("Model")) {
+            try AnimationTrack(property: .uniform(uniforms, name: "Model"), times: [0], values: [.number(0)])
+        }
+    }
+
     @Test("Generated Metal evaluates every operation family on the GPU",
           .enabled(if: MTLCreateSystemDefaultDevice() != nil, "Requires a Metal device"))
     func gpuEvaluation() throws {

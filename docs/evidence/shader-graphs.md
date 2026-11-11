@@ -35,7 +35,7 @@ draws them as soft additive quads that test against scene depth, and a
 | --- | --- | --- |
 | Typed values: scalar, vector2, vector3, vector4, with swizzles and constructors | `MaterialGraph.Node`, `ShaderGraphBuilder`, `ShaderValue<T>` | `ShaderGraphLanguageTests` |
 | Vector math, conversions, lattice, fractal and cellular noise | `.unary`, `.binary`, `.clamp`, `.select`, `.remap`, `.latticeNoise`, `.fractalNoise`, `.cellularNoise` | GPU evaluation of every operation family |
-| Editable uniforms with a revision | `ShaderUniform`, `ShaderUniforms` | `ShaderGraphRenderingTests`, `ShaderGraphLanguageTests` |
+| Editable uniforms with a revision, including 3 × 3 and 4 × 4 matrices | `ShaderUniform`, `ShaderUniforms` | `ShaderGraphRenderingTests`, `ShaderGraphLanguageTests`, `ShaderPatternTests.matrixUniforms` |
 | Texture sampling by declared slot with addressing and filtering | `ShaderTextureInput`, `ShaderTexture.sample` | Cross-renderer stripe test |
 | Caller-written Metal functions | `ShaderFunction` | GPU evaluation, compiler diagnostics test |
 | Surface outputs: base color, metallic, roughness, emission, transmission mask, tangent-space normal, occlusion | `SurfaceShaderGraph.Outputs` | `ShaderGraphRenderingTests` |

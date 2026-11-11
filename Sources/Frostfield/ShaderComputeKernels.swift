@@ -559,9 +559,9 @@ struct ShaderComputeResources: Sendable {
     }
 
     /// The current values, or the declared defaults without a uniforms object.
-    /// One float4 per declaration followed by the graph clock, which nil uniforms leave at zero.
+    /// Every value slot followed by the graph clock, which nil uniforms leave at zero.
     static func uniformValues(for declarations: [ShaderUniform], from uniforms: ShaderUniforms?) throws -> [SIMD4<Float>] {
-        guard let uniforms else { return declarations.map(\.defaultValue) + [.zero] }
+        guard let uniforms else { return declarations.flatMap(\.columns) + [.zero] }
         guard uniforms.matches(declarations) else { throw ShaderComputeFailure.uniforms }
         return uniforms.bufferSnapshot().values
     }

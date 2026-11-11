@@ -30,6 +30,36 @@ struct MeshDeformationTests {
         )
     }
 
+    @Test("A vertex matrix uniform shifts every position by the transformed offset")
+    func matrixUniformOffset() throws {
+        let marker = "matrix-uniform-vertex-6d4a"
+        let basis = simd_float3x3(SIMD3(0, 1, 0), SIMD3(0, 0, 1), SIMD3(1, 0, 0))
+        let vector = SIMD3<Float>(0.2, 0.1, -0.3)
+        let graph = try SurfaceShaderGraph { s in
+            let transformed = s.uniform("Basis", simd_float3x3(1)) * s.constant(vector)
+            // Reading the clock places it after the matrix columns. A zero time keeps the offset exact.
+            let offset = transformed + s.vector(s.time * 0, s.constant(Float(0)), s.constant(Float(0)))
+            return .init(positionOffset: offset.named(marker))
+        }
+        let uniforms = try ShaderUniforms(graph: graph)
+        let geometry = try MeshGeometry.plane(width: 2, height: 2)
+        ShaderLibraryCache.countCompilations(containing: marker)
+        let mesh = try renderer(geometry, graph: graph, uniforms: uniforms)
+        func offsets() throws -> [SIMD3<Float>] {
+            let deformed = try mesh.deformedGeometry(queue: queue).vertices.map(\.position)
+            return zip(geometry.vertices, deformed).map { before, after in after - before.position }
+        }
+        for offset in try offsets() {
+            #expect(simd_distance(offset, vector) < 1e-5, "\(offset)")
+        }
+        try uniforms.set("Basis", to: basis)
+        let expected = basis * vector
+        for offset in try offsets() {
+            #expect(simd_distance(offset, expected) < 1e-5, "\(offset) vs \(expected)")
+        }
+        #expect(ShaderLibraryCache.compilationCount(containing: marker) == 1)
+    }
+
     @Test("Offsets move picking and normals follow the deformed triangles")
     func tiltedPlane() throws {
         // z += 0.5·x tilts the plane; its normal becomes (−0.5, 0, 1) normalized.

@@ -54,6 +54,15 @@ public struct MaterialGraph: Sendable {
         /// Whether the type is a matrix. Only matrix nodes accept matrix operands.
         public var isMatrix: Bool { self == .matrix3 || self == .matrix4 }
 
+        /// Float4 slots in a uniform buffer. A matrix uses one slot per column.
+        var uniformSlotCount: Int {
+            switch self {
+            case .matrix3: 3
+            case .matrix4: 4
+            default: 1
+            }
+        }
+
         init?(componentCount: Int) {
             switch componentCount {
             case 1: self = .scalar

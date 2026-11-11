@@ -13,6 +13,48 @@ struct SceneArchiveTests {
         fixture = try GeometryRenderFixture()
     }
 
+    @Test("Matrix uniform columns survive an archive and the restored draw")
+    func matrixUniforms() throws {
+        let model = simd_float4x4(columns: (
+            SIMD4(1, 0, 0, 0), SIMD4(0, 1, 0, 0), SIMD4(0, 0, 1, 0), SIMD4(0.05, 0.1, 0.2, 1)
+        ))
+        let point = SIMD4<Float>(0.2, 0.1, 0.05, 1)
+        let graph = try SurfaceShaderGraph { s in
+            let transformed = s.uniform("Model", simd_float4x4(1)) * s.vector(
+                s.constant(SIMD3(point.x, point.y, point.z)), s.constant(point.w)
+            )
+            return .init(emission: transformed.xyz * s.uniform("Gain", Float(1)))
+        }
+        let uniforms = try ShaderUniforms(graph: graph)
+        try uniforms.set("Model", to: model)
+        try uniforms.set("Gain", to: 2)
+        let material = try PhysicallyBasedMaterial(
+            lightIntensity: 0, ambientIntensity: 0, alphaMode: .opaque, surfaceGraph: graph, surfaceUniforms: uniforms
+        )
+        let mesh = try MeshRenderer(
+            device: fixture.device, colorPixelFormat: .rgba16Float, geometry: .plane(width: 2, height: 2),
+            material: .physicallyBased(material)
+        )
+        let scene = SceneGraph(
+            roots: [SceneNode(transform: SceneTransform(translation: SIMD3(0, 0, -2)), mesh: mesh)], camera: fixture.camera
+        )
+        let archive = try SceneArchive(capturing: scene, commandQueue: fixture.queue)
+        let loaded = try archive.load(device: fixture.device, commandQueue: fixture.queue).graph
+        guard case .physicallyBased(let restoredMaterial) = loaded.roots.first?.mesh?.material else {
+            Issue.record("Expected a physically based material.")
+            return
+        }
+        let restored = try #require(restoredMaterial.surfaceUniforms)
+        #expect(restored.matrix4(named: "Model") == model)
+        #expect(restored.value(named: "Gain") == SIMD4(2, 0, 0, 0))
+        let original = try fixture.render(scene)
+        let expected = SIMD3((model * point).x, (model * point).y, (model * point).z) * 2
+        let center = fixture.pixel(original.pixels, x: fixture.side / 2, y: fixture.side / 2)
+        #expect(abs(center.x - expected.x) < 0.004 && abs(center.y - expected.y) < 0.004 && abs(center.z - expected.z) < 0.004,
+                "\(center) vs \(expected)")
+        #expect(try fixture.render(loaded).pixels == original.pixels)
+    }
+
     /// A scene that exercises every archived feature that draws.
     private func richScene() throws -> (SceneGraph, [AnimationClip], LightRig) {
         let device = fixture.device

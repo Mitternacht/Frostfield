@@ -6,6 +6,13 @@ struct ShaderDeclarations: Hashable, Sendable {
     var textures: [ShaderTextureInput] = []
     var functions: [ShaderFunction] = []
     var labels: [MaterialGraph.NodeID: String] = [:]
+
+    /// Float4 slots taken by the declared values. One per scalar or vector, one per matrix column.
+    var uniformValueSlotCount: Int { uniforms.reduce(0) { $0 + $1.type.uniformSlotCount } }
+
+    func uniformSlotOffset(_ index: Int) -> Int {
+        uniforms.prefix(index).reduce(0) { $0 + $1.type.uniformSlotCount }
+    }
 }
 
 /// A validated, typed graph that emits Metal statements for selected outputs.
@@ -109,8 +116,8 @@ struct ShaderProgram: Hashable, Sendable {
         uses({ if case .input(let input) = $0 { input.readsClock } else { false } }, from: outputs)
     }
 
-    /// The float4 slots the uniform buffer needs: the declared uniforms, then the clock when read.
-    var uniformSlotCount: Int { declarations.uniforms.count + (readsClock ? 1 : 0) }
+    /// The float4 slots the uniform buffer needs: the declared value slots, then the clock when read.
+    var uniformSlotCount: Int { declarations.uniformValueSlotCount + (readsClock ? 1 : 0) }
 
     /// The first node reachable from the outputs that only a rasterizer can evaluate:
     /// a derivative, screen input, or stored viewport texture sample.
@@ -740,10 +747,20 @@ struct ShaderProgram: Hashable, Sendable {
         case .input(let input):
             guard input.readsClock else { return input.expression }
             let component = input == .time ? "x" : input == .deltaTime ? "y" : "z"
-            return "frostfield_graph_uniform(resources, \(declarations.uniforms.count)u).\(component)"
+            return "frostfield_graph_uniform(resources, \(declarations.uniformValueSlotCount)u).\(component)"
         case .uniform(let index):
-            let swizzle = ["", ".x", ".xy", ".xyz", ""][type.componentCount]
-            return "frostfield_graph_uniform(resources, \(index)u)\(swizzle)"
+            let origin = declarations.uniformSlotOffset(index)
+            switch type {
+            case .matrix3:
+                let columns = (0..<3).map { "frostfield_graph_uniform(resources, \(origin + $0)u).xyz" }
+                return "float3x3(\(columns.joined(separator: ", ")))"
+            case .matrix4:
+                let columns = (0..<4).map { "frostfield_graph_uniform(resources, \(origin + $0)u)" }
+                return "float4x4(\(columns.joined(separator: ", ")))"
+            default:
+                let swizzle = ["", ".x", ".xy", ".xyz", ""][type.componentCount]
+                return "frostfield_graph_uniform(resources, \(origin)u)\(swizzle)"
+            }
         case .sampleTexture(let slot, let coordinates):
             let texture = declarations.textures[slot]
             return "frostfield_graph_sample(resources, \(slot)u, \(texture.addressing.code)u, "
@@ -963,8 +980,9 @@ struct ShaderProgram: Hashable, Sendable {
             guard !uniform.name.isEmpty, uniform.name.count <= 64, uniformNames.insert(uniform.name).inserted else {
                 throw fail("Uniform names must be unique and 1–64 characters: \"\(uniform.name)\".")
             }
-            let value = uniform.defaultValue
-            guard value.x.isFinite, value.y.isFinite, value.z.isFinite, value.w.isFinite else {
+            guard uniform.columns.allSatisfy({ column in
+                column.x.isFinite && column.y.isFinite && column.z.isFinite && column.w.isFinite
+            }) else {
                 throw fail("Uniform \"\(uniform.name)\" needs a finite default value.")
             }
         }

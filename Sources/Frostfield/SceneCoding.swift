@@ -696,19 +696,33 @@ extension MaterialGraph.Node: Codable {
 }
 
 extension ShaderUniform: Codable {
-    private enum CodingKeys: String, CodingKey { case name, type, defaultValue }
+    private enum CodingKeys: String, CodingKey { case name, type, defaultValue, columns }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let name = try container.decode(String.self, forKey: .name)
-        let value = try container.decode(SIMD4<Float>.self, forKey: .defaultValue)
-        switch try container.decode(MaterialGraph.ValueType.self, forKey: .type) {
-        case .scalar: self.init(name, value.x)
-        case .vector2: self.init(name, SIMD2(value.x, value.y))
-        case .vector3: self.init(name, SIMD3(value.x, value.y, value.z))
-        case .vector4: self.init(name, value)
+        let type = try container.decode(MaterialGraph.ValueType.self, forKey: .type)
+        let header = try container.decode(SIMD4<Float>.self, forKey: .defaultValue)
+        switch type {
+        case .scalar: self.init(name, header.x)
+        case .vector2: self.init(name, SIMD2(header.x, header.y))
+        case .vector3: self.init(name, SIMD3(header.x, header.y, header.z))
+        case .vector4: self.init(name, header)
         case .matrix3, .matrix4:
-            throw corrupted(container, "Graph uniforms must be scalar or vector values.", codingPath: decoder.codingPath)
+            let columns = try container.decode([SIMD4<Float>].self, forKey: .columns)
+            guard columns.count == type.uniformSlotCount else {
+                throw corrupted(
+                    container, "A \(type.rawValue) uniform needs \(type.uniformSlotCount) columns.",
+                    codingPath: decoder.codingPath
+                )
+            }
+            self.init(name: name, type: type, columns: columns)
+            guard defaultValue == type.storedColumn(header) else {
+                throw corrupted(
+                    container, "A matrix uniform's defaultValue must equal its first column.",
+                    codingPath: decoder.codingPath
+                )
+            }
         }
     }
 
@@ -717,6 +731,7 @@ extension ShaderUniform: Codable {
         try container.encode(name, forKey: .name)
         try container.encode(type, forKey: .type)
         try container.encode(defaultValue, forKey: .defaultValue)
+        if type.isMatrix { try container.encode(columns, forKey: .columns) }
     }
 }
 

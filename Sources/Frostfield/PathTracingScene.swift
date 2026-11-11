@@ -1473,14 +1473,15 @@ public final class PathTracingScene {
                     uniformBlocks[block].mask |= graph.surfaceUniformMask
                     if graph.surfaceReadsClock { uniformBlocks[block].readsClock = true }
                 } else {
-                    // Each block holds its declared values and then its graph clock.
-                    guard uniformSlotCount + uniforms.declarations.count + 1 <= PathTracingScene.maximumSurfaceUniformSlots else {
+                    // Each block holds its declared value slots and then its graph clock.
+                    let blockSlots = uniforms.valueSlotCount + 1
+                    guard uniformSlotCount + blockSlots <= PathTracingScene.maximumSurfaceUniformSlots else {
                         throw Failure.surfaceUniformLimit
                     }
                     uniformOffset = UInt32(uniformSlotCount)
                     uniformBlockIndices[key] = uniformBlocks.count
                     uniformBlocks.append((uniforms, Int(uniformOffset), graph.surfaceUniformMask, graph.surfaceReadsClock))
-                    uniformSlotCount += uniforms.declarations.count + 1
+                    uniformSlotCount += blockSlots
                 }
             }
             let tableOffset = UInt32(graphTextureTable.count)

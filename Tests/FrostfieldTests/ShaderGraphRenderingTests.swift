@@ -92,6 +92,52 @@ struct ShaderGraphRenderingTests {
         #expect(ShaderLibraryCache.compilationCount(containing: marker) == compiled)
     }
 
+    @Test("A matrix uniform and a scalar packed after it drive raster and path emission")
+    func matrixUniformAcrossRenderers() throws {
+        let marker = "matrix-uniform-render-2b8e"
+        ShaderLibraryCache.countCompilations(containing: marker)
+        let point = SIMD4<Float>(0.2, 0.1, 0.05, 1)
+        let model = simd_float4x4(columns: (
+            SIMD4(1, 0, 0, 0), SIMD4(0, 1, 0, 0), SIMD4(0, 0, 1, 0), SIMD4(0.05, 0.1, 0.2, 1)
+        ))
+        let graph = try SurfaceShaderGraph { s in
+            let transformed = s.uniform("Model", simd_float4x4(1)) * s.vector(
+                s.constant(SIMD3(point.x, point.y, point.z)), s.constant(point.w)
+            )
+            let color = transformed.xyz * s.uniform("Gain", Float(1))
+            return .init(emission: color.named(marker))
+        }
+        let material = try PhysicallyBasedMaterial(
+            lightIntensity: 0, ambientIntensity: 0, alphaMode: .opaque, surfaceGraph: graph
+        )
+        let uniforms = try #require(material.surfaceUniforms)
+        let mesh = try MeshRenderer(
+            device: device, colorPixelFormat: .rgba16Float, geometry: .plane(width: 2, height: 4),
+            material: .physicallyBased(material)
+        )
+        let scene = SceneGraph(roots: [SceneNode(transform: .init(translation: SIMD3(0, 0, -2)), mesh: mesh)], camera: camera)
+        let tracer = try PathTracer(queue: queue, scene: PathTracingScene(queue: queue, graph: scene))
+        let accumulation = try tracer.makeAccumulation(width: Self.size, height: Self.size)
+        let compiled = ShaderLibraryCache.compilationCount(containing: marker)
+        #expect(compiled == 2, "one raster and one path library")
+
+        try render(scene)
+        var history = try trace(tracer, accumulation: accumulation, previous: nil)
+        #expect(near(try readPixel(x: Self.size / 2), SIMD3(point.x, point.y, point.z)))
+        #expect(near(try readPixel(from: history.texture, x: Self.size / 2), SIMD3(point.x, point.y, point.z)))
+
+        try uniforms.set("Model", to: model)
+        try uniforms.set("Gain", to: 2)
+        let expected = SIMD3((model * point).x, (model * point).y, (model * point).z) * 2
+        try render(scene)
+        let raster = try readPixel(x: Self.size / 2)
+        #expect(near(raster, expected), "raster \(raster)")
+        history = try trace(tracer, accumulation: accumulation, previous: nil)
+        let traced = try readPixel(from: history.texture, x: Self.size / 2)
+        #expect(near(traced, expected), "path \(traced)")
+        #expect(ShaderLibraryCache.compilationCount(containing: marker) == compiled)
+    }
+
     @Test("Graph normals and occlusion change raster lighting in the UV0 tangent frame")
     func graphNormalAndOcclusion() throws {
         func brightness(tilt: Float?, occlusion: Float? = nil, ambient: Float = 0) throws -> Float {

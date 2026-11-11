@@ -619,6 +619,7 @@ struct ArchiveEnvironment: Codable {
 
 struct ArchiveUniforms: Codable {
     var declarations: [ShaderUniform]
+    /// One float4 per value slot, in declaration order. A matrix contributes one slot per column.
     var values: [SIMD4<Float>]
 }
 
@@ -1685,18 +1686,29 @@ private struct ArchiveLoader {
     private mutating func uniformSet(_ index: Int) throws -> ShaderUniforms {
         if let existing = uniforms[index] { return existing }
         let record = try element(document.uniforms, index, "uniform set")
-        guard record.values.count == record.declarations.count else {
+        let slotCount = record.declarations.reduce(0) { $0 + $1.type.uniformSlotCount }
+        guard record.values.count == slotCount else {
             throw SceneArchive.Failure.invalidReference("values of uniform set \(index)")
         }
         let set = try ShaderUniforms(record.declarations)
-        for (declaration, value) in zip(record.declarations, record.values) {
+        var cursor = 0
+        for declaration in record.declarations {
+            let count = declaration.type.uniformSlotCount
+            let slots = Array(record.values[cursor..<(cursor + count)])
+            cursor += count
             switch declaration.type {
-            case .scalar: try set.set(declaration.name, to: value.x)
-            case .vector2: try set.set(declaration.name, to: SIMD2(value.x, value.y))
-            case .vector3: try set.set(declaration.name, to: SIMD3(value.x, value.y, value.z))
-            case .vector4: try set.set(declaration.name, to: value)
-            case .matrix3, .matrix4:
-                throw SceneArchive.Failure.invalidReference("matrix uniform in set \(index)")
+            case .scalar: try set.set(declaration.name, to: slots[0].x)
+            case .vector2: try set.set(declaration.name, to: SIMD2(slots[0].x, slots[0].y))
+            case .vector3: try set.set(declaration.name, to: SIMD3(slots[0].x, slots[0].y, slots[0].z))
+            case .vector4: try set.set(declaration.name, to: slots[0])
+            case .matrix3:
+                try set.set(declaration.name, to: simd_float3x3(
+                    SIMD3(slots[0].x, slots[0].y, slots[0].z),
+                    SIMD3(slots[1].x, slots[1].y, slots[1].z),
+                    SIMD3(slots[2].x, slots[2].y, slots[2].z)
+                ))
+            case .matrix4:
+                try set.set(declaration.name, to: simd_float4x4(columns: (slots[0], slots[1], slots[2], slots[3])))
             }
         }
         uniforms[index] = set

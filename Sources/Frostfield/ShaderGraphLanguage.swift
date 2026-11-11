@@ -1,4 +1,5 @@
 import Foundation
+import simd
 
 // The vocabulary shared by every typed shader graph: stages, built-in inputs,
 // operations, and the declarations a graph can bind at runtime.
@@ -298,11 +299,17 @@ extension MaterialGraph {
 
 /// A named value that an app can change after the graph's pipeline is prepared.
 /// Uniform names are labels for diagnostics and lookup. They are never emitted into Metal.
+///
+/// A scalar or vector occupies one float4 slot. A matrix occupies one slot per column,
+/// column-major, matching `simd` and Metal. A 3 × 3 column stores zero in w.
 public struct ShaderUniform: Hashable, Sendable {
     public let name: String
     public let type: MaterialGraph.ValueType
-    /// The initial value in its leading components. Unused components are zero.
-    public let defaultValue: SIMD4<Float>
+    /// GPU slots in order. Scalars and vectors use one slot; matrices use one per column.
+    public let columns: [SIMD4<Float>]
+
+    /// The first slot. Unused components of a scalar or vector are zero.
+    public var defaultValue: SIMD4<Float> { columns[0] }
 
     public init(_ name: String, _ value: Float) {
         self.init(name: name, type: .scalar, value: SIMD4(value, 0, 0, 0))
@@ -320,10 +327,27 @@ public struct ShaderUniform: Hashable, Sendable {
         self.init(name: name, type: .vector4, value: value)
     }
 
+    public init(_ name: String, _ value: simd_float3x3) {
+        self.init(name: name, type: .matrix3, columns: value.shaderColumns.map { SIMD4($0, 0) })
+    }
+
+    public init(_ name: String, _ value: simd_float4x4) {
+        self.init(name: name, type: .matrix4, columns: value.shaderColumns)
+    }
+
     private init(name: String, type: MaterialGraph.ValueType, value: SIMD4<Float>) {
+        precondition(!type.isMatrix)
+        self.init(name: name, type: type, columns: [value])
+    }
+
+    init(name: String, type: MaterialGraph.ValueType, columns: [SIMD4<Float>]) {
+        precondition(
+            columns.count == type.uniformSlotCount,
+            "Uniform \(name) has \(columns.count) slots for \(type.rawValue)."
+        )
         self.name = name
         self.type = type
-        defaultValue = type.masked(value)
+        self.columns = columns.map { type.storedColumn($0) }
     }
 }
 
@@ -405,12 +429,12 @@ public struct ShaderFunction: Hashable, Sendable {
 }
 
 extension MaterialGraph.ValueType {
-    func masked(_ value: SIMD4<Float>) -> SIMD4<Float> {
+    func storedColumn(_ value: SIMD4<Float>) -> SIMD4<Float> {
         switch self {
         case .scalar: SIMD4(value.x, 0, 0, 0)
         case .vector2: SIMD4(value.x, value.y, 0, 0)
-        case .vector3: SIMD4(value.x, value.y, value.z, 0)
-        case .vector4, .matrix3, .matrix4: value
+        case .vector3, .matrix3: SIMD4(value.x, value.y, value.z, 0)
+        case .vector4, .matrix4: value
         }
     }
 }

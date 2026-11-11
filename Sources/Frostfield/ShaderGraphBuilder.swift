@@ -23,7 +23,7 @@ public protocol ShaderVectorType: ShaderValueType {
 }
 
 /// `simd_float3x3` and `simd_float4x4`, with the vector type of their columns.
-/// Graphs can build, multiply, invert and slice matrices but not declare them as uniforms.
+/// Graphs can build, multiply, invert, slice and declare these matrices as uniforms.
 public protocol ShaderMatrixType: ShaderGraphValue {
     /// The vector type of one column: `SIMD3<Float>` or `SIMD4<Float>`.
     associatedtype Column: ShaderVectorType
@@ -243,12 +243,27 @@ public final class ShaderGraphBuilder {
     /// One of the current buffer element's four float4 fields. Buffer compute stage.
     public func elementField(_ index: Int) -> ShaderValue<SIMD4<Float>> { input(.elementField(index)) }
 
-    /// Declares, or reuses by name, a uniform that can be edited without recompiling.
+    /// Declares, or reuses by name and type, a uniform that can be edited without recompiling.
+    /// A second declaration of the same name and type returns the first one and keeps its default.
     public func uniform<T: ShaderValueType>(_ name: String, _ defaultValue: T) -> ShaderValue<T> {
-        if let index = uniforms.firstIndex(where: { $0.name == name && $0.type == T.shaderType }) {
+        declareUniform(T.shaderUniform(name, defaultValue))
+    }
+
+    /// A 3 × 3 column-major uniform, as a Three.js `mat3` uniform. Edit it with `ShaderUniforms.set(_:to:)`.
+    public func uniform(_ name: String, _ defaultValue: simd_float3x3) -> ShaderValue<simd_float3x3> {
+        declareUniform(ShaderUniform(name, defaultValue))
+    }
+
+    /// A 4 × 4 column-major uniform, as a Three.js `mat4` uniform. Edit it with `ShaderUniforms.set(_:to:)`.
+    public func uniform(_ name: String, _ defaultValue: simd_float4x4) -> ShaderValue<simd_float4x4> {
+        declareUniform(ShaderUniform(name, defaultValue))
+    }
+
+    private func declareUniform<T: ShaderGraphValue>(_ declaration: ShaderUniform) -> ShaderValue<T> {
+        if let index = uniforms.firstIndex(where: { $0.name == declaration.name && $0.type == declaration.type }) {
             return add(.uniform(index))
         }
-        uniforms.append(T.shaderUniform(name, defaultValue))
+        uniforms.append(declaration)
         return add(.uniform(uniforms.count - 1))
     }
 
