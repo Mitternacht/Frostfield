@@ -454,10 +454,26 @@ public struct ShaderFunction: Hashable, Sendable {
     public struct Parameter: Hashable, Sendable {
         public let name: String
         public let type: MaterialGraph.ValueType
+        /// The declared struct when `type` is `.structure`.
+        public let structure: Int?
 
         public init(_ name: String, _ type: MaterialGraph.ValueType) {
             self.name = name
             self.type = type
+            self.structure = nil
+        }
+
+        /// A parameter whose type is a struct declared on the same graph.
+        public init(_ name: String, _ structure: ShaderStruct) {
+            self.name = name
+            self.type = .structure
+            self.structure = structure.index
+        }
+
+        init(_ name: String, _ type: MaterialGraph.ValueType, structure: Int?) {
+            self.name = name
+            self.type = type
+            self.structure = structure
         }
     }
 
@@ -466,12 +482,18 @@ public struct ShaderFunction: Hashable, Sendable {
     public let name: String
     public let parameters: [Parameter]
     public let returnType: MaterialGraph.ValueType
+    /// The declared struct when `returnType` is `.structure`.
+    public let returnStructure: Int?
     public let body: String
 
-    public init(name: String, parameters: [Parameter], returns returnType: MaterialGraph.ValueType, body: String) {
+    public init(
+        name: String, parameters: [Parameter], returns returnType: MaterialGraph.ValueType,
+        returnStructure: Int? = nil, body: String
+    ) {
         self.name = name
         self.parameters = parameters
         self.returnType = returnType
+        self.returnStructure = returnStructure
         self.body = body
     }
 }

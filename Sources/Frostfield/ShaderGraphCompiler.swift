@@ -275,13 +275,21 @@ struct ShaderProgram: Hashable, Sendable {
     /// parallax nodes generate. Place them after the renderer's resource hooks.
     func functionDefinitions(prefix: String) -> String {
         let declared = declarations.functions.map { function in
-            let parameters = function.parameters.map { "\($0.type.metalType) \($0.name)" }.joined(separator: ", ")
+            let parameters = function.parameters.map { "\(Self.signatureType($0, declarations: declarations)) \($0.name)" }
+                .joined(separator: ", ")
+            let result = Self.signatureType(
+                ShaderFunction.Parameter("result", function.returnType, structure: function.returnStructure),
+                declarations: declarations
+            )
             return """
             // function \(function.name)
-            static inline \(function.returnType.metalType) \(prefix)_fn_\(function.name)(\(parameters)) {
+            static inline \(result) \(prefix)_fn_\(function.name)(\(parameters)) {
             \(function.body)
             }
             """
+        }
+        let aliases = declarations.functions.isEmpty ? [] : declarations.structs.map { structure in
+            "typedef \(structure.metalName()) \(structure.name);"
         }
         let parallax = nodes.indices.compactMap { id -> String? in
             guard case .parallaxOcclusion(let slot, _, _, _, let steps) = nodes[id] else { return nil }
@@ -294,7 +302,15 @@ struct ShaderProgram: Hashable, Sendable {
             }
         }
         let procedural = hasProceduralNoise ? [Self.proceduralNoiseFunctions(prefix: prefix)] : []
-        return (structDefinitions() + procedural + declared + parallax).filter { !$0.isEmpty }.joined(separator: "\n\n")
+        return (structDefinitions() + aliases + procedural + declared + parallax).filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
+
+    /// The Metal type of a function parameter or return value, including a declared struct.
+    private static func signatureType(_ parameter: ShaderFunction.Parameter, declarations: ShaderDeclarations) -> String {
+        if parameter.type == .structure, let index = parameter.structure, declarations.structs.indices.contains(index) {
+            return declarations.structs[index].metalName()
+        }
+        return parameter.type.metalType
     }
 
     /// Metal layout for every declared struct, in declaration order so a nested field's
@@ -717,7 +733,19 @@ struct ShaderProgram: Hashable, Sendable {
                 throw Failure.argumentCount(node: id, expected: function.parameters.count, actual: arguments.count)
             }
             for (argument, parameter) in zip(arguments, function.parameters) {
-                try require(argument, parameter.type)
+                if parameter.type == .structure {
+                    let actual = try visitAny(argument)
+                    guard actual == .structure, identity.index[argument] == parameter.structure else {
+                        throw Failure.structMismatch(
+                            node: id, expected: parameter.structure ?? -1, actual: identity.index[argument] ?? -1
+                        )
+                    }
+                } else {
+                    try require(argument, parameter.type)
+                }
+            }
+            if function.returnType == .structure, let index = function.returnStructure {
+                identity.index[id] = index
             }
             return function.returnType
         case .switchSelect(let selector, let matches, let values, let fallback):
@@ -1284,6 +1312,15 @@ struct ShaderProgram: Hashable, Sendable {
 
     private static func validate(_ declarations: ShaderDeclarations) throws {
         func fail(_ detail: String) -> Failure { Failure.invalidDeclaration(detail) }
+        func resolveStructure(_ type: MaterialGraph.ValueType, _ index: Int?, _ role: String) throws {
+            if type == .structure {
+                guard let index, declarations.structs.indices.contains(index) else {
+                    throw fail("\(role) needs a declared struct.")
+                }
+            } else if index != nil {
+                throw fail("\(role) is \(type.rawValue) and cannot name a struct.")
+            }
+        }
         guard declarations.uniforms.count <= MaterialGraph.maximumUniformCount else {
             throw fail("A graph may declare at most \(MaterialGraph.maximumUniformCount) uniforms.")
         }
@@ -1331,8 +1368,9 @@ struct ShaderProgram: Hashable, Sendable {
             guard function.parameters.count <= 8 else {
                 throw fail("Function \(function.name) may take at most eight parameters.")
             }
-            if function.returnType == .structure || function.parameters.contains(where: { $0.type == .structure }) {
-                throw fail("Function \(function.name) cannot use a struct type. Construct the struct in the graph and pass its fields.")
+            try resolveStructure(function.returnType, function.returnStructure, "Function \(function.name)'s return type")
+            for parameter in function.parameters {
+                try resolveStructure(parameter.type, parameter.structure, "Function \(function.name) parameter \(parameter.name)")
             }
             let body = function.body
             guard !body.isEmpty, body.utf8.count <= ShaderFunction.maximumBodyLength, !body.contains("#"),

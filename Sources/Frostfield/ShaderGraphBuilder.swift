@@ -336,6 +336,24 @@ public final class ShaderGraphBuilder {
         return ShaderFunctionReference(index: functions.count - 1, builder: self)
     }
 
+    /// Declares a Metal function that takes and returns graph structs. The body may name each
+    /// declared struct by its Swift name; that name is a typedef for the generated Metal type.
+    public func function(
+        _ name: String, returns structure: ShaderStruct, parameters: [ShaderFunction.Parameter], body: String
+    ) -> ShaderStructFunction {
+        if let index = functions.firstIndex(where: { $0.name == name }) {
+            let existing = functions[index]
+            if existing.returnType != .structure || existing.returnStructure != structure.index {
+                rejectDeclaration("Function \(name) is already declared with a different type.")
+            }
+            return ShaderStructFunction(index: index, structure: structure.index, builder: self)
+        }
+        functions.append(ShaderFunction(
+            name: name, parameters: parameters, returns: .structure, returnStructure: structure.index, body: body
+        ))
+        return ShaderStructFunction(index: functions.count - 1, structure: structure.index, builder: self)
+    }
+
     /// Premultiplied linear RGBA at top-left normalized coordinates, sampled
     /// bilinearly. Reads the source image in post-processing and a
     /// `SceneViewportSnapshot` in raster surface graphs.
@@ -805,6 +823,23 @@ public struct ShaderFunctionReference<Result: ShaderGraphValue> {
     /// Calls the function. Validation checks the argument count and types.
     public func callAsFunction(_ arguments: any ShaderArgument...) -> ShaderValue<Result> {
         builder.add(.function(index, arguments: arguments.map(\.shaderNodeID)), operands: arguments)
+    }
+}
+
+/// A declared function whose result is a struct.
+public struct ShaderStructFunction {
+    public let index: Int
+    /// Index of the struct this function returns.
+    public let structure: Int
+    let builder: ShaderGraphBuilder
+
+    /// Calls the function. Validation checks the argument count and struct identity.
+    public func callAsFunction(_ arguments: any ShaderArgument...) -> ShaderStructValue {
+        builder.noteOperands(arguments)
+        return ShaderStructValue(
+            id: builder.append(.function(index, arguments: arguments.map(\.shaderNodeID))),
+            structure: structure, builder: builder
+        )
     }
 }
 

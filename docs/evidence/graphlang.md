@@ -40,7 +40,7 @@ groove and show the face of the next brick, and both renderers agree.
 | Dithering | `.interleavedGradientNoise`, `interleavedGradientNoise(_:)`, `dither(_:pixel:levels:)`, `bayerDither(_:pixel:levels:)` | Yes | Yes | All | `ShaderPatternTests.dithering`, `bayerDithering` |
 | 3 × 3 and 4 × 4 matrices | `ValueType.matrix3`, `.matrix4`, `.matrix`, `.matrixMultiply`, `.matrixUnary`, `.matrixColumn`, `ShaderMatrixType`, `constant(_:)` and `uniform(_:_:)` for `simd_float3x3` and `simd_float4x4`, `ShaderUniforms.set(_:to:)`, `matrix3(named:)`, `matrix4(named:)`, `*`, `inverse()`, `transposed()`, `determinant()`, `column(_:)`, `upperLeft`, `transformPoint(_:)`, `transformDirection(_:)` | Yes | Yes | All | `ShaderPatternTests.matrices`, `matrixUniforms` |
 | Signed 32-bit integers and bools | `ValueType.int`, `.bool`, `.bitcast`, `.countOneBits`, `.numericCast`, `bitcast()`, `countOneBits()`, `toInt()`, `toFloat()`, `ShaderUniforms.setInteger(_:_:)`, `setBoolean(_:_:)`, `integer(named:)`, `boolean(named:)` | The surface shader compiles; this lane did not read raster or path pixels | Not executed | Compute buffer kernel | `ShaderPatternTests.integersAndBools`, `SceneArchiveTests.integerUniforms` |
-| Struct values | `ShaderStruct`, `ShaderGraphBuilder.defineStruct(_:_:)`, `make(_:_:)`, `ShaderStructValue.field`, `branch` for structs | The value can feed any stage that can run the graph | Same | Compute buffer kernel | `ShaderPatternTests.structs` |
+| Struct values | `ShaderStruct`, `ShaderGraphBuilder.defineStruct(_:_:)`, `make(_:_:)`, `ShaderStructValue.field`, `branch` for structs, `function(_:returns:parameters:body:)` for a struct result | The value can feed any stage that can run the graph | Same | Compute buffer kernel | `ShaderPatternTests.structs`, `ShaderPatternTests.structFunction` |
 | Graph clock | `Input.time`, `.deltaTime`, `.frame`, `ShaderFrame`, `ShaderUniforms.frame`, `setFrame(_:)`, `advanceFrame(by:)`, `frameRevision` | Yes | Yes | Vertex, post-process, texture and buffer compute, particles | `ShaderGraphInputTests.clock`, `.clockConsumers`, `.particleClock` |
 | Camera | `Input.cameraPosition`, `.cameraNear`, `.cameraFar`, `.viewMatrix`, `.projectionMatrix`; `ShaderGraphCamera` and `GLTFScene.Camera.View.graphCamera` for clip-matrix encodes | Yes, every encode path | Planar matrices use the full image projection, including lens shift and orthographic scale. Panoramas support view and clip inputs. | Rejected | `ShaderGraphInputTests.cameraAndModel`, `ShaderGraphViewTests.graphCameras`, `.pathCameraProjection` |
 | Model | `Input.modelMatrix`, `.normalMatrix` | Yes, the node matrix | Yes, except instanced nodes | Rejected | `ShaderGraphInputTests.cameraAndModel`, `ShaderGraphViewTests.modelMatrices` |
@@ -90,6 +90,7 @@ least disturbed run as well as the median.
 | Explicit UV derivatives | The same 4×4 texture. A footprint of 0 or 1 texel reads red, 2 texels reads green, and 4 or 8 texels read blue. A product of two 1×10²⁰ values overflows and reads mip 0. The sample used only by one branch arm is generated inside that arm and reads green. The graph JSON round-trips. macOS passed the pattern suite plus one raster, post-process, and deformation compile (18 tests, 3.027 seconds). The iPad Pro (M5) simulator passed the same four suites (18 tests, 10.060 seconds). Both runs had Metal API Validation on |
 | Cube map | Six 1×1 faces, +X through −Z, read back as red, green, blue, yellow, magenta, and cyan along those axes. A zero direction reads +X. A 2D sample of a cube and a direction sample of a 2D texture are rejected. A physically based material rejects the cube declaration. The graph JSON round-trips. macOS passed `ShaderPatternTests` (16 tests, 0.324 seconds) and the iPad Pro (M5) simulator passed the same suite (16 tests, 2.634 seconds), both with Metal API Validation |
 | 3D texture | A 1×1×2 volume, red then blue. Normalized z of 0.25 reads red and 0.75 reads blue with nearest filtering. A vector2 sample is rejected, and a physically based material rejects the declaration. The graph JSON round-trips. macOS passed `ShaderPatternTests` (17 tests, 0.487 seconds) and the iPad Pro (M5) simulator passed the same suite (17 tests, 3.741 seconds), both with Metal API Validation |
+| Struct-typed function | `grow` multiplies a `Point`'s x by 3 and keeps y. Inputs (1, 4) and (0.5, −2) read back (3, 4) and (1.5, −2). The generated function uses the struct's Metal name, and `Point` is a typedef for that name. Passing a different struct is rejected. The graph JSON round-trips. macOS passed `ShaderPatternTests` (18 tests, 0.226 seconds) and the iPad Pro (M5) simulator passed the same suite (18 tests, 1.787 seconds), both with Metal API Validation |
 
 ## Semantics
 
@@ -236,7 +237,7 @@ GPU shades with the same pattern.
 | `modelWorldMatrix`, `modelNormalMatrix` | `modelMatrix`, `normalMatrix` | Match; path tracer except instanced nodes |
 | `mat2`, `mat3`, `mat4`, matrix operations and `uniform(mat3)` / `uniform(mat4)` | `matrix3`, `matrix4` nodes and `uniform(_:simd_float3x3)`, `uniform(_:simd_float4x4)` | Partial: 3 × 3 and 4 × 4 with multiply, transpose, inverse, determinant, columns and live uniforms; no `mat2`. Matrix uniforms are not animation tracks |
 | `int`, `bool`, `bitcast`, `countOneBits`, `floatBitsToInt` | `Int32`, `Bool`, `bitcast()`, `countOneBits()`, `toInt()`, `toFloat()`, `setInteger(_:_:)`, `setBoolean(_:_:)` | Partial: signed 32-bit values and bools, including uniforms edited without a new pipeline. No `uint` or integer vectors |
-| `struct` | `ShaderStruct`, `defineStruct(_:_:)`, `make(_:_:)`, `ShaderStructValue.field` | Partial: nested structs, field reads, and branches of the same struct. A struct cannot be a uniform or a declared-function type |
+| `struct` | `ShaderStruct`, `defineStruct(_:_:)`, `make(_:_:)`, `ShaderStructValue.field`, `function(_:returns:parameters:body:)` | Partial: nested structs, field reads, branches of the same struct, and declared functions that take and return a struct. A struct cannot be a uniform |
 | `hash`, bitwise operators | `hash`, `bits` | Partial: 24-bit unsigned integers carried in floats. Signed integers use the operations above |
 | `interleavedGradientNoise`, `bayerDither` | `interleavedGradientNoise`, `dither`, `bayerDither` | The ordered RGB offset uses the r187 4×4 phase with caller pixel coordinates and a default of 32 levels. Metal readback matches all phases across 144 samples, including negative coordinates and a live level count. [Three.js r187 Bayer shader](https://github.com/mrdoob/three.js/blob/r187/examples/jsm/tsl/math/Bayer.js) |
 | `snoise`, `curlNoise`, `voronoi3d` | `simplexNoise`, `curlNoise`, `animatedVoronoi` | Three-dimensional simplex and curl, plus animated squared cell distance in two or three dimensions. [Procedural pattern evidence](shader-procedural-patterns.md) |
@@ -278,9 +279,11 @@ GPU shades with the same pattern.
   integer, boolean, matrix, or struct uniform (`unknownUniform`).
 - A struct is a named list of fields. A field is a scalar, vector, matrix, int,
   bool, or an earlier struct. `make` builds one and `field` reads it back. A
-  branch may choose between two values of the same struct. A graph may declare
-  16 structs of 16 fields. Structs are not uniforms and cannot be the type of a
-  declared Metal function. Float graphs that declare none emit no struct type.
+  branch may choose between two values of the same struct. A declared function
+  may take and return a struct; its body names that struct by the Swift name,
+  which is a typedef for the generated Metal type. A graph may declare
+  16 structs of 16 fields. Structs are not uniforms. Float graphs that declare
+  none emit no struct type.
 - A matrix uniform is one float4 slot per column, column-major, then any later
   uniforms. Scalar and vector uniforms keep one slot each, so a graph that
   declares none of these matrices binds the same buffer as before. There is no

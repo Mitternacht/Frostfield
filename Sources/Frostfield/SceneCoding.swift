@@ -841,12 +841,14 @@ extension ShaderTextureInput: Codable {
 }
 
 extension ShaderFunction.Parameter: Codable {
-    private enum CodingKeys: String, CodingKey { case name, type }
+    private enum CodingKeys: String, CodingKey { case name, type, structure }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
-            try container.decode(String.self, forKey: .name), try container.decode(MaterialGraph.ValueType.self, forKey: .type)
+            try container.decode(String.self, forKey: .name),
+            try container.decode(MaterialGraph.ValueType.self, forKey: .type),
+            structure: try container.decodeIfPresent(Int.self, forKey: .structure)
         )
     }
 
@@ -854,11 +856,12 @@ extension ShaderFunction.Parameter: Codable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(name, forKey: .name)
         try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(structure, forKey: .structure)
     }
 }
 
 extension ShaderFunction: Codable {
-    private enum CodingKeys: String, CodingKey { case name, parameters, returnType, body }
+    private enum CodingKeys: String, CodingKey { case name, parameters, returnType, returnStructure, body }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -866,6 +869,7 @@ extension ShaderFunction: Codable {
             name: try container.decode(String.self, forKey: .name),
             parameters: try container.decode([Parameter].self, forKey: .parameters),
             returns: try container.decode(MaterialGraph.ValueType.self, forKey: .returnType),
+            returnStructure: try container.decodeIfPresent(Int.self, forKey: .returnStructure),
             body: try container.decode(String.self, forKey: .body)
         )
     }
@@ -875,6 +879,7 @@ extension ShaderFunction: Codable {
         try container.encode(name, forKey: .name)
         try container.encode(parameters, forKey: .parameters)
         try container.encode(returnType, forKey: .returnType)
+        try container.encodeIfPresent(returnStructure, forKey: .returnStructure)
         try container.encode(body, forKey: .body)
     }
 }

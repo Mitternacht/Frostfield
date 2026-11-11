@@ -927,4 +927,40 @@ struct ShaderPatternTests {
             try PhysicallyBasedMaterial(surfaceGraph: surface, surfaceTextures: ["Map": image])
         }
     }
+
+    @Test("A declared function can take and return a struct")
+    func structFunction() throws {
+        let graph = try BufferShaderGraph(fieldCount: 1) { b in
+            let point = b.defineStruct("Point", [
+                ShaderStruct.Field("x", .scalar), ShaderStruct.Field("y", .scalar),
+            ])
+            let grow = b.function("grow", returns: point, parameters: [
+                ShaderFunction.Parameter("value", point), ShaderFunction.Parameter("scale", .scalar),
+            ], body: "return Point{ value.x * scale, value.y };")
+            let made = b.make(point, ["x": b.elementField(0).x, "y": b.elementField(0).y])
+            let grown = grow(made, b.constant(Float(3)))
+            return [0: b.vector(
+                grown.field("x", as: Float.self), grown.field("y", as: Float.self),
+                b.constant(Float(0)), b.constant(Float(0))
+            )]
+        }
+        let source = try graph.metalFunction(named: "struct_fn")
+        #expect(source.contains("typedef frostfield_struct_0_Point Point;"))
+        #expect(source.contains("static inline frostfield_struct_0_Point struct_fn_fn_grow(frostfield_struct_0_Point value, float scale)"))
+        let read = try probe.run(graph, elements: [[SIMD4<Float>(1, 4, 0, 0)], [SIMD4(0.5, -2, 0, 0)]])
+        #expect(read[0][0] == SIMD4<Float>(3, 4, 0, 0))
+        #expect(read[1][0] == SIMD4<Float>(1.5, -2, 0, 0))
+        #expect(try JSONDecoder().decode(BufferShaderGraph.self, from: JSONEncoder().encode(graph)) == graph)
+        #expect(throws: MaterialGraph.Failure.structMismatch(node: 2, expected: 0, actual: 1)) {
+            try BufferShaderGraph(fieldCount: 1) { b in
+                let point = b.defineStruct("Point", [ShaderStruct.Field("x", .scalar)])
+                let other = b.defineStruct("Other", [ShaderStruct.Field("x", .scalar)])
+                let copy = b.function("copy", returns: point, parameters: [
+                    ShaderFunction.Parameter("value", point),
+                ], body: "return value;")
+                _ = copy(b.make(other, ["x": b.constant(Float(1))]))
+                return [0: b.elementField(0)]
+            }
+        }
+    }
 }
