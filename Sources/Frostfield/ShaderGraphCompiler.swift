@@ -461,6 +461,13 @@ struct ShaderProgram: Hashable, Sendable {
             }
             try require(coordinates, .vector2)
             return .vector4
+        case .sampleTextureLevel(let slot, let coordinates, let level):
+            guard declarations.textures.indices.contains(slot) else {
+                throw Failure.invalidTexture(node: id, slot: slot)
+            }
+            try require(coordinates, .vector2)
+            try require(level, .scalar)
+            return .vector4
         case .sampleScene(let coordinates):
             try require(coordinates, .vector2)
             return .vector4
@@ -866,6 +873,8 @@ struct ShaderProgram: Hashable, Sendable {
             []
         case .sampleTexture(_, let coordinates), .sampleScene(let coordinates), .sampleDepth(let coordinates):
             [coordinates]
+        case .sampleTextureLevel(_, let coordinates, let level):
+            [coordinates, level]
         case .sampleSceneLevel(let coordinates, let level):
             [coordinates, level]
         case .viewportSafeUV(let coordinates, let fallback):
@@ -1002,6 +1011,10 @@ struct ShaderProgram: Hashable, Sendable {
             let texture = declarations.textures[slot]
             return "frostfield_graph_sample(resources, \(slot)u, \(texture.addressing.code)u, "
                 + "\(texture.filtering.code)u, \(n(coordinates)))"
+        case .sampleTextureLevel(let slot, let coordinates, let level):
+            let texture = declarations.textures[slot]
+            return "frostfield_graph_sample(resources, \(slot)u, \(texture.addressing.code)u, "
+                + "\(texture.filtering.code)u, \(n(coordinates)), \(n(level)))"
         case .sampleScene(let coordinates): return "frostfield_graph_scene(resources, \(n(coordinates)))"
         case .sampleSceneLevel(let coordinates, let level): return "frostfield_graph_scene(resources, \(n(coordinates)), \(n(level)))"
         case .sampleDepth(let coordinates): return "frostfield_graph_depth(resources, \(n(coordinates)))"

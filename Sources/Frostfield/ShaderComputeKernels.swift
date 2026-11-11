@@ -479,37 +479,51 @@ struct ShaderComputeResources: Sendable {
         }
         if textureCount > 0 {
             let cases = (0..<textureCount).map {
-                "    case \($0)u: return frostfield_compute_sample(resources.texture\($0), address, filter, uv);"
+                "    case \($0)u: return frostfield_compute_sample(resources.texture\($0), address, filter, uv, level);"
             }.joined(separator: "\n")
             source += """
 
 
-            // Compute stages sample the base level. address: 0 repeat, 1 clamp, 2 mirror; filter: 0 linear, 1 nearest.
-            static inline float4 frostfield_compute_sample(texture2d<float> texture, uint address, uint filter, float2 uv) {
-                constexpr sampler repeatLinear(address::repeat, filter::linear);
-                constexpr sampler repeatNearest(address::repeat, filter::nearest);
-                constexpr sampler clampLinear(address::clamp_to_edge, filter::linear);
-                constexpr sampler clampNearest(address::clamp_to_edge, filter::nearest);
-                constexpr sampler mirrorLinear(address::mirrored_repeat, filter::linear);
-                constexpr sampler mirrorNearest(address::mirrored_repeat, filter::nearest);
+            // address: 0 repeat, 1 clamp, 2 mirror; filter: 0 linear, 1 nearest.
+            // A nonfinite lod reads level 0. The lod is clamped to the last mip.
+            static inline float frostfield_compute_lod(texture2d<float> texture, float level) {
+                float last = float(texture.get_num_mip_levels() - 1);
+                return isfinite(level) ? clamp(level, 0.0f, last) : 0.0f;
+            }
+            static inline float4 frostfield_compute_sample(
+                texture2d<float> texture, uint address, uint filter, float2 uv, float lod
+            ) {
+                constexpr sampler repeatLinear(address::repeat, filter::linear, mip_filter::nearest);
+                constexpr sampler repeatNearest(address::repeat, filter::nearest, mip_filter::nearest);
+                constexpr sampler clampLinear(address::clamp_to_edge, filter::linear, mip_filter::nearest);
+                constexpr sampler clampNearest(address::clamp_to_edge, filter::nearest, mip_filter::nearest);
+                constexpr sampler mirrorLinear(address::mirrored_repeat, filter::linear, mip_filter::nearest);
+                constexpr sampler mirrorNearest(address::mirrored_repeat, filter::nearest, mip_filter::nearest);
                 float2 coordinates = select(float2(0), uv, frostfield_graph_finite(uv));
+                float mip = frostfield_compute_lod(texture, lod);
                 switch (address * 2u + filter) {
-                case 0u: return texture.sample(repeatLinear, coordinates, level(0.0f));
-                case 1u: return texture.sample(repeatNearest, coordinates, level(0.0f));
-                case 2u: return texture.sample(clampLinear, coordinates, level(0.0f));
-                case 3u: return texture.sample(clampNearest, coordinates, level(0.0f));
-                case 4u: return texture.sample(mirrorLinear, coordinates, level(0.0f));
-                default: return texture.sample(mirrorNearest, coordinates, level(0.0f));
+                case 0u: return texture.sample(repeatLinear, coordinates, level(mip));
+                case 1u: return texture.sample(repeatNearest, coordinates, level(mip));
+                case 2u: return texture.sample(clampLinear, coordinates, level(mip));
+                case 3u: return texture.sample(clampNearest, coordinates, level(mip));
+                case 4u: return texture.sample(mirrorLinear, coordinates, level(mip));
+                default: return texture.sample(mirrorNearest, coordinates, level(mip));
+                }
+            }
+
+            static inline float4 frostfield_graph_sample(
+                thread const FrostfieldGraphResources& resources, uint slot, uint address, uint filter, float2 uv, float level
+            ) {
+                switch (slot) {
+            \(cases)
+                default: return float4(0);
                 }
             }
 
             static inline float4 frostfield_graph_sample(
                 thread const FrostfieldGraphResources& resources, uint slot, uint address, uint filter, float2 uv
             ) {
-                switch (slot) {
-            \(cases)
-                default: return float4(0);
-                }
+                return frostfield_graph_sample(resources, slot, address, filter, uv, 0.0f);
             }
             """
         }

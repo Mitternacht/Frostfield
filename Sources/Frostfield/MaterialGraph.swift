@@ -139,6 +139,9 @@ public struct MaterialGraph: Sendable {
         /// Samples a declared texture at vector2 coordinates and returns RGBA.
         /// Vertex and compute stages sample the base mip level.
         case sampleTexture(slot: Int, coordinates: NodeID)
+        /// Samples a declared texture at an explicit mip level. A nonfinite level reads level 0.
+        /// The level is clamped to the texture's last mip. Unlike `sampleTexture`, this may run inside a branch.
+        case sampleTextureLevel(slot: Int, coordinates: NodeID, level: NodeID)
         /// Samples the viewport or post-process image at mip zero. Returns premultiplied linear RGBA.
         case sampleScene(coordinates: NodeID)
         /// Samples the viewport or post-process image at a scalar mip level.

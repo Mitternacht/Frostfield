@@ -678,4 +678,49 @@ struct ShaderPatternTests {
         }
         #expect(try ShaderUniforms(negativeDefault.uniforms).integer(named: "K") == -2)
     }
+
+    @Test("An explicit texture level selects that mip and clamps past the last one")
+    func textureLevel() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba32Float, width: 4, height: 4, mipmapped: true
+        )
+        descriptor.mipmapLevelCount = 3
+        descriptor.usage = .shaderRead
+        descriptor.storageMode = .shared
+        let texture = try #require(device.makeTexture(descriptor: descriptor))
+        func fill(_ level: Int, _ color: SIMD4<Float>) {
+            let size = 4 >> level
+            let texels = Array(repeating: color, count: size * size)
+            texels.withUnsafeBytes { bytes in
+                texture.replace(
+                    region: MTLRegionMake2D(0, 0, size, size), mipmapLevel: level,
+                    withBytes: bytes.baseAddress!, bytesPerRow: size * 16
+                )
+            }
+        }
+        fill(0, SIMD4(1, 0, 0, 1))
+        fill(1, SIMD4(0, 1, 0, 1))
+        fill(2, SIMD4(0, 0, 1, 1))
+        let graph = try BufferShaderGraph(fieldCount: 1) { b in
+            let map = b.texture("Map", content: .data, addressing: .clampToEdge, filtering: .nearest)
+            let sample = map.sample(b.constant(SIMD2<Float>(0.5, 0.5)), level: b.uniform("Lod", Float(1)))
+            return [0: sample]
+        }
+        let uniforms = try ShaderUniforms(graph.uniforms)
+        func read(_ lod: Float) throws -> SIMD4<Float> {
+            try uniforms.set("Lod", to: lod)
+            return try probe.run(
+                graph, elements: [[SIMD4<Float>(0, 0, 0, 0)]], uniforms: uniforms, textures: ["Map": texture]
+            )[0][0]
+        }
+        let base = try read(0)
+        let middle = try read(1)
+        let last = try read(8)
+        #expect(base == SIMD4(1, 0, 0, 1))
+        #expect(middle == SIMD4(0, 1, 0, 1))
+        #expect(last == SIMD4(0, 0, 1, 1))
+        let encoded = try JSONEncoder().encode(graph)
+        #expect(try JSONDecoder().decode(BufferShaderGraph.self, from: encoded) == graph)
+    }
 }

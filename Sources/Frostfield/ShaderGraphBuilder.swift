@@ -688,6 +688,17 @@ public struct ShaderTexture {
         builder.add(.sampleTexture(slot: slot, coordinates: coordinates.id), operands: [coordinates])
     }
 
+    /// RGBA at an explicit mip level. A nonfinite level reads level 0, and the level is clamped
+    /// to the last mip. This sample may run inside a branch.
+    public func sample(
+        _ coordinates: ShaderValue<SIMD2<Float>>, level: ShaderValue<Float>
+    ) -> ShaderValue<SIMD4<Float>> {
+        builder.add(
+            .sampleTextureLevel(slot: slot, coordinates: coordinates.id, level: level.id),
+            operands: [coordinates, level]
+        )
+    }
+
     /// Decodes a tangent-space normal map texel from 0...1 storage to -1...1.
     public func sampleNormal(_ coordinates: ShaderValue<SIMD2<Float>>, strength: Float = 1) -> ShaderValue<SIMD3<Float>> {
         let encoded = sample(coordinates).xyz * 2 - 1

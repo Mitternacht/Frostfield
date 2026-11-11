@@ -1711,6 +1711,49 @@ public final class PathTracingScene {
         return frostfield_graph_sample(resources, slot, address, filtering, uv, resources.gradients[0]);
     }
 
+    static inline float frostfield_graph_explicit_lod(uint levels, float level) {
+        float last = float(levels - 1u);
+        return isfinite(level) ? clamp(level, 0.0f, last) : 0.0f;
+    }
+
+    static inline float4 frostfield_graph_sample(
+        thread const FrostfieldGraphResources& resources, uint slot, uint address, uint filtering, float2 uv, float requested
+    ) {
+        constexpr sampler repeatLinear(
+            coord::normalized, address::repeat, filter::linear, mip_filter::nearest, max_anisotropy(1)
+        );
+        constexpr sampler repeatNearest(coord::normalized, address::repeat, filter::nearest, mip_filter::nearest);
+        constexpr sampler clampLinear(
+            coord::normalized, address::clamp_to_edge, filter::linear, mip_filter::nearest, max_anisotropy(1)
+        );
+        constexpr sampler clampNearest(coord::normalized, address::clamp_to_edge, filter::nearest, mip_filter::nearest);
+        constexpr sampler mirrorLinear(
+            coord::normalized, address::mirrored_repeat, filter::linear, mip_filter::nearest, max_anisotropy(1)
+        );
+        constexpr sampler mirrorNearest(coord::normalized, address::mirrored_repeat, filter::nearest, mip_filter::nearest);
+        uint entry = resources.table[resources.textureOffset + slot];
+        if (entry >= resources.textureCount) { return float4(1); }
+        device const PTTextureBinding& binding = resources.textures[entry];
+        bool linear = filtering == 0u;
+        if (binding.layer == 0xffffffffu) {
+            texture2d<half> map = binding.texture;
+            float mip = frostfield_graph_explicit_lod(map.get_num_mip_levels(), requested);
+            if (address == 1u) { return float4(linear ? map.sample(clampLinear, uv, level(mip)) : map.sample(clampNearest, uv, level(mip))); }
+            if (address == 2u) { return float4(linear ? map.sample(mirrorLinear, uv, level(mip)) : map.sample(mirrorNearest, uv, level(mip))); }
+            return float4(linear ? map.sample(repeatLinear, uv, level(mip)) : map.sample(repeatNearest, uv, level(mip)));
+        }
+        uint layer = binding.layer;
+        texture2d_array<half> maps = resources.maps;
+        float mip = frostfield_graph_explicit_lod(maps.get_num_mip_levels(), requested);
+        if (address == 1u) {
+            return float4(linear ? maps.sample(clampLinear, uv, layer, level(mip)) : maps.sample(clampNearest, uv, layer, level(mip)));
+        }
+        if (address == 2u) {
+            return float4(linear ? maps.sample(mirrorLinear, uv, layer, level(mip)) : maps.sample(mirrorNearest, uv, layer, level(mip)));
+        }
+        return float4(linear ? maps.sample(repeatLinear, uv, layer, level(mip)) : maps.sample(repeatNearest, uv, layer, level(mip)));
+    }
+
     static inline float3 frostfield_graph_bump(
         thread const FrostfieldSurfaceInput& input, thread const FrostfieldGraphResources& resources,
         uint slot, uint address, uint filtering, uint coordinateSet, float4 row0, float4 row1, float scale

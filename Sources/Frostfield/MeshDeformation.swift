@@ -386,6 +386,30 @@ final class MeshDeformation: @unchecked Sendable {
                 : address == 2u ? texture.sample(mirrorNearest, uv, level(0.0f)) : texture.sample(repeatNearest, uv, level(0.0f));
         }
 
+        static inline float frostfield_graph_lod(texture2d<float> texture, float level) {
+            float last = float(texture.get_num_mip_levels() - 1);
+            return isfinite(level) ? clamp(level, 0.0f, last) : 0.0f;
+        }
+
+        static inline float4 frostfield_graph_sample(
+            thread const FrostfieldGraphResources& resources, uint slot, uint address, uint filtering, float2 uv, float requested
+        ) {
+            constexpr sampler repeatLinear(address::repeat, filter::linear, mip_filter::nearest);
+            constexpr sampler clampLinear(address::clamp_to_edge, filter::linear, mip_filter::nearest);
+            constexpr sampler mirrorLinear(address::mirrored_repeat, filter::linear, mip_filter::nearest);
+            constexpr sampler repeatNearest(address::repeat, filter::nearest, mip_filter::nearest);
+            constexpr sampler clampNearest(address::clamp_to_edge, filter::nearest, mip_filter::nearest);
+            constexpr sampler mirrorNearest(address::mirrored_repeat, filter::nearest, mip_filter::nearest);
+            texture2d<float> texture = frostfield_graph_texture(resources, slot);
+            float mip = frostfield_graph_lod(texture, requested);
+            if (filtering == 0u) {
+                return address == 1u ? texture.sample(clampLinear, uv, level(mip))
+                    : address == 2u ? texture.sample(mirrorLinear, uv, level(mip)) : texture.sample(repeatLinear, uv, level(mip));
+            }
+            return address == 1u ? texture.sample(clampNearest, uv, level(mip))
+                : address == 2u ? texture.sample(mirrorNearest, uv, level(mip)) : texture.sample(repeatNearest, uv, level(mip));
+        }
+
         \(function)
 
         // Four float4 slots per vertex: position, normal, UV0/UV1, tangent.

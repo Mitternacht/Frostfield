@@ -249,6 +249,9 @@ public final class PostProcessPass {
         }
         if !textureSlots.isEmpty {
             let cases = textureSlots.map { "        case \($0)u: return frostfield_post_sample(r.texture\($0), address, filter, uv);" }
+            let levelCases = textureSlots.map {
+                "        case \($0)u: return frostfield_post_sample(r.texture\($0), address, filter, uv, level);"
+            }
             hooks.append(sampleHelper)
             hooks.append("""
             static inline float4 frostfield_graph_sample(
@@ -256,6 +259,14 @@ public final class PostProcessPass {
             ) {
                 switch (slot) {
             \(cases.joined(separator: "\n"))
+                    default: return float4(0);
+                }
+            }
+            static inline float4 frostfield_graph_sample(
+                thread const FrostfieldGraphResources& r, uint slot, uint address, uint filter, float2 uv, float level
+            ) {
+                switch (slot) {
+            \(levelCases.joined(separator: "\n"))
                     default: return float4(0);
                 }
             }
@@ -343,6 +354,27 @@ public final class PostProcessPass {
             case 3u: return t.sample(clampNearest, uv);
             case 4u: return t.sample(mirrorLinear, uv);
             default: return t.sample(mirrorNearest, uv);
+        }
+    }
+    static inline float frostfield_post_lod(texture2d<float> t, float level) {
+        float last = float(t.get_num_mip_levels() - 1);
+        return isfinite(level) ? clamp(level, 0.0f, last) : 0.0f;
+    }
+    static inline float4 frostfield_post_sample(texture2d<float> t, uint address, uint filter, float2 uv, float requested) {
+        constexpr sampler repeatLinear(coord::normalized, address::repeat, filter::linear, mip_filter::nearest);
+        constexpr sampler repeatNearest(coord::normalized, address::repeat, filter::nearest, mip_filter::nearest);
+        constexpr sampler clampLinear(coord::normalized, address::clamp_to_edge, filter::linear, mip_filter::nearest);
+        constexpr sampler clampNearest(coord::normalized, address::clamp_to_edge, filter::nearest, mip_filter::nearest);
+        constexpr sampler mirrorLinear(coord::normalized, address::mirrored_repeat, filter::linear, mip_filter::nearest);
+        constexpr sampler mirrorNearest(coord::normalized, address::mirrored_repeat, filter::nearest, mip_filter::nearest);
+        float mip = frostfield_post_lod(t, requested);
+        switch (address * 2u + filter) {
+            case 0u: return t.sample(repeatLinear, uv, level(mip));
+            case 1u: return t.sample(repeatNearest, uv, level(mip));
+            case 2u: return t.sample(clampLinear, uv, level(mip));
+            case 3u: return t.sample(clampNearest, uv, level(mip));
+            case 4u: return t.sample(mirrorLinear, uv, level(mip));
+            default: return t.sample(mirrorNearest, uv, level(mip));
         }
     }
     """
