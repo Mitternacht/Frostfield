@@ -27,11 +27,10 @@ were available. The bridge exposed no Swift package creation operation and could
 not resolve a destination before the target had source, so the manifest and initial
 source were bootstrapped on disk before reopening the package through the bridge.
 
-The [build workflow](../../.github/workflows/ci.yml) selects Xcode 27.2 on the
-[GitHub `xcode-27` arm64 runner](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md#xcode).
-It checks SDK and Metal compiler availability and builds macOS Debug and Release
-and generic iOS and visionOS Simulator Release. Workflow lint and the local toolchain preflight
-passed. The hosted workflow has yet to run. Package compilation establishes no
+A hosted build workflow once selected Xcode 27.2 on the
+[GitHub `xcode-27` arm64 runner](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md#xcode)
+and built macOS Debug and Release and generic iOS and visionOS Simulator Release. It was
+removed because the project does not use CI. Package compilation establishes no
 physical device behavior or GPU performance.
 
 All three Release destinations passed locally with `xcodebuild`. The bridge's

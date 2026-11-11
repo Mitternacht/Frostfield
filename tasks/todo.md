@@ -9,7 +9,7 @@ The package foundation is recorded in [build baseline evidence](../docs/evidence
 **Acceptance criteria**
 - [x] `Package.swift` declares tools version 6.2, Swift 6 language mode, iOS, macOS, and visionOS 27.0, and one `Frostfield` library product with no GlassWeave dependency.
 - [x] The target was bootstrapped as a buildable module without speculative public APIs, fake renderer behavior, or placeholder tests.
-- [x] The chosen Xcode/SDK and successful package builds are recorded; CI is configured for compilation checks on a compatible hosted runner.
+- [x] The chosen Xcode/SDK and successful package builds are recorded; a hosted CI workflow was configured for compilation checks and later removed because the project does not use CI.
 
 **Verification:** Use Xcode MCP to open/build the package on an available destination, inspect diagnostics, and record toolchain/version. Verify manifest platform parsing with that toolchain. Record compiler version, SDK, Swift language mode, default actor isolation, and the selected MSL dialect separately; follow `docs/language-strategy.md`. CI must choose an Xcode version supporting the declared SDKs, fail clearly when unavailable, and avoid claiming device performance. Add tests when real behavior exists.
 
