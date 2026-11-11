@@ -1,0 +1,46 @@
+{
+  "controls" : {
+    "copper.depth" : 0.90000000000000002,
+    "copper.dimples" : 22,
+    "copper.roughness" : 0.28000000000000003,
+    "film.hue" : 0.55000000000000004,
+    "film.thickness" : 1.1000000000000001,
+    "marble.scale" : 3.2000000000000002,
+    "marble.veins" : 14,
+    "marble.warp" : 1.3999999999999999,
+    "post.fringe" : 1.2,
+    "post.tone" : 0.34999999999999998,
+    "post.vignette" : 0.34999999999999998,
+    "scene.animate" : 1,
+    "scene.exposure" : 0,
+    "scene.path" : 1,
+    "scene.samples" : 100000,
+    "tile.rotation" : 25,
+    "tile.tiling" : 1.5,
+    "tile.warmth" : 0.20000000000000001,
+    "wave.amplitude" : 0.050000000000000003,
+    "wave.foam" : 0.80000000000000004,
+    "wave.frequency" : 5.5,
+    "wave.speed" : 1.3999999999999999
+  },
+  "cpuEncodeMs" : {
+    "p50" : 0.094833332695998251,
+    "p95" : 0.15900000289548188,
+    "p99" : 0.19504166266415268
+  },
+  "device" : "Apple M4 Max",
+  "deviceAllocatedMB" : 110.953125,
+  "frames" : 120,
+  "gpuMs" : {
+    "max" : 11.790958335041068,
+    "p50" : 10.847375000594184,
+    "p95" : 11.469125005532987,
+    "p99" : 11.75912500184495
+  },
+  "height" : 720,
+  "note" : "Offscreen, one command buffer in flight, waits each frame; excludes presentation and display timing.",
+  "os" : "Version 27.2 (Build 26B123)",
+  "scene" : "--shader-lab",
+  "warmupFrames" : 30,
+  "width" : 1280
+}

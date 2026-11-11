@@ -1,0 +1,87 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "FrostfieldLab studio rig"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0,
+        1
+      ]
+    }
+  ],
+  "extensionsUsed": [
+    "KHR_lights_punctual"
+  ],
+  "extensionsRequired": [
+    "KHR_lights_punctual"
+  ],
+  "extensions": {
+    "KHR_lights_punctual": {
+      "lights": [
+        {
+          "name": "Warm studio spot",
+          "type": "spot",
+          "color": [
+            1,
+            0.8,
+            0.58
+          ],
+          "intensity": 9,
+          "range": 8,
+          "spot": {
+            "innerConeAngle": 0.3,
+            "outerConeAngle": 0.56
+          }
+        },
+        {
+          "name": "Cool fill",
+          "type": "point",
+          "color": [
+            0.68,
+            0.8,
+            1
+          ],
+          "intensity": 4.2,
+          "range": 7
+        }
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "name": "Warm studio spot",
+      "translation": [
+        -2.65,
+        3.55,
+        1.15
+      ],
+      "rotation": [
+        -0.24855208274986018,
+        -0.5066638609900996,
+        0,
+        0.8255383662358229
+      ],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 0
+        }
+      }
+    },
+    {
+      "name": "Cool fill",
+      "translation": [
+        2.1,
+        2.35,
+        0.55
+      ],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 1
+        }
+      }
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # Contributing to Frostfield
 
-This is a planning repository. Start with [HANDOFF.md](HANDOFF.md), read the
+Start with [HANDOFF.md](HANDOFF.md), read the
 [plan](tasks/plan.md), and use the [ordered backlog](tasks/todo.md) as the source of
 implementation tasks. Review the relevant [architecture](docs/architecture.md) contracts
 before adding behavior.
@@ -10,8 +10,7 @@ before adding behavior.
 Keep changes focused on one useful outcome. Define behavior before adding a public API;
 do not publish placeholder protocols or methods that silently do nothing. Add focused
 Swift Testing coverage with the first testable behavior. Use XCTest where UI automation
-or performance measurement requires it. Keep the package building between slices once
-it exists.
+or performance measurement requires it. Keep the package building between slices.
 
 For visual changes, include a small reproducible example, reference captures, and the
 device/OS used. Follow the [validation protocol](docs/validation.md) for GPU correctness,
@@ -20,21 +19,23 @@ useful for integration and are not evidence of physical-device performance.
 
 ## Implementation setup
 
-There is no `Package.swift` or source implementation yet. The first code task will create
-the package with Swift 6 mode and proposed iOS 26 and macOS 26 deployment baselines.
-Native UI work starts on iOS/iPadOS; a macOS core build will not imply a macOS UI adapter.
+Open the Swift package in Xcode 27 with the macOS, iOS, and visionOS 27 SDKs. The
+manifest uses Swift tools 6.2 and Swift 6 mode and targets macOS, iOS, iPadOS, and
+visionOS 27.0 or later. Run the native macOS lab for local rendering work and the
+corresponding native destinations for iOS, iPadOS, and visionOS checks. See the
+[example instructions](Examples/README.md) and
+[build baseline](docs/evidence/build-baseline.md).
 
 Coding agents must follow [AGENTS.md](AGENTS.md): load the matching installed Apple
 Xcode 27 skill and use the native Xcode MCP server for Apple project edits, documentation,
 builds, diagnostics, previews, runs, and tests. Human contributors may use Xcode directly.
 
-## Planned continuous integration
+## Continuous integration
 
-No CI workflow is installed at the planning stage. Add one with the first package
-implementation. The proposed starting checks are macOS Debug and Release builds and a
-generic iOS Simulator Release build on `macos-26`, with the selected Xcode version
-recorded in logs. Use focused test jobs as soon as testable behavior exists; do not add
-tests that merely prove an empty module compiles.
+The CI workflow uses Xcode 27.2 on GitHub's `xcode-27` runner to build macOS Debug
+and Release, generic iOS Simulator Release, and generic visionOS Simulator Release.
+It records the toolchain and checks for the Metal compiler before building. Add
+focused test jobs with the first testable behavior.
 
 Use read-only workflow permissions, pinned action revisions, and `pull_request` for
 contributor builds. Avoid signing credentials for package-only checks. Keep physical
@@ -42,9 +43,8 @@ device validation separate from simulator build results.
 
 Apple documents `xcodebuild` for external CI in its
 [Swift package CI guidance](https://developer.apple.com/documentation/xcode/building-swift-packages-or-apps-that-use-them-in-continuous-integration-workflows).
-Verify toolchain availability against the
-[official runner image manifest](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md)
-when implementing CI; the installed default can change.
+Verify Xcode and SDK availability in the selected image when updating the CI
+toolchain. See the [official Xcode 27 runner image](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md#xcode).
 
 ## Pull requests and releases
 
@@ -53,7 +53,6 @@ backlog and relevant docs in the same change. Public API changes need a compatib
 note; rendering or performance claims need evidence. Do not weaken existing checks to
 make a change pass.
 
-`main` currently contains planning documents. There is no release tag. The first release
-follows its roadmap acceptance gates, includes a changelog and usable example, and is
-tagged with a semantic version. Contributions are made under the repository's
-[MIT license](LICENSE).
+The first release follows its roadmap acceptance gates, includes a changelog and
+usable example, and is tagged with a semantic version. Contributions are made
+under the repository's [MIT license](LICENSE).

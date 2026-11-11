@@ -1,0 +1,10 @@
+Dolphin by Alex_Pfe
+Original model: https://skfb.ly/oTOws
+Creative Commons Attribution 4.0 International: https://creativecommons.org/licenses/by/4.0/
+
+The animated GLB came from Cyber Ocean by SahilK-027.
+https://github.com/SahilK-027/Cyber-Ocean/blob/a81fd7278c6df037724a3772f67ca9112de43ed6/public/assets/models/dolphin_anim.glb
+https://github.com/SahilK-027/Cyber-Ocean/blob/a81fd7278c6df037724a3772f67ca9112de43ed6/public/assets/models/license.dolphin.txt
+
+Frostfield repacked the file as an uncompressed GLB using the decoded Draco
+streams. The Lab applies its own placement and lighting to the model.

@@ -1,0 +1,15 @@
+# Disk and elliptical path emitters
+
+`PathTracer.AreaLight` uses rectangular panels by default. Choose `shape: .disk` with the same perpendicular half axes to create a circle or ellipse. The aimed initializer's dimensions are the full diameters. The radiant-power initializer divides front-hemisphere power by π times the emitting area. The disk area is π times the length of the half-axis cross product. [Pinned three-gpu-pathtracer ShapedAreaLight](https://github.com/gkjohnson/three-gpu-pathtracer/blob/80d188848fd7ca0ae4c565392d0487d9770d5aa6/src/objects/ShapedAreaLight.js), [light packing](https://github.com/gkjohnson/three-gpu-pathtracer/blob/80d188848fd7ca0ae4c565392d0487d9770d5aa6/src/uniforms/LightsInfoUniformStruct.js).
+
+The sampler draws a uniform point on the unit disk and maps it through the half axes. Direct lighting and BSDF hits convert the same area density to solid angle using distance squared over area times the front cosine. Both use the current light-selection probability and the existing power-heuristic weights. Shadow and first-hit rays use the same ellipse boundary. A shape change requires a new accumulation. [Pinned area light sampling and intersection](https://github.com/gkjohnson/three-gpu-pathtracer/blob/80d188848fd7ca0ae4c565392d0487d9770d5aa6/src/shader/sampling/light_sampling_functions.glsl.js).
+
+Camera-visible disks show their silhouette in beauty and first-hit guides. They emit on the front and retain the native panel convention of an opaque dark back. Turning off camera visibility hides the emitter from primary rays and keeps it available to illumination and shadow rays. The shared raster light rig continues to prepare rectangular panels. Finite-radius spots and spherical emitters remain separate capabilities. The pinned reference has a planar radius for spots and no spherical area light type.
+
+## Verification
+
+The pinned runtime fixture verifies the circular type, camera visibility bit, and π/4 area ratio for the same 2 × 4 dimensions. The native fixtures check aimed radiant power, elliptical first-hit colors and coverage, history invalidation, visibility, and a shadow ray crossing a rectangle-only corner. A Lambertian receiver checks the combined next-event and BSDF-hit result for both a circle and an ellipse. For half axes `a` and `b` at on-axis distance `d`, the analytic factor multiplying albedo and radiance is `a × b / sqrt((d² + a²) × (d² + b²))`.
+
+The same fixed-seed rectangular softbox scene produced identical RGBA readbacks before and after the shader change for both the independent PCG sampler and the Owen-scrambled Sobol sampler. Each comparison covered all 768 pixels.
+
+With Metal validation requested, the Apple silicon Mac passed 43 focused tests across nine suites, including both the software and hardware ray traversers. The iPad Pro M5 simulator passed 34 tests across eight suites with its available traverser. The Xcode bridge could not use the full external DerivedData volume, so the native command-line runner used internal DerivedData.

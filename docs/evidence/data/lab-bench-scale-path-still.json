@@ -1,0 +1,85 @@
+{
+  "controls" : {
+    "field.animate" : 0,
+    "field.count" : 20000,
+    "field.culling" : 1,
+    "field.hysteresis" : 0.10000000000000001,
+    "field.lod" : 1,
+    "mat.aniso" : 0.84999999999999998,
+    "mat.anisoTurn" : 0,
+    "mat.dispersion" : 3,
+    "mat.film" : 680,
+    "mat.glow" : 14,
+    "mat.sheen" : 0.45000000000000001,
+    "post.bloom" : 0.34999999999999998,
+    "post.radius" : 4,
+    "scene.exposure" : 0,
+    "scene.path" : 1,
+    "scene.samples" : 2048,
+    "scene.view" : 0,
+    "sky.intensity" : 1,
+    "sky.rotation" : 0,
+    "sun.azimuth" : -35,
+    "sun.elevation" : 38,
+    "sun.lux" : 5,
+    "tex.tiling" : 2,
+    "tex.turn" : 20
+  },
+  "cpuEncodeMs" : {
+    "p50" : 3.1500000040978193,
+    "p95" : 6.4419166665174998,
+    "p99" : 8.2246250021853484
+  },
+  "details" : {
+    "animationCPUMeanMs" : 0,
+    "chunkNodes" : 764,
+    "fieldInstances" : 20000,
+    "levelTriangles" : {
+      "crystal" : [
+        210,
+        45,
+        18
+      ],
+      "rock" : [
+        624,
+        100,
+        20
+      ],
+      "tree" : [
+        156,
+        22,
+        14
+      ]
+    },
+    "path" : {
+      "bottomLevelCount" : 19,
+      "bufferBytes" : 10100804,
+      "instanceCount" : 20010,
+      "lastSceneBuildMs" : 33.848875005787704,
+      "lastTraceGPUMs" : 41.805458000000002,
+      "samplesPerPixel" : 150,
+      "sceneBuilds" : 1,
+      "storedTriangles" : 29427,
+      "textureBytes" : 4227072,
+      "topLevelBuilds" : 1,
+      "topLevelRefits" : 0,
+      "tracedTriangles" : 881380,
+      "updateTransformsMeanMs" : 0
+    }
+  },
+  "device" : "Apple M4 Max",
+  "deviceAllocatedMB" : 180.703125,
+  "frames" : 120,
+  "gpuMs" : {
+    "max" : 45.859708334319293,
+    "p50" : 42.64770833106013,
+    "p95" : 44.733000002452172,
+    "p99" : 45.764750000671484
+  },
+  "height" : 720,
+  "note" : "Offscreen, one command buffer in flight, waits each frame; excludes presentation and display timing.",
+  "os" : "Version 27.2 (Build 26B123)",
+  "scene" : "--scale-lab",
+  "warmupFrames" : 30,
+  "width" : 1280
+}
