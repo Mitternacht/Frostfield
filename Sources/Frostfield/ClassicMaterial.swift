@@ -337,6 +337,9 @@ public struct ClassicMaterial {
             throw Failure.nodeGraph("The graph does not declare a texture named \(extra).")
         }
         self.surfaceTextures = try declaredTextures.map { declaration in
+            guard declaration.shape == .twoDimensional else {
+                throw Failure.nodeGraph("Texture \(declaration.name) is a cube map. Compute graphs sample cube maps.")
+            }
             guard let texture = surfaceTextures[declaration.name] else {
                 throw Failure.nodeGraph("The graph is missing texture \(declaration.name).")
             }

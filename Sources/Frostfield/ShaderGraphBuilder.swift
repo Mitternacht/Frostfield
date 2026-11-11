@@ -289,10 +289,30 @@ public final class ShaderGraphBuilder {
         _ name: String, content: ShaderTextureInput.Content = .color,
         addressing: ShaderTextureInput.Addressing = .repeat, filtering: ShaderTextureInput.Filtering = .linear
     ) -> ShaderTexture {
+        declareTexture(name, content: content, addressing: addressing, filtering: filtering, shape: .twoDimensional)
+    }
+
+    /// Declares, or reuses by name, a cube map. Compute graphs sample it by direction at mip 0.
+    public func cube(
+        _ name: String, content: ShaderTextureInput.Content = .color,
+        addressing: ShaderTextureInput.Addressing = .clampToEdge, filtering: ShaderTextureInput.Filtering = .linear
+    ) -> ShaderTexture {
+        declareTexture(name, content: content, addressing: addressing, filtering: filtering, shape: .cube)
+    }
+
+    private func declareTexture(
+        _ name: String, content: ShaderTextureInput.Content, addressing: ShaderTextureInput.Addressing,
+        filtering: ShaderTextureInput.Filtering, shape: ShaderTextureInput.Shape
+    ) -> ShaderTexture {
         if let slot = textures.firstIndex(where: { $0.name == name }) {
+            if textures[slot].shape != shape {
+                rejectDeclaration("Texture \(name) is already declared with a different shape.")
+            }
             return ShaderTexture(slot: slot, builder: self)
         }
-        textures.append(ShaderTextureInput(name, content: content, addressing: addressing, filtering: filtering))
+        textures.append(ShaderTextureInput(
+            name, content: content, addressing: addressing, filtering: filtering, shape: shape
+        ))
         return ShaderTexture(slot: textures.count - 1, builder: self)
     }
 
@@ -685,7 +705,8 @@ public struct ShaderTexture {
 
     /// RGBA at top-left normalized coordinates. Vertex and compute stages sample the base level.
     public func sample(_ coordinates: ShaderValue<SIMD2<Float>>) -> ShaderValue<SIMD4<Float>> {
-        builder.add(.sampleTexture(slot: slot, coordinates: coordinates.id), operands: [coordinates])
+        require2D("A cube map is sampled with a direction.")
+        return builder.add(.sampleTexture(slot: slot, coordinates: coordinates.id), operands: [coordinates])
     }
 
     /// RGBA at an explicit mip level. A nonfinite level reads level 0, and the level is clamped
@@ -693,7 +714,8 @@ public struct ShaderTexture {
     public func sample(
         _ coordinates: ShaderValue<SIMD2<Float>>, level: ShaderValue<Float>
     ) -> ShaderValue<SIMD4<Float>> {
-        builder.add(
+        require2D("A cube map has no 2D mip sample.")
+        return builder.add(
             .sampleTextureLevel(slot: slot, coordinates: coordinates.id, level: level.id),
             operands: [coordinates, level]
         )
@@ -707,10 +729,26 @@ public struct ShaderTexture {
         ddx: ShaderValue<SIMD2<Float>>,
         ddy: ShaderValue<SIMD2<Float>>
     ) -> ShaderValue<SIMD4<Float>> {
-        builder.add(
+        require2D("A cube map has no UV derivatives.")
+        return builder.add(
             .sampleTextureGradient(slot: slot, coordinates: coordinates.id, ddx: ddx.id, ddy: ddy.id),
             operands: [coordinates, ddx, ddy]
         )
+    }
+
+    /// RGBA of a cube map along a direction. Compute graphs read mip 0. A nonfinite or
+    /// zero direction reads the +X face.
+    public func sample(_ direction: ShaderValue<SIMD3<Float>>) -> ShaderValue<SIMD4<Float>> {
+        guard builder.textures.indices.contains(slot), builder.textures[slot].shape == .cube else {
+            builder.rejectDeclaration("A 2D texture is sampled with a vector2.")
+            return builder.add(.sampleCube(slot: slot, direction: direction.id), operands: [direction])
+        }
+        return builder.add(.sampleCube(slot: slot, direction: direction.id), operands: [direction])
+    }
+
+    private func require2D(_ reason: String) {
+        guard builder.textures.indices.contains(slot), builder.textures[slot].shape == .cube else { return }
+        builder.rejectDeclaration(reason)
     }
 
     /// Decodes a tangent-space normal map texel from 0...1 storage to -1...1.

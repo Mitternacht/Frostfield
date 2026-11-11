@@ -147,6 +147,8 @@ public struct MaterialGraph: Sendable {
         /// and clamped to the last mip. A nonfinite derivative reads level 0.
         /// Like `sampleTextureLevel`, this may run inside a branch.
         case sampleTextureGradient(slot: Int, coordinates: NodeID, ddx: NodeID, ddy: NodeID)
+        /// Samples a cube map along a direction and returns RGBA. Compute graphs read mip 0.
+        case sampleCube(slot: Int, direction: NodeID)
         /// Samples the viewport or post-process image at mip zero. Returns premultiplied linear RGBA.
         case sampleScene(coordinates: NodeID)
         /// Samples the viewport or post-process image at a scalar mip level.

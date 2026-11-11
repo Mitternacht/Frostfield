@@ -422,18 +422,27 @@ public struct ShaderTextureInput: Hashable, Sendable {
         var code: UInt32 { self == .linear ? 0 : 1 }
     }
 
+    /// A 2D image or a cube map. Existing declarations stay 2D.
+    public enum Shape: String, Hashable, Sendable {
+        case twoDimensional
+        case cube
+    }
+
     public let name: String
     public let content: Content
     public let addressing: Addressing
     public let filtering: Filtering
+    public let shape: Shape
 
     public init(
-        _ name: String, content: Content = .color, addressing: Addressing = .repeat, filtering: Filtering = .linear
+        _ name: String, content: Content = .color, addressing: Addressing = .repeat,
+        filtering: Filtering = .linear, shape: Shape = .twoDimensional
     ) {
         self.name = name
         self.content = content
         self.addressing = addressing
         self.filtering = filtering
+        self.shape = shape
     }
 }
 

@@ -415,6 +415,18 @@ struct ShaderProgram: Hashable, Sendable {
         func requireTexture(_ slot: Int) throws {
             guard declarations.textures.indices.contains(slot) else { throw Failure.invalidTexture(node: id, slot: slot) }
         }
+        func requireFlatTexture(_ slot: Int) throws {
+            try requireTexture(slot)
+            if declarations.textures[slot].shape == .cube {
+                throw Failure.invalidDeclaration("Cube map \(declarations.textures[slot].name) is sampled with a direction.")
+            }
+        }
+        func requireCube(_ slot: Int) throws {
+            try requireTexture(slot)
+            guard declarations.textures[slot].shape == .cube else {
+                throw Failure.invalidDeclaration("Texture \(declarations.textures[slot].name) is 2D. Sample it with a vector2.")
+            }
+        }
         func requireVector(_ input: NodeID) throws -> ValueType {
             let actual = try visit(input)
             guard actual != .scalar else {
@@ -456,25 +468,23 @@ struct ShaderProgram: Hashable, Sendable {
             }
             return declarations.uniforms[index].type
         case .sampleTexture(let slot, let coordinates):
-            guard declarations.textures.indices.contains(slot) else {
-                throw Failure.invalidTexture(node: id, slot: slot)
-            }
+            try requireFlatTexture(slot)
             try require(coordinates, .vector2)
             return .vector4
         case .sampleTextureLevel(let slot, let coordinates, let level):
-            guard declarations.textures.indices.contains(slot) else {
-                throw Failure.invalidTexture(node: id, slot: slot)
-            }
+            try requireFlatTexture(slot)
             try require(coordinates, .vector2)
             try require(level, .scalar)
             return .vector4
         case .sampleTextureGradient(let slot, let coordinates, let ddx, let ddy):
-            guard declarations.textures.indices.contains(slot) else {
-                throw Failure.invalidTexture(node: id, slot: slot)
-            }
+            try requireFlatTexture(slot)
             try require(coordinates, .vector2)
             try require(ddx, .vector2)
             try require(ddy, .vector2)
+            return .vector4
+        case .sampleCube(let slot, let direction):
+            try requireCube(slot)
+            try require(direction, .vector3)
             return .vector4
         case .sampleScene(let coordinates):
             try require(coordinates, .vector2)
@@ -885,6 +895,8 @@ struct ShaderProgram: Hashable, Sendable {
             [coordinates, level]
         case .sampleTextureGradient(_, let coordinates, let ddx, let ddy):
             [coordinates, ddx, ddy]
+        case .sampleCube(_, let direction):
+            [direction]
         case .sampleSceneLevel(let coordinates, let level):
             [coordinates, level]
         case .viewportSafeUV(let coordinates, let fallback):
@@ -1029,6 +1041,10 @@ struct ShaderProgram: Hashable, Sendable {
             let texture = declarations.textures[slot]
             return "frostfield_graph_sample(resources, \(slot)u, \(texture.addressing.code)u, "
                 + "\(texture.filtering.code)u, \(n(coordinates)), \(n(ddx)), \(n(ddy)))"
+        case .sampleCube(let slot, let direction):
+            let texture = declarations.textures[slot]
+            return "frostfield_graph_sample(resources, \(slot)u, \(texture.addressing.code)u, "
+                + "\(texture.filtering.code)u, \(n(direction)))"
         case .sampleScene(let coordinates): return "frostfield_graph_scene(resources, \(n(coordinates)))"
         case .sampleSceneLevel(let coordinates, let level): return "frostfield_graph_scene(resources, \(n(coordinates)), \(n(level)))"
         case .sampleDepth(let coordinates): return "frostfield_graph_depth(resources, \(n(coordinates)))"

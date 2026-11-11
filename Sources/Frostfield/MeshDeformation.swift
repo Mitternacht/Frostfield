@@ -111,7 +111,7 @@ final class MeshDeformation: @unchecked Sendable {
         readsClock = graph.vertexReadsClock
         supportsPickingAcceleration = !graph.program.uses({ node in
             switch node {
-            case .sampleTexture, .sampleTextureLevel, .sampleTextureGradient, .triplanarSample,
+            case .sampleTexture, .sampleTextureLevel, .sampleTextureGradient, .sampleCube, .triplanarSample,
                  .parallaxOcclusion, .bumpMap: true
             default: false
             }

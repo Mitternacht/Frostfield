@@ -325,6 +325,7 @@ extension MaterialGraph.MatrixOperation: Codable {}
 extension ShaderTextureInput.Content: Codable {}
 extension ShaderTextureInput.Addressing: Codable {}
 extension ShaderTextureInput.Filtering: Codable {}
+extension ShaderTextureInput.Shape: Codable {}
 extension SurfaceShaderGraph.Channel: Codable {}
 
 extension MaterialGraph.UV: Codable {
@@ -454,6 +455,8 @@ extension MaterialGraph.Node: Codable {
                 slot: try container.decode(Int.self, forKey: .index),
                 coordinates: gradientInputs[0], ddx: gradientInputs[1], ddy: gradientInputs[2]
             )
+        case "sampleCube":
+            self = .sampleCube(slot: try container.decode(Int.self, forKey: .index), direction: try operands(1)[0])
         case "sampleScene": self = .sampleScene(coordinates: try operands(1)[0])
         case "sampleSceneLevel":
             let values = try operands(2)
@@ -634,6 +637,8 @@ extension MaterialGraph.Node: Codable {
             try write("sampleTextureLevel", [coordinates, level]); try container.encode(slot, forKey: .index)
         case .sampleTextureGradient(let slot, let coordinates, let ddx, let ddy):
             try write("sampleTextureGradient", [coordinates, ddx, ddy]); try container.encode(slot, forKey: .index)
+        case .sampleCube(let slot, let direction):
+            try write("sampleCube", [direction]); try container.encode(slot, forKey: .index)
         case .sampleScene(let coordinates): try write("sampleScene", [coordinates])
         case .sampleSceneLevel(let coordinates, let level): try write("sampleSceneLevel", [coordinates, level])
         case .sampleDepth(let coordinates): try write("sampleDepth", [coordinates])
@@ -808,7 +813,7 @@ extension ShaderUniform: Codable {
 }
 
 extension ShaderTextureInput: Codable {
-    private enum CodingKeys: String, CodingKey { case name, content, addressing, filtering }
+    private enum CodingKeys: String, CodingKey { case name, content, addressing, filtering, shape }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -816,7 +821,8 @@ extension ShaderTextureInput: Codable {
             try container.decode(String.self, forKey: .name),
             content: try container.decode(Content.self, forKey: .content),
             addressing: try container.decode(Addressing.self, forKey: .addressing),
-            filtering: try container.decode(Filtering.self, forKey: .filtering)
+            filtering: try container.decode(Filtering.self, forKey: .filtering),
+            shape: try container.decodeIfPresent(Shape.self, forKey: .shape) ?? .twoDimensional
         )
     }
 
@@ -826,6 +832,7 @@ extension ShaderTextureInput: Codable {
         try container.encode(content, forKey: .content)
         try container.encode(addressing, forKey: .addressing)
         try container.encode(filtering, forKey: .filtering)
+        if shape != .twoDimensional { try container.encode(shape, forKey: .shape) }
     }
 }
 

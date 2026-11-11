@@ -803,4 +803,71 @@ struct ShaderPatternTests {
         let chosen = try probe.run(branched, elements: [[SIMD4<Float>(0, 0, 0, 0)]], textures: ["Map": texture])[0][0]
         #expect(chosen == SIMD4(0, 1, 0, 1))
     }
+
+    @Test("A compute graph samples each cube face, and a surface material rejects the cube")
+    func cubeTexture() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let descriptor = MTLTextureDescriptor.textureCubeDescriptor(
+            pixelFormat: .rgba32Float, size: 1, mipmapped: false
+        )
+        descriptor.usage = .shaderRead
+        descriptor.storageMode = .shared
+        let cube = try #require(device.makeTexture(descriptor: descriptor))
+        let faces: [SIMD4<Float>] = [
+            SIMD4(1, 0, 0, 1), SIMD4(0, 1, 0, 1), SIMD4(0, 0, 1, 1),
+            SIMD4(1, 1, 0, 1), SIMD4(1, 0, 1, 1), SIMD4(0, 1, 1, 1),
+        ]
+        for (face, color) in faces.enumerated() {
+            let texel = [color]
+            texel.withUnsafeBytes { bytes in
+                cube.replace(
+                    region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, slice: face,
+                    withBytes: bytes.baseAddress!, bytesPerRow: 16, bytesPerImage: 16
+                )
+            }
+        }
+        let graph = try BufferShaderGraph(fieldCount: 1) { b in
+            let map = b.cube("Map", content: .data, addressing: .clampToEdge, filtering: .nearest)
+            return [0: map.sample(b.uniform("Direction", SIMD3<Float>(1, 0, 0)))]
+        }
+        let uniforms = try ShaderUniforms(graph.uniforms)
+        func read(_ direction: SIMD3<Float>) throws -> SIMD4<Float> {
+            try uniforms.set("Direction", to: direction)
+            return try probe.run(
+                graph, elements: [[SIMD4<Float>(0, 0, 0, 0)]], uniforms: uniforms, textures: ["Map": cube]
+            )[0][0]
+        }
+        let directions: [SIMD3<Float>] = [
+            SIMD3(1, 0, 0), SIMD3(-1, 0, 0), SIMD3(0, 1, 0), SIMD3(0, -1, 0), SIMD3(0, 0, 1), SIMD3(0, 0, -1),
+        ]
+        for (direction, color) in zip(directions, faces) {
+            #expect(try read(direction) == color)
+        }
+        #expect(try read(SIMD3(0, 0, 0)) == faces[0])
+        let encoded = try JSONEncoder().encode(graph)
+        #expect(try JSONDecoder().decode(BufferShaderGraph.self, from: encoded) == graph)
+        #expect(throws: MaterialGraph.Failure.invalidDeclaration("A cube map is sampled with a direction.")) {
+            try BufferShaderGraph(fieldCount: 1) { b in
+                let map = b.cube("Map", content: .data)
+                return [0: map.sample(b.constant(SIMD2<Float>(0.5, 0.5)))]
+            }
+        }
+        #expect(throws: MaterialGraph.Failure.invalidDeclaration("A 2D texture is sampled with a vector2.")) {
+            try BufferShaderGraph(fieldCount: 1) { b in
+                let map = b.texture("Map", content: .data)
+                return [0: map.sample(b.constant(SIMD3<Float>(1, 0, 0)))]
+            }
+        }
+        let surface = try SurfaceShaderGraph { s in
+            let map = s.cube("Map", content: .data, addressing: .clampToEdge, filtering: .nearest)
+            return .init(baseColor: map.sample(s.constant(SIMD3<Float>(1, 0, 0))).rgb)
+        }
+        let flat = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba32Float, width: 1, height: 1, mipmapped: false)
+        flat.usage = .shaderRead
+        flat.storageMode = .shared
+        let image = try #require(device.makeTexture(descriptor: flat))
+        #expect(throws: PhysicallyBasedMaterial.Failure.surfaceTexture("Map")) {
+            try PhysicallyBasedMaterial(surfaceGraph: surface, surfaceTextures: ["Map": image])
+        }
+    }
 }

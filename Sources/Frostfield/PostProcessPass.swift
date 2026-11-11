@@ -55,6 +55,9 @@ public final class PostProcessPass {
             throw Failure.unknownTexture(unknown)
         }
         self.textures = try graph.textures.map { declaration in
+            guard declaration.shape == .twoDimensional else {
+                throw Failure.incompatibleTexture(declaration.name)
+            }
             guard let texture = textures[declaration.name] else { throw Failure.missingTexture(declaration.name) }
             guard texture.device === device, texture.textureType == .type2D,
                   texture.usage.contains(.shaderRead), !texture.isFramebufferOnly,

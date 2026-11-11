@@ -839,6 +839,9 @@ public struct PhysicallyBasedMaterial {
             throw Failure.surfaceTexture(extra)
         }
         self.surfaceTextures = try declaredTextures.map { declaration in
+            guard declaration.shape == .twoDimensional else {
+                throw Failure.surfaceTexture(declaration.name)
+            }
             guard let texture = surfaceTextures[declaration.name] else { throw Failure.surfaceTexture(declaration.name) }
             guard Self.isSurfaceTexture(texture, content: declaration.content) else {
                 throw Failure.surfaceTexture(declaration.name)

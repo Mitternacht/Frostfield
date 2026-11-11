@@ -39,7 +39,7 @@ public final class ShaderTextureGenerator: Sendable {
     /// Compiles the graph, or reuses the pipeline already compiled for the same
     /// generated source on this device. Compiler errors name the generated line.
     public init(graph: TextureShaderGraph, device: any MTLDevice) throws {
-        layout = ShaderComputeResources(uniformCount: graph.program.uniformSlotCount, textureCount: graph.textures.count)
+        layout = ShaderComputeResources(uniformCount: graph.program.uniformSlotCount, textures: graph.textures)
         let function = try graph.metalFunction(named: "frostfield_texture_graph")
         let source = """
         #include <metal_stdlib>
@@ -259,7 +259,7 @@ public final class ShaderBufferKernel: Sendable {
     /// Compiles the graph, or reuses the pipeline already compiled for the same
     /// generated source on this device. Compiler errors name the generated line.
     public init(graph: BufferShaderGraph, device: any MTLDevice) throws {
-        layout = ShaderComputeResources(uniformCount: graph.program.uniformSlotCount, textureCount: graph.textures.count)
+        layout = ShaderComputeResources(uniformCount: graph.program.uniformSlotCount, textures: graph.textures)
         let function = try graph.metalFunction(named: "frostfield_buffer_graph")
         let fields = graph.fieldCount
         let source = """
@@ -435,7 +435,8 @@ public enum ShaderComputeFailure: LocalizedError, Equatable {
         case .missingTexture(let name): "Bind a texture for the graph's declared texture \"\(name)\"."
         case .unknownTexture(let name): "The graph does not declare a texture named \"\(name)\"."
         case .invalidTexture(let name):
-            "Texture \"\(name)\" must be a 2D single-sample, shaderRead, float-sampled texture from the graph's device; "
+            "Texture \"\(name)\" must be a single-sample, shaderRead, float-sampled texture from the graph's device, "
+                + "and a 2D image or a cube map as declared; "
                 + "data textures cannot use sRGB formats, and linear filtering of 32-bit float textures needs GPU support."
         case .textureAliasesOutput(let name):
             "Texture \"\(name)\" shares storage with the output texture. Read from a separate texture."
@@ -459,12 +460,24 @@ public enum ShaderComputeFailure: LocalizedError, Equatable {
 struct ShaderComputeResources: Sendable {
     let uniformCount: Int
     let textureCount: Int
+    let cubeSlots: Set<Int>
+
+    init(uniformCount: Int, textures: [ShaderTextureInput]) {
+        self.uniformCount = uniformCount
+        self.textureCount = textures.count
+        self.cubeSlots = Set(textures.enumerated().compactMap { index, texture in
+            texture.shape == .cube ? index : nil
+        })
+    }
 
     /// `FrostfieldGraphResources` and the `frostfield_graph_uniform` and `frostfield_graph_sample` hooks.
     var declarations: String {
         var members: [String] = []
         if uniformCount > 0 { members.append("    constant float4* uniforms;") }
-        for slot in 0..<textureCount { members.append("    texture2d<float> texture\(slot);") }
+        for slot in 0..<textureCount {
+            let type = cubeSlots.contains(slot) ? "texturecube<float>" : "texture2d<float>"
+            members.append("    \(type) texture\(slot);")
+        }
         var source = members.isEmpty
             ? "struct FrostfieldGraphResources {};"
             : "struct FrostfieldGraphResources {\n\(members.joined(separator: "\n"))\n};"
@@ -478,10 +491,11 @@ struct ShaderComputeResources: Sendable {
             """
         }
         if textureCount > 0 {
-            let cases = (0..<textureCount).map {
+            let flatSlots = (0..<textureCount).filter { !cubeSlots.contains($0) }
+            let cases = flatSlots.map {
                 "    case \($0)u: return frostfield_compute_sample(resources.texture\($0), address, filter, uv, level);"
             }.joined(separator: "\n")
-            let gradientCases = (0..<textureCount).map {
+            let gradientCases = flatSlots.map {
                 "    case \($0)u: return frostfield_compute_sample(resources.texture\($0), address, filter, uv, frostfield_compute_gradient_lod(resources.texture\($0), ddx, ddy));"
             }.joined(separator: "\n")
             source += """
@@ -546,6 +560,44 @@ struct ShaderComputeResources: Sendable {
                 }
             }
             """
+            if !cubeSlots.isEmpty {
+                let cubeCases = cubeSlots.sorted().map {
+                    "    case \($0)u: return frostfield_compute_cube(resources.texture\($0), address, filter, direction);"
+                }.joined(separator: "\n")
+                source += """
+
+
+            // A nonfinite or zero direction reads the +X face. Compute reads mip 0.
+            static inline float4 frostfield_compute_cube(
+                texturecube<float> texture, uint address, uint filter, float3 direction
+            ) {
+                constexpr sampler repeatLinear(address::repeat, filter::linear, mip_filter::nearest);
+                constexpr sampler repeatNearest(address::repeat, filter::nearest, mip_filter::nearest);
+                constexpr sampler clampLinear(address::clamp_to_edge, filter::linear, mip_filter::nearest);
+                constexpr sampler clampNearest(address::clamp_to_edge, filter::nearest, mip_filter::nearest);
+                constexpr sampler mirrorLinear(address::mirrored_repeat, filter::linear, mip_filter::nearest);
+                constexpr sampler mirrorNearest(address::mirrored_repeat, filter::nearest, mip_filter::nearest);
+                float3 coordinates = all(isfinite(direction)) && length(direction) > 0.0f ? direction : float3(1, 0, 0);
+                switch (address * 2u + filter) {
+                case 0u: return texture.sample(repeatLinear, coordinates, level(0.0f));
+                case 1u: return texture.sample(repeatNearest, coordinates, level(0.0f));
+                case 2u: return texture.sample(clampLinear, coordinates, level(0.0f));
+                case 3u: return texture.sample(clampNearest, coordinates, level(0.0f));
+                case 4u: return texture.sample(mirrorLinear, coordinates, level(0.0f));
+                default: return texture.sample(mirrorNearest, coordinates, level(0.0f));
+                }
+            }
+
+            static inline float4 frostfield_graph_sample(
+                thread const FrostfieldGraphResources& resources, uint slot, uint address, uint filter, float3 direction
+            ) {
+                switch (slot) {
+            \(cubeCases)
+                default: return float4(0);
+                }
+            }
+            """
+            }
         }
         return source
     }
@@ -555,7 +607,8 @@ struct ShaderComputeResources: Sendable {
         var parameters: [String] = []
         if uniformCount > 0 { parameters.append("constant float4* graphUniforms [[buffer(\(firstBuffer))]]") }
         for slot in 0..<textureCount {
-            parameters.append("texture2d<float> graphTexture\(slot) [[texture(\(firstTexture + slot))]]")
+            let type = cubeSlots.contains(slot) ? "texturecube<float>" : "texture2d<float>"
+            parameters.append("\(type) graphTexture\(slot) [[texture(\(firstTexture + slot))]]")
         }
         return parameters.map { ",\n    \($0)" }.joined() + ","
     }
@@ -615,7 +668,8 @@ struct ShaderComputeResources: Sendable {
             let format = texture.pixelFormat
             let isSRGB = format == .rgba8Unorm_srgb || format == .bgra8Unorm_srgb
             let isFloat32 = format == .r32Float || format == .rg32Float || format == .rgba32Float
-            guard texture.device === device, texture.textureType == .type2D, texture.sampleCount == 1,
+            let expected: MTLTextureType = declaration.shape == .cube ? .typeCube : .type2D
+            guard texture.device === device, texture.textureType == expected, texture.sampleCount == 1,
                   texture.usage.isEmpty || texture.usage.contains(.shaderRead),
                   sampledFormats.contains(format),
                   !(isSRGB && declaration.content == .data),
