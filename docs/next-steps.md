@@ -1,0 +1,192 @@
+# What is left, and how to continue
+
+Written on 2026-11-11 for whoever picks Frostfield up next. `main` is at the merge of pull request 2
+(`6667b8c`). Read [AGENTS.md](../AGENTS.md) first, then this page, then the ledger.
+
+## Where things stand
+
+- The ledger [`docs/parity/threejs.md`](parity/threejs.md) tracks 524 capabilities against Three.js r187: **306 done, 148 partial, 70 missing**.
+  Its section "Priorities: done and remaining" is the ordered queue and is current. Do not trust a row until its evidence page and tests agree.
+- The last full run passed on macOS (2,183 tests in 426 suites), the iPad Pro (M5) simulator and the Vision Pro simulator (345 tests in 46 suites each).
+  Frostfield Lab built for all three, and three Asset Studio captures were byte-identical to the previous ones. All of it ran under Metal API Validation.
+- Nothing has run on physical iPhone, iPad or Vision Pro hardware, and nothing has been compared with Three.js on the same hardware and scene.
+  Performance and capability parity are separate questions. Keep them separate.
+- The owner does not want CI on this repository. Do not add a workflow.
+- Photoreal asset authoring and rendering is part of the goal but is not one of the 524 rows. See
+  [`docs/evidence/asset-studio.md`](evidence/asset-studio.md) for what exists. Ask the owner what "done" means there before starting.
+
+## How to verify (these commands worked on the owner's Mac)
+
+Use the Xcode MCP first, as AGENTS.md says. It timed out earlier when the disk was full, so `xcodebuild` is the fallback. Say which you used.
+Run one Xcode job at a time, for example with `lockf /private/tmp/frostfield-xcode.lock xcodebuild ...`.
+
+```bash
+# Package tests. Add -only-testing:FrostfieldTests/<Suite> to focus a run.
+MTL_DEBUG_LAYER=1 xcodebuild test -scheme Frostfield-Package -configuration Debug \
+  -destination 'platform=macOS' -derivedDataPath <dir> -jobs 3 -parallel-testing-enabled NO
+# Simulators used so far: iPad Pro (M5) C131684E-215A-4D00-9C92-C877CE2581C7,
+# Vision Pro E9553A5D-1872-435C-993D-DDF211392FCB, iPhone 18 Pro C030382C-A112-43E8-A9C0-F2CEC6DA130D
+#   -destination "platform=iOS Simulator,id=<UDID>"   or   "platform=visionOS Simulator,id=<UDID>"
+
+# Lab build. The checkout folder must be named "Frostfield" or the Lab project cannot find the package.
+xcodebuild build -project Examples/FrostfieldLab/FrostfieldLab.xcodeproj -scheme FrostfieldLab \
+  -configuration Debug -destination platform=macOS -derivedDataPath <dir> CODE_SIGNING_ALLOWED=NO
+
+# Asset Studio captures (compare the PNGs byte for byte with the previous run)
+FrostfieldLab --capture-asset-studio out.png --studio-bake-shared-shader      # also --studio-bake-shared-indirect, --studio-bake-indirect
+```
+
+The Mac run takes about 3 to 13 minutes, the focused simulator runs about 1 to 5. Builds need several GB of free disk. Some tests skip on purpose
+(benchmarks and captures need an environment variable; some GPU features are missing on simulators).
+
+## How the work was done, and what to keep doing
+
+- One lane per capability: a builder implements it with tests, and a separate reviewer who did not write it reads the diff and the logs and tries to break it.
+  Reviewers found a real blocker or major problem in every lane so far, so do not skip that step.
+- Verify claims against logs. Quote test counts only from a `Test run with N tests` line you read.
+- Close a ledger row only with verified public behavior or a documented native equivalent. Otherwise mark it partial and write what is open.
+  `setRenderObjectFunction` is left missing on purpose. The reasons are in [`docs/evidence/render-hooks.md`](evidence/render-hooks.md).
+- Every new behavior needs a test that fails when the behavior is broken. Several lanes got extra tests after review showed their first ones could not fail.
+- Default paths must stay byte-identical when a new option is off. Prove it with stored digests or a before-and-after comparison.
+- Update the evidence page, then the ledger row, then recount with `python3 docs/parity/recount-parity.py docs/parity/threejs.md`. It rewrites the summary table. Edit the line "306 of 524 capabilities ..." by hand so it matches.
+
+## Open items left by the lanes finished on 2026-11-11
+
+Each item is also in the ledger row and the evidence page named in brackets.
+
+- **Mesh-shaped fog** ([path-fog-density](evidence/path-fog-density.md)): albedo and anisotropy are constant inside a region; no nested or priority media; no emissive volumes.
+  A ray tracks 256 boundary crossings per region. Mesh boundaries always use the software BVH. Temporal path denoising needs a scene without world fog.
+  One camera-ray fixture measured 0.569 against 0.599 expected near the crossing limit and the cause was never found; it was replaced by a shadow-ray fixture.
+- **Colored glass shadows** ([directional-transmitted-shadows](evidence/directional-transmitted-shadows.md)): spot and point maps, classic receivers, instanced, morphed or vertex-colored stock glass,
+  and skinned, morphed, batched or indirect graph casters are open. No fixture covers graph `opacity`, `alphaTest`, nonfinite values or texture reads in `castShadowColor`.
+- **Array camera** ([array-camera](evidence/array-camera.md)): single-pass vertex amplification, choosing among overlapping views when picking, and per-view screen-space occlusion,
+  indirect draws, toon outlines and motion vectors are open. A later-view failure that depends on state from earlier views cannot be rolled back.
+- **KTX2** ([ktx2-export](evidence/ktx2-export.md)): importing cube arrays and Basis cube arrays is open. The native cube-array tests skip on simulators. The cube-array files were validated with a release candidate of the Khronos tools.
+- **Dithering** ([dithering](evidence/dithering.md)): it is per output stage, not per material. Meshes drawn straight into an 8-bit target, RGBA16Float destinations and final stages other than tone mapping are not covered.
+  The golden digests are tied to an Apple M4 Max.
+- **Render hooks** ([render-hooks](evidence/render-hooks.md)): no shadow-pass hooks, scene or material callbacks. The inspector reports no compute or copy events. Toon outline, motion vector and depth-only passes do not call hooks.
+- **FABRIK** ([fabrik-chain](evidence/fabrik-chain.md)): one fixed-base chain only. Pole targets, joint constraints and connected chains are open.
+
+## Known bugs and ideas from earlier lanes (check each one first, some may already be fixed)
+
+- A path-traced node whose instance set is empty at build time makes every `updateTransforms` throw `structureChanged`.
+- Bloom radius 10 turns a one-pixel highlight into a 5 by 5 dot grid (single 5-tap pass).
+- Path-traced ground textures looked blurred or moiré in the Scale Lab capture (512 bake, no anisotropic filtering).
+- The glTF exporter does not write morph targets (it only warns). Imported `EXT_mesh_gpu_instancing` expands to per-instance nodes instead of an instance set.
+- The path tracer rejects clearcoat normal maps.
+
+## In progress when this was written
+
+An animation lane (a `Skeleton` and `Bone` API, and r187 property-path strings such as `.bones[name].position`) was running in a separate clone. If it is not merged, treat
+those two animation rows as open and do not duplicate the work without checking with the owner.
+
+## Suggested order
+
+1. Pick from the ledger's "Priorities: done and remaining" section, top to bottom. Shader authoring (P1) has the most partial rows.
+2. Hardware: run the Lab and the capture chain on a real iPhone, iPad and Vision Pro, then measure against Three.js with the same scene, resolution and settings. Record it in a new evidence page.
+3. The biggest missing features are in the appendix below. Clipping planes, Gaussian splats, order-independent transparency and FBX import are core or add-on rows that users will notice first.
+
+## Appendix: missing rows by area
+
+Generated from `docs/parity/threejs.md` on 2026-11-11. The ledger stays the source of truth. A note is shown only where the row has one.
+
+**renderer** (6)
+- Clipping planes and clipping groups
+- Per-object render function override: Not implemented by design. A draw is a prepared immutable `MeshRenderer`, and a replacement would need private per-draw buffers and a tested...
+- Direct single-pass output: The mesh pass never tone maps; display output is always a separate `HDRDisplay` or post-process pass
+- Gaussian splat rendering
+- Order-independent transparency: Per-node back-to-front sort only
+- Streamed Gaussian splats mixed with meshes
+
+**cameras-controls** (1)
+- Controls base class: `OrbitCameraController` and `FlyCameraController` are separate value types with no shared protocol, enabled flag or event binding
+
+**geometry** (1)
+- SDF generation, voxelization and sculpting
+
+**materials-textures** (2)
+- Toon and cel shaders
+- MaterialX shading
+
+**shader-authoring** (10)
+- Physical slots: clearcoat, sheen, iridescence, anisotropy, thickness, IOR, specular, dispersion: Layers keep their own factors and maps beside a graph; graphs cannot drive them
+- Lighting and environment slots
+- Backdrop slots: The transmission backdrop is not exposed to surface graphs; only post-process graphs read the frame
+- Attribute and varying nodes: Fixed built-in inputs only
+- Custom lighting models: BRDF helpers are internal MSL
+- Indirect compute dispatch
+- GLSL and ShaderToy transpiler
+- Visual graph editor: Graphs are authored in Swift; the Lab's uniform sliders and generated-Metal view are Lab-only
+- BRDF and sampling helpers: Internal MSL only
+- Layer-based composable materials
+
+**lights-shadows** (3)
+- Tiled shadow maps
+- Clustered and batched many-light shading: Raster loops over at most 16 punctual lights per fragment; the path tracer takes 16 area and 16 analytic lights with one shadow ray per analytic...
+- Accumulative soft shadows: PCSS approximates soft sun shadows; the path tracer converges true soft shadows from area lights and sun disks
+
+**environment-ibl** (2)
+- Custom background and environment nodes
+- Lightformers
+
+**animation** (2)
+- Physics integration
+- Visual keyframe authoring
+
+**loaders-assets** (11)
+- Data and compressed texture loader bases: `TextureLoader` loads KTX2, DDS, KTX1 and PVR directly. An extensible loader base remains open.
+- EXT_materials_bump
+- Gaussian splats (KHR_gaussian_splatting, .ply, .splat, .ksplat, .spz)
+- FBX import
+- Other DCC and CAD importers: The listed Three.js formats are missing. Frostfield separately imports Alembic meshes through ModelIO. `ModelIOSceneLoaderTests`. [Format...
+- Fonts
+- MaterialX import
+- glTF document SDK: The glTF loader and exporter read and write supported extensions. There is no general-purpose glTF document editing API.
+- Texture compression pipeline: KTX2 block formats load but nothing encodes them
+- Design-tool scene import
+- Progressive mesh and texture LOD streaming: `LevelOfDetail` switches preloaded meshes by distance; nothing streams
+
+**post-processing** (3)
+- Render-to-texture nodes: No in-graph node; whole graphs render to textures through `ShaderTextureGenerator` or `PostProcessPass`
+- Declarative effect chains: `FrostfieldSceneView` has no post chain; `PostProcessChain` is configured in code
+- Temporally stable SSAO with denoise
+
+**effects-misc** (8)
+- Stereoscopic effects
+- Convex object fracture
+- Volumetric god rays
+- Volumetric clouds
+- Volumetric spotlights and caustics: No volumetric lights; path-traced caustics are tested only off a mirror (`PathSamplingTests`), not through transmission
+- Text rendering (SDF and 3D)
+- Physics engines
+- Navmesh and crowds
+
+**path-tracing** (1)
+- Voxel cone-traced GI
+
+**interaction-tools** (3)
+- Sculpting
+- Interactive color-grading tools
+- Editor gizmos, grids and helpers
+
+**performance-scale** (11)
+- Static object hint
+- Pluggable drawing pipeline
+- Vertex attribute quantization: glTF `KHR_mesh_quantization` attributes dequantize to Float on load; vertex buffers stay 32-bit
+- Automatic batching
+- Meshlet pipeline: Metal mesh shaders are unused
+- Visibility buffer
+- CPU and GPU sorting
+- 3D Tiles creased normals
+- Adaptive quality
+- glTF optimization pipeline: The loader consumes compressed, quantized and WebP output. Mesh simplification is available as a separate operation. An end-to-end glTF optimizer...
+- 3D Tiles streaming
+
+**xr-platform** (6)
+- Tracked controller models
+- Tracked hand models
+- AR plane detection visualization
+- AR light estimation
+- XR text labels
+- Engine with components and baked lighting
+

@@ -5,6 +5,9 @@ FrostfieldLab. The lab builds for native macOS, iOS/iPadOS, and visionOS, with
 windowed hosts and a visionOS immersive fixture.
 [Scene and effects evidence](docs/evidence/programmable-scene.md)
 
+The remaining work, the verification commands and the open items from each lane are in
+[docs/next-steps.md](docs/next-steps.md).
+
 ## Read in order
 
 1. [AGENTS.md](AGENTS.md) — repository and Apple-tool requirements.
