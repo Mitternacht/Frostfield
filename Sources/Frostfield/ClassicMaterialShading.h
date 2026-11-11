@@ -232,6 +232,8 @@ fragment float4 frostfield_mesh_classic(
     constexpr float maxHalf = 65504.0f;
     float4 diffuse = classicSurfaceColor(input, parameters, material, colorMap, colorSampler, alphaMap, alphaSampler);
 #if defined(FROSTFIELD_CLASSIC_NODE)
+    float3 classicGraphNormal = float3(0, 0, 1);
+    bool classicGraphHasNormal = false;
     FrostfieldGraphResources graphResources = {
         graphUniforms, graphTexture0, graphTexture1, graphTexture2, graphTexture3,
         graphTexture4, graphTexture5, graphTexture6, graphTexture7, &graphView
@@ -260,6 +262,8 @@ fragment float4 frostfield_mesh_classic(
     frostfield_generated_surface(graphInput, graphResources, graphOutput);
     diffuse.rgb = graphOutput.baseColor;
     diffuse.a = saturate(diffuse.a * saturate(graphOutput.opacity));
+    classicGraphNormal = graphOutput.normal;
+    classicGraphHasNormal = graphOutput.hasNormal;
     if (!frostfield_alpha_to_coverage && material.ambient.w > 0.0f && diffuse.a < material.ambient.w) {
         discard_fragment();
     }
@@ -277,6 +281,20 @@ fragment float4 frostfield_mesh_classic(
     if (frostfield_classic_surface_detail) {
         n = classicMappedNormal(input, n, geometryPosition, front, material, detail, detailSampler);
     }
+#if defined(FROSTFIELD_CLASSIC_NODE)
+    if (classicGraphHasNormal) {
+        float3 vertexNormal = unitOr(input.normal, float3(0, 0, 1));
+        float4 graphFrame = pbrTangentFrame(input, input.uv, vertexNormal);
+        if (graphFrame.w != 0.0f) {
+            float3 bitangent = cross(vertexNormal, graphFrame.xyz) * graphFrame.w;
+            float3 world = unitOr(
+                graphFrame.xyz * classicGraphNormal.x + bitangent * classicGraphNormal.y + vertexNormal * classicGraphNormal.z,
+                vertexNormal
+            );
+            n = front ? world : -world;
+        }
+    }
+#endif
     float3 color;
     float alpha = diffuse.a;
 
