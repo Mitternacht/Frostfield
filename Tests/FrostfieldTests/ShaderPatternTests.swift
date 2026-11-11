@@ -502,6 +502,79 @@ struct ShaderPatternTests {
         #expect(ShaderLibraryCache.compilationCount(containing: marker) == 1)
     }
 
+    @Test("Integers and bools bitcast, count bits, divide toward zero, and edit without a new pipeline")
+    func integersAndBools() throws {
+        let marker = "integer-bool-probe-5e1a"
+        let graph = try BufferShaderGraph(fieldCount: 2) { b in
+            let sample = b.elementField(0).x
+            let roundTrip = sample.bitcast().bitcast()
+            let ones = sample.countOneBits().toFloat()
+            let quotient = (b.constant(Int32(-7)) / b.constant(Int32(2))).toFloat()
+            let scaled = (b.uniform("K", Int32(4)) * b.constant(Int32(2)) + b.constant(Int32(3))).toFloat()
+            let picked = b.branch(b.uniform("On", false)) { b.constant(Float(1)) } else: { b.constant(Float(0)) }
+            let allOnes = b.constant(Int32(-1)).countOneBits().toFloat()
+            return [
+                0: b.vector(roundTrip, ones, quotient, scaled).named(marker),
+                1: b.vector(picked, allOnes, sample.toInt().toFloat(), b.constant(Float(0))),
+            ]
+        }
+        let source = try graph.metalFunction(named: "integer_probe")
+        #expect(source.contains("as_type<int>(frostfield_graph_uniform(resources, 0u).x)"), "\(source)")
+        #expect(source.contains("frostfield_graph_uniform(resources, 1u).x != 0.0f"), "\(source)")
+        #expect(source.contains("int(popcount(as_type<uint>("), "\(source)")
+        let floats = try BufferShaderGraph(fieldCount: 1) { b in
+            [0: b.elementField(0) * b.uniform("Gain", Float(2))]
+        }
+        let floatSource = try floats.metalFunction(named: "float_uniform_bits")
+        #expect(floatSource.contains("frostfield_graph_uniform(resources, 0u).x"), "\(floatSource)")
+        #expect(!floatSource.contains("as_type<int>"), "\(floatSource)")
+
+        let samples: [Float] = [1, -2.5, 0, 0.1, 16777216]
+        ShaderLibraryCache.countCompilations(containing: marker)
+        let uniforms = try ShaderUniforms(graph.uniforms)
+        #expect(uniforms.integer(named: "K") == 4)
+        #expect(uniforms.boolean(named: "On") == false)
+        let first = try probe.run(graph, elements: samples.map { [SIMD4($0, 0, 0, 0), .zero] }, uniforms: uniforms)
+        for (sample, fields) in zip(samples, first) {
+            #expect(fields[0].x.bitPattern == sample.bitPattern, "round trip \(sample)")
+            #expect(fields[0].y == Float(sample.bitPattern.nonzeroBitCount), "bits \(sample): \(fields[0].y)")
+            #expect(fields[0].z == -3, "division \(fields[0].z)")
+            #expect(fields[0].w == 11, "scaled \(fields[0].w)")
+            #expect(fields[1].x == 0, "bool \(fields[1].x)")
+            #expect(fields[1].y == 32, "all ones \(fields[1].y)")
+            let truncated = sample.isFinite ? Float(Int(sample)) : 0
+            #expect(fields[1].z == truncated, "truncation \(sample): \(fields[1].z)")
+        }
+        try uniforms.setInteger("K", Int32(5))
+        try uniforms.setBoolean("On", true)
+        let edited = try probe.run(graph, elements: [[SIMD4<Float>(1, 0, 0, 0), .zero]], uniforms: uniforms)[0]
+        #expect(edited[0].w == 13)
+        #expect(edited[1].x == 1)
+        #expect(uniforms.integer(named: "K") == 5)
+        try uniforms.setInteger("K", Int32(-2))
+        let negative = try probe.run(graph, elements: [[SIMD4<Float>(1, 0, 0, 0), .zero]], uniforms: uniforms)[0]
+        #expect(negative[0].w == -1, "negative uniform \(negative[0].w)")
+        #expect(uniforms.integer(named: "K") == -2)
+        #expect(ShaderLibraryCache.compilationCount(containing: marker) == 1)
+        let encoded = try JSONEncoder().encode(ShaderUniform("K", Int32(-2)))
+        #expect(try JSONDecoder().decode(ShaderUniform.self, from: encoded) == ShaderUniform("K", Int32(-2)))
+        #expect(throws: MaterialGraph.Failure.typeMismatch(node: 2, input: 1, expected: .scalar, actual: .int)) {
+            try BufferShaderGraph(
+                nodes: [.input(.elementField(0)), .integer(1), .unary(.sin, 1)], fieldCount: 1, outputs: [0: 0]
+            )
+        }
+        #expect(throws: MaterialGraph.Failure.typeMismatch(node: 3, input: 2, expected: .int, actual: .scalar)) {
+            try BufferShaderGraph(
+                nodes: [.input(.elementField(0)), .integer(1), .scalar(2), .multiply(1, 2)], fieldCount: 1, outputs: [0: 0]
+            )
+        }
+        #expect(throws: MaterialGraph.Failure.typeMismatch(node: 2, input: 1, expected: .scalar, actual: .bool)) {
+            try BufferShaderGraph(
+                nodes: [.input(.elementField(0)), .boolean(true), .add(1, 1)], fieldCount: 1, outputs: [0: 0]
+            )
+        }
+    }
+
     @Test("Derivatives measure per-pixel change in post-processing and are rejected outside fragment stages")
     func derivatives() throws {
         let fixture = try PostProcessFixture()

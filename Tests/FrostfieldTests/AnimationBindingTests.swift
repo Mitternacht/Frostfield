@@ -108,7 +108,7 @@ struct AnimationBindingTests {
         let source = UUID()
         let a = SceneNode()
         let b = SceneNode(transform: .init(scale: SIMD3(repeating: 2)))
-        let uniforms = try ShaderUniforms([ShaderUniform("glow", 0)])
+        let uniforms = try ShaderUniforms([ShaderUniform("glow", Float(0))])
         let clip = try AnimationClip(tracks: [
             .vector(.node(source, .translation), times: [0, 1], values: [.zero, SIMD3(0, 4, 0)]),
             .number(.uniform(uniforms, name: "glow"), times: [0, 1], values: [0, 1]),

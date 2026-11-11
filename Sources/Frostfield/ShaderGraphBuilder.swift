@@ -43,6 +43,18 @@ extension simd_float4x4: ShaderGraphValue, ShaderMatrixType {
     public var shaderColumns: [SIMD4<Float>] { [columns.0, columns.1, columns.2, columns.3] }
 }
 
+extension Int32: ShaderGraphValue, ShaderValueType {
+    public static var shaderType: MaterialGraph.ValueType { .int }
+    public var shaderConstant: MaterialGraph.Node { .integer(self) }
+    public static func shaderUniform(_ name: String, _ value: Int32) -> ShaderUniform { ShaderUniform(name, value) }
+}
+
+extension Bool: ShaderGraphValue, ShaderValueType {
+    public static var shaderType: MaterialGraph.ValueType { .bool }
+    public var shaderConstant: MaterialGraph.Node { .boolean(self) }
+    public static func shaderUniform(_ name: String, _ value: Bool) -> ShaderUniform { ShaderUniform(name, value) }
+}
+
 extension Float: ShaderGraphValue, ShaderValueType {
     public static var shaderType: MaterialGraph.ValueType { .scalar }
     public var shaderConstant: MaterialGraph.Node { .scalar(self) }

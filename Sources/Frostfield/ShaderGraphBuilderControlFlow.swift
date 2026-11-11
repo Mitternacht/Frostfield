@@ -49,6 +49,20 @@ extension ShaderGraphBuilder {
         )
     }
 
+    /// Like `branch(_:then:else:)`, with a boolean condition instead of a float above 0.5.
+    public func branch<T: ShaderGraphValue>(
+        _ condition: ShaderValue<Bool>,
+        then ifTrue: () throws -> ShaderValue<T>,
+        else ifFalse: () throws -> ShaderValue<T>
+    ) rethrows -> ShaderValue<T> {
+        let whenTrue = try ifTrue()
+        let whenFalse = try ifFalse()
+        return add(
+            .branch(condition: condition.id, ifTrue: whenTrue.id, ifFalse: whenFalse.id),
+            operands: [condition, whenTrue, whenFalse]
+        )
+    }
+
     /// An else-if chain: the value of the first case whose condition exceeds 0.5, or
     /// `otherwise`. Each case becomes a nested branch in the previous one's else arm.
     public func branch<T: ShaderGraphValue>(
@@ -356,6 +370,24 @@ extension ShaderValue where Value: ShaderValueType {
 }
 
 extension ShaderValue where Value == Float {
+    /// Reinterprets these bits as a signed 32-bit integer.
+    public func bitcast() -> ShaderValue<Int32> { make(.bitcast(id)) }
+    /// The number of set bits in this value's representation.
+    public func countOneBits() -> ShaderValue<Int32> { make(.countOneBits(id)) }
+    /// Truncates toward zero. A nonfinite value becomes zero.
+    public func toInt() -> ShaderValue<Int32> { make(.numericCast(id)) }
+}
+
+extension ShaderValue where Value == Int32 {
+    /// Reinterprets these bits as a float.
+    public func bitcast() -> ShaderValue<Float> { make(.bitcast(id)) }
+    /// The number of set bits in this two's-complement value.
+    public func countOneBits() -> ShaderValue<Int32> { make(.countOneBits(id)) }
+    /// The nearest float, which is exact through ±16,777,216.
+    public func toFloat() -> ShaderValue<Float> { make(.numericCast(id)) }
+}
+
+extension ShaderValue where Value == Float {
     /// A bitwise operation on unsigned 24-bit integers. See `MaterialGraph.BitOperation`.
     public func bits(_ operation: MaterialGraph.BitOperation, _ other: Self) -> Self {
         make(.bits(operation, id, other.id), with: other)
@@ -391,6 +423,10 @@ extension ShaderValue where Value == simd_float4x4 {
 /// The matrix product of two matrices of the same size.
 public func * <M: ShaderMatrixType>(left: ShaderValue<M>, right: ShaderValue<M>) -> ShaderValue<M> {
     left.make(.matrixMultiply(left.id, right.id), with: right)
+}
+
+public func / (left: ShaderValue<Int32>, right: ShaderValue<Int32>) -> ShaderValue<Int32> {
+    left.make(.divide(left.id, right.id), with: right)
 }
 
 /// A matrix times a column vector of matching size.

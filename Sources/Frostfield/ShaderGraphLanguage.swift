@@ -327,6 +327,14 @@ public struct ShaderUniform: Hashable, Sendable {
         self.init(name: name, type: .vector4, value: value)
     }
 
+    public init(_ name: String, _ value: Int32) {
+        self.init(name: name, type: .int, value: SIMD4(Float(bitPattern: UInt32(bitPattern: value)), 0, 0, 0))
+    }
+
+    public init(_ name: String, _ value: Bool) {
+        self.init(name: name, type: .bool, value: SIMD4(value ? 1 : 0, 0, 0, 0))
+    }
+
     public init(_ name: String, _ value: simd_float3x3) {
         self.init(name: name, type: .matrix3, columns: value.shaderColumns.map { SIMD4($0, 0) })
     }
@@ -348,6 +356,36 @@ public struct ShaderUniform: Hashable, Sendable {
         self.name = name
         self.type = type
         self.columns = columns.map { type.storedColumn($0) }
+    }
+
+    /// Integer slots compare by IEEE bits. A signed value such as -2 is a NaN when
+    /// those bits are read as a float, and float equality would reject it.
+    public static func == (lhs: ShaderUniform, rhs: ShaderUniform) -> Bool {
+        guard lhs.name == rhs.name, lhs.type == rhs.type, lhs.columns.count == rhs.columns.count else { return false }
+        if lhs.type == .int {
+            return zip(lhs.columns, rhs.columns).allSatisfy(Self.sameBits)
+        }
+        return lhs.columns == rhs.columns
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(name)
+        hasher.combine(type)
+        if type == .int {
+            for column in columns {
+                hasher.combine(column.x.bitPattern)
+                hasher.combine(column.y.bitPattern)
+                hasher.combine(column.z.bitPattern)
+                hasher.combine(column.w.bitPattern)
+            }
+        } else {
+            hasher.combine(columns)
+        }
+    }
+
+    private static func sameBits(_ lhs: SIMD4<Float>, _ rhs: SIMD4<Float>) -> Bool {
+        lhs.x.bitPattern == rhs.x.bitPattern && lhs.y.bitPattern == rhs.y.bitPattern
+            && lhs.z.bitPattern == rhs.z.bitPattern && lhs.w.bitPattern == rhs.w.bitPattern
     }
 }
 
@@ -431,7 +469,7 @@ public struct ShaderFunction: Hashable, Sendable {
 extension MaterialGraph.ValueType {
     func storedColumn(_ value: SIMD4<Float>) -> SIMD4<Float> {
         switch self {
-        case .scalar: SIMD4(value.x, 0, 0, 0)
+        case .scalar, .int, .bool: SIMD4(value.x, 0, 0, 0)
         case .vector2: SIMD4(value.x, value.y, 0, 0)
         case .vector3, .matrix3: SIMD4(value.x, value.y, value.z, 0)
         case .vector4, .matrix4: value

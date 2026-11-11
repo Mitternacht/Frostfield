@@ -202,7 +202,7 @@ struct ShaderProgram: Hashable, Sendable {
     /// Exact equality for a switch arm. Vectors match when every component is equal.
     private static func switchEqual(_ selector: NodeID, _ match: NodeID, types: [ValueType]) -> String {
         let comparison = "n\(selector) == n\(match)"
-        return types[selector] == .scalar ? comparison : "all(\(comparison))"
+        return types[selector].componentCount == 1 ? comparison : "all(\(comparison))"
     }
 
     /// Emits one scope's nodes in dependency order, recursing into branch arms and loop bodies.
@@ -213,7 +213,8 @@ struct ShaderProgram: Hashable, Sendable {
             switch nodes[id] {
             case .branch(let condition, let ifTrue, let ifFalse):
                 lines.append("\(indent)\(type) n\(id); \(marker(id, "branch"))")
-                lines.append("\(indent)if (n\(condition) > 0.5f) {")
+                let conditionTest = types[condition] == .bool ? "n\(condition)" : "n\(condition) > 0.5f"
+                lines.append("\(indent)if (\(conditionTest)) {")
                 emit(scope: schedule.trueScope[id]!, schedule: schedule, indent: inner, prefix: prefix, into: &lines)
                 lines.append("\(inner)n\(id) = n\(ifTrue);")
                 lines.append("\(indent)} else {")
@@ -344,6 +345,14 @@ struct ShaderProgram: Hashable, Sendable {
                 throw Failure.typeMismatch(node: id, input: input, expected: expected, actual: actual)
             }
         }
+        /// Float scalars and vectors. Integers and bools have their own operations.
+        func requireFloatOperand(_ input: NodeID) throws -> ValueType {
+            let actual = try visit(input)
+            guard actual != .int, actual != .bool else {
+                throw Failure.typeMismatch(node: id, input: input, expected: .scalar, actual: actual)
+            }
+            return actual
+        }
         func requireMatrix(_ input: NodeID) throws -> ValueType {
             let actual = try visitAny(input)
             guard actual.isMatrix else {
@@ -369,6 +378,10 @@ struct ShaderProgram: Hashable, Sendable {
         case .scalar(let value):
             try finite(value)
             return .scalar
+        case .integer:
+            return .int
+        case .boolean:
+            return .bool
         case .color(let value):
             try finite(value.x, value.y, value.z)
             return .vector3
@@ -445,20 +458,35 @@ struct ShaderProgram: Hashable, Sendable {
             return .scalar
         case .add(let a, let b), .subtract(let a, let b):
             let type = try visit(a)
+            guard type != .bool else {
+                throw Failure.typeMismatch(node: id, input: a, expected: .scalar, actual: .bool)
+            }
             try require(b, type)
             return type
         case .multiply(let a, let b):
             let left = try visit(a)
+            guard left != .bool else {
+                throw Failure.typeMismatch(node: id, input: a, expected: .scalar, actual: .bool)
+            }
             let right = try visit(b)
-            if left == right || right == .scalar { return left }
-            if left == .scalar { return right }
+            if left == right { return left }
+            // A float scalar scales vectors. It does not scale an integer; that would be `int * float`.
+            if right == .scalar, left != .int { return left }
+            if left == .scalar, right != .int, right != .bool { return right }
             throw Failure.typeMismatch(node: id, input: b, expected: left, actual: right)
         case .divide(let dividend, let divisor):
             let type = try visit(dividend)
+            if type == .int {
+                try require(divisor, .int)
+                return .int
+            }
+            guard type != .bool else {
+                throw Failure.typeMismatch(node: id, input: dividend, expected: .scalar, actual: type)
+            }
             try require(divisor, .scalar)
             return type
         case .mix(let a, let b, let factor):
-            let type = try visit(a)
+            let type = try requireFloatOperand(a)
             try require(b, type)
             try require(factor, .scalar)
             return type
@@ -471,7 +499,7 @@ struct ShaderProgram: Hashable, Sendable {
             try require(value, .scalar)
             return .scalar
         case .clamp01(let input):
-            return try visit(input)
+            return try requireFloatOperand(input)
         case .rgb(let red, let green, let blue):
             try require(red, .scalar)
             try require(green, .scalar)
@@ -480,9 +508,10 @@ struct ShaderProgram: Hashable, Sendable {
         case .unary(let operation, let input):
             switch operation {
             case .normalize:
+                _ = try requireFloatOperand(input)
                 return try requireVector(input)
             case .length:
-                _ = try visit(input)
+                _ = try requireFloatOperand(input)
                 return .scalar
             case .luminance:
                 try require(input, .vector3)
@@ -490,14 +519,26 @@ struct ShaderProgram: Hashable, Sendable {
             case .hsvToRGB, .rgbToHSV, .srgbToLinear, .linearToSRGB:
                 try require(input, .vector3)
                 return .vector3
+            case .abs, .negate:
+                let actual = try visit(input)
+                guard actual != .bool else {
+                    throw Failure.typeMismatch(node: id, input: input, expected: .scalar, actual: actual)
+                }
+                return actual
             default:
-                return try visit(input)
+                return try requireFloatOperand(input)
             }
         case .binary(let operation, let a, let b):
             let type = try visit(a)
             try require(b, type)
             switch operation {
+            case .minimum, .maximum:
+                guard type != .bool else {
+                    throw Failure.typeMismatch(node: id, input: a, expected: .scalar, actual: type)
+                }
+                return type
             case .dot, .distance:
+                _ = try requireFloatOperand(a)
                 return .scalar
             case .cross:
                 guard type == .vector3 else {
@@ -505,30 +546,38 @@ struct ShaderProgram: Hashable, Sendable {
                 }
                 return .vector3
             case .reflect:
+                _ = try requireFloatOperand(a)
                 return try requireVector(a)
             default:
-                return type
+                return try requireFloatOperand(a)
             }
         case .clamp(let value, let minimum, let maximum):
             let type = try visit(value)
+            guard type != .bool else {
+                throw Failure.typeMismatch(node: id, input: value, expected: .scalar, actual: type)
+            }
             for bound in [minimum, maximum] {
                 let actual = try visit(bound)
-                guard actual == type || actual == .scalar else {
+                let allowed = type == .int ? actual == .int : actual == type || actual == .scalar
+                guard allowed else {
                     throw Failure.typeMismatch(node: id, input: bound, expected: type, actual: actual)
                 }
             }
             return type
         case .select(let condition, let ifTrue, let ifFalse), .branch(let condition, let ifTrue, let ifFalse):
-            try require(condition, .scalar)
+            let conditionType = try visit(condition)
+            guard conditionType == .scalar || conditionType == .bool else {
+                throw Failure.typeMismatch(node: id, input: condition, expected: .scalar, actual: conditionType)
+            }
             let type = try visitAny(ifTrue)
             try require(ifFalse, type)
             return type
         case .remap(let value, let fromMinimum, let fromMaximum, let toMinimum, let toMaximum):
-            let type = try visit(value)
+            let type = try requireFloatOperand(value)
             for bound in [fromMinimum, fromMaximum, toMinimum, toMaximum] { try require(bound, .scalar) }
             return type
         case .swizzle(let input, let components):
-            let source = try visit(input)
+            let source = try requireFloatOperand(input)
             guard let count = swizzleCount(components, sourceComponents: source.componentCount),
                   let type = ValueType(componentCount: count) else {
                 throw Failure.invalidSwizzle(node: id, components: components)
@@ -536,7 +585,9 @@ struct ShaderProgram: Hashable, Sendable {
             return type
         case .combine(let inputs):
             var count = 0
-            for input in inputs { count += try visit(input).componentCount }
+            for input in inputs {
+                count += try requireFloatOperand(input).componentCount
+            }
             guard (2...4).contains(inputs.count), let type = ValueType(componentCount: count), count >= 2 else {
                 throw Failure.invalidCombine(node: id, components: count)
             }
@@ -605,7 +656,7 @@ struct ShaderProgram: Hashable, Sendable {
             if case .loopIndex = nodes[id] { return .scalar }
             return try visitAny(initial)
         case .oscillator(_, let input), .derivative(_, let input):
-            return try visit(input)
+            return try requireFloatOperand(input)
         case .rotateUV(let uv, let angle, let center):
             try require(uv, .vector2)
             try require(angle, .scalar)
@@ -655,8 +706,31 @@ struct ShaderProgram: Hashable, Sendable {
             try require(a, .scalar)
             try require(b, .scalar)
             return .scalar
+        case .bitcast(let input):
+            switch try visitAny(input) {
+            case .scalar: return .int
+            case .int: return .scalar
+            case let actual:
+                throw Failure.typeMismatch(node: id, input: input, expected: .scalar, actual: actual)
+            }
+        case .countOneBits(let input):
+            let source = try visitAny(input)
+            guard source == .scalar || source == .int else {
+                throw Failure.typeMismatch(node: id, input: input, expected: .scalar, actual: source)
+            }
+            return .int
+        case .numericCast(let input):
+            switch try visitAny(input) {
+            case .scalar: return .int
+            case .int: return .scalar
+            case let actual:
+                throw Failure.typeMismatch(node: id, input: input, expected: .scalar, actual: actual)
+            }
         case .hash(let input):
-            _ = try visit(input)
+            let source = try visit(input)
+            guard source != .int, source != .bool else {
+                throw Failure.typeMismatch(node: id, input: input, expected: .scalar, actual: source)
+            }
             return .scalar
         case .interleavedGradientNoise(let pixel):
             try require(pixel, .vector2)
@@ -693,7 +767,7 @@ struct ShaderProgram: Hashable, Sendable {
 
     static func inputs(of node: Node) -> [NodeID] {
         switch node {
-        case .scalar, .color, .vector2, .vector4, .parameter, .uv, .normal, .worldPosition, .input, .uniform:
+        case .scalar, .integer, .boolean, .color, .vector2, .vector4, .parameter, .uv, .normal, .worldPosition, .input, .uniform:
             []
         case .sampleTexture(_, let coordinates), .sampleScene(let coordinates), .sampleDepth(let coordinates):
             [coordinates]
@@ -738,6 +812,8 @@ struct ShaderProgram: Hashable, Sendable {
         // Loop nodes are scope references, not data dependencies.
         case .loopIndex, .loopValue:
             []
+        case .bitcast(let value), .countOneBits(let value), .numericCast(let value):
+            [value]
         case .oscillator(_, let a), .checker(let a), .derivative(_, let a), .hash(let a),
              .interleavedGradientNoise(let a), .matrixUnary(_, let a), .matrixColumn(let a, _),
              .bumpMap(_, _, _, let a):
@@ -794,6 +870,8 @@ struct ShaderProgram: Hashable, Sendable {
 
         switch nodes[id] {
         case .scalar(let value): return Self.literal(value)
+        case .integer(let value): return "int(\(value))"
+        case .boolean(let value): return value ? "true" : "false"
         case .color(let value): return "float3(\(Self.literal(value.x)), \(Self.literal(value.y)), \(Self.literal(value.z)))"
         case .vector2(let value): return "float2(\(Self.literal(value.x)), \(Self.literal(value.y)))"
         case .vector4(let value):
@@ -815,6 +893,10 @@ struct ShaderProgram: Hashable, Sendable {
             case .matrix4:
                 let columns = (0..<4).map { "frostfield_graph_uniform(resources, \(origin + $0)u)" }
                 return "float4x4(\(columns.joined(separator: ", ")))"
+            case .int:
+                return "as_type<int>(frostfield_graph_uniform(resources, \(origin)u).x)"
+            case .bool:
+                return "frostfield_graph_uniform(resources, \(origin)u).x != 0.0f"
             default:
                 let swizzle = ["", ".x", ".xy", ".xyz", ""][type.componentCount]
                 return "frostfield_graph_uniform(resources, \(origin)u)\(swizzle)"
@@ -843,6 +925,7 @@ struct ShaderProgram: Hashable, Sendable {
         case .subtract(let a, let b): return "\(n(a)) - \(n(b))"
         case .multiply(let a, let b): return "\(n(a)) * \(n(b))"
         case .divide(let a, let b):
+            if types[id] == .int { return "\(n(b)) != 0 ? \(n(a)) / \(n(b)) : 0" }
             return "frostfield_graph_finite(\(n(b))) && \(n(b)) != 0.0f ? \(n(a)) / \(n(b)) : \(t)(0)"
         case .mix(let a, let b, let factor): return "mix(\(n(a)), \(n(b)), saturate(\(n(factor))))"
         case .sine(let input): return "sin(\(n(input)))"
@@ -906,7 +989,8 @@ struct ShaderProgram: Hashable, Sendable {
         case .clamp(let value, let minimum, let maximum):
             return "clamp(\(n(value)), \(cast(minimum)), \(cast(maximum)))"
         case .select(let condition, let ifTrue, let ifFalse):
-            return "\(n(condition)) > 0.5f ? \(n(ifTrue)) : \(n(ifFalse))"
+            let conditionTest = types[condition] == .bool ? n(condition) : "\(n(condition)) > 0.5f"
+            return "\(conditionTest) ? \(n(ifTrue)) : \(n(ifFalse))"
         case .remap(let value, let fromMinimum, let fromMaximum, let toMinimum, let toMaximum):
             return "frostfield_graph_remap(\(n(value)), \(n(fromMinimum)), \(n(fromMaximum)), \(n(toMinimum)), \(n(toMaximum)))"
         case .swizzle(let input, let components):
@@ -981,6 +1065,15 @@ struct ShaderProgram: Hashable, Sendable {
         case .bits(let operation, let a, let b):
             let code = MaterialGraph.BitOperation.allCases.firstIndex(of: operation)!
             return "frostfield_graph_bits(\(n(a)), \(n(b)), \(code)u)"
+        case .bitcast(let input):
+            return "as_type<\(t)>(\(n(input)))"
+        case .countOneBits(let input):
+            return "int(popcount(as_type<uint>(\(n(input)))))"
+        case .numericCast(let input):
+            if type == .int {
+                return "frostfield_graph_finite(\(n(input))) ? int(\(n(input))) : 0"
+            }
+            return "float(\(n(input)))"
         case .hash(let input):
             // Adding positive zero turns negative zero into positive zero.
             let x = "\(n(input)) + 0.0f"

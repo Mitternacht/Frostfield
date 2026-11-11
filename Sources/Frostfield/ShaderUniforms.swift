@@ -64,7 +64,9 @@ public final class ShaderUniforms: Sendable {
             guard indices.updateValue(index, forKey: declaration.name) == nil else {
                 throw Failure.duplicateName(declaration.name)
             }
-            guard declaration.columns.allSatisfy(Self.isFinite) else { throw Failure.nonfinite(declaration.name) }
+            if declaration.type != .int {
+                guard declaration.columns.allSatisfy(Self.isFinite) else { throw Failure.nonfinite(declaration.name) }
+            }
             offsets.append(cursor)
             cursor += declaration.type.uniformSlotCount
         }
@@ -134,6 +136,26 @@ public final class ShaderUniforms: Sendable {
 
     public func set(_ name: String, to value: simd_float4x4) throws {
         try replace(name, with: value.shaderColumns, type: .matrix4)
+    }
+
+    public func setInteger(_ name: String, _ value: Int32) throws {
+        try replace(name, with: [SIMD4(Float(bitPattern: UInt32(bitPattern: value)), 0, 0, 0)], type: .int)
+    }
+
+    public func setBoolean(_ name: String, _ value: Bool) throws {
+        try replace(name, with: [SIMD4(value ? 1 : 0, 0, 0, 0)], type: .bool)
+    }
+
+    /// The current signed integer uniform, or nil when `name` is unknown or a different type.
+    public func integer(named name: String) -> Int32? {
+        guard let slots = slots(named: name, type: .int) else { return nil }
+        return Int32(bitPattern: slots[0].x.bitPattern)
+    }
+
+    /// The current boolean uniform, or nil when `name` is unknown or a different type.
+    public func boolean(named name: String) -> Bool? {
+        guard let slots = slots(named: name, type: .bool) else { return nil }
+        return slots[0].x != 0
     }
 
     /// Restores every declared default and advances the revision.
@@ -217,10 +239,16 @@ public final class ShaderUniforms: Sendable {
         let declared = declarations[index].type
         guard declared == type else { throw Failure.type(name: name, expected: declared, actual: type) }
         let stored = columns.map { type.storedColumn($0) }
-        guard stored.allSatisfy(Self.isFinite) else { throw Failure.nonfinite(name) }
+        if type != .int {
+            guard stored.allSatisfy(Self.isFinite) else { throw Failure.nonfinite(name) }
+        }
         let start = slotOffsets[index]
         state.withLock { state in
-            guard !state.values[start..<(start + stored.count)].elementsEqual(stored) else { return }
+            let current = state.values[start..<(start + stored.count)]
+            let unchanged = type == .int
+                ? current.elementsEqual(stored, by: Self.sameBits)
+                : current.elementsEqual(stored)
+            guard !unchanged else { return }
             for (offset, column) in stored.enumerated() {
                 state.values[start + offset] = column
             }
@@ -231,6 +259,11 @@ public final class ShaderUniforms: Sendable {
 
     private static func isFinite(_ value: SIMD4<Float>) -> Bool {
         value.x.isFinite && value.y.isFinite && value.z.isFinite && value.w.isFinite
+    }
+
+    private static func sameBits(_ lhs: SIMD4<Float>, _ rhs: SIMD4<Float>) -> Bool {
+        lhs.x.bitPattern == rhs.x.bitPattern && lhs.y.bitPattern == rhs.y.bitPattern
+            && lhs.z.bitPattern == rhs.z.bitPattern && lhs.w.bitPattern == rhs.w.bitPattern
     }
 
     public enum Failure: LocalizedError, Equatable {

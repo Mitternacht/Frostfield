@@ -35,6 +35,7 @@ groove and show the face of the next brick, and both renderers agree.
 | Bit operations and value hashing | `.bits`, `MaterialGraph.BitOperation`, `.hash`, `bits(_:_:)`, `hash()` | Yes | Yes | All | `ShaderPatternTests.bitsAndHashes`, `ShaderNoiseTests` |
 | Dithering | `.interleavedGradientNoise`, `interleavedGradientNoise(_:)`, `dither(_:pixel:levels:)`, `bayerDither(_:pixel:levels:)` | Yes | Yes | All | `ShaderPatternTests.dithering`, `bayerDithering` |
 | 3 × 3 and 4 × 4 matrices | `ValueType.matrix3`, `.matrix4`, `.matrix`, `.matrixMultiply`, `.matrixUnary`, `.matrixColumn`, `ShaderMatrixType`, `constant(_:)` and `uniform(_:_:)` for `simd_float3x3` and `simd_float4x4`, `ShaderUniforms.set(_:to:)`, `matrix3(named:)`, `matrix4(named:)`, `*`, `inverse()`, `transposed()`, `determinant()`, `column(_:)`, `upperLeft`, `transformPoint(_:)`, `transformDirection(_:)` | Yes | Yes | All | `ShaderPatternTests.matrices`, `matrixUniforms` |
+| Signed 32-bit integers and bools | `ValueType.int`, `.bool`, `.bitcast`, `.countOneBits`, `.numericCast`, `bitcast()`, `countOneBits()`, `toInt()`, `toFloat()`, `ShaderUniforms.setInteger(_:_:)`, `setBoolean(_:_:)`, `integer(named:)`, `boolean(named:)` | The surface shader compiles; this lane did not read raster or path pixels | Not executed | Compute buffer kernel | `ShaderPatternTests.integersAndBools`, `SceneArchiveTests.integerUniforms` |
 | Graph clock | `Input.time`, `.deltaTime`, `.frame`, `ShaderFrame`, `ShaderUniforms.frame`, `setFrame(_:)`, `advanceFrame(by:)`, `frameRevision` | Yes | Yes | Vertex, post-process, texture and buffer compute, particles | `ShaderGraphInputTests.clock`, `.clockConsumers`, `.particleClock` |
 | Camera | `Input.cameraPosition`, `.cameraNear`, `.cameraFar`, `.viewMatrix`, `.projectionMatrix`; `ShaderGraphCamera` and `GLTFScene.Camera.View.graphCamera` for clip-matrix encodes | Yes, every encode path | Planar matrices use the full image projection, including lens shift and orthographic scale. Panoramas support view and clip inputs. | Rejected | `ShaderGraphInputTests.cameraAndModel`, `ShaderGraphViewTests.graphCameras`, `.pathCameraProjection` |
 | Model | `Input.modelMatrix`, `.normalMatrix` | Yes, the node matrix | Yes, except instanced nodes | Rejected | `ShaderGraphInputTests.cameraAndModel`, `ShaderGraphViewTests.modelMatrices` |
@@ -77,6 +78,7 @@ least disturbed run as well as the median.
 | Oscillators at 12 times from −1.3 to 17.125 | Square, triangle and sawtooth exact; sine within 10⁻⁵ of a double-precision reference |
 | Raster against path tracing for clock, camera, view, projection, model, normal-matrix, loop, branch and noise outputs | Equal to the analytic or `ShaderNoise` value within 2 × 10⁻³ + 10⁻³ · |value| in RGBA16Float |
 | Matrix uniforms, one float4 slot per column, against `simd` at four points including a direction with w = 0 | Compute readback within 10⁻⁵. A translated point's emission matches in raster and path, and a vertex offset matches, within the half-float and deformation thresholds. Reading each matrix4 column one slot late failed the generated-source check and all eight GPU comparisons. macOS passed the language, pattern, rendering and deformation suites together (38 tests) and `SceneArchiveTests` (12 tests). The iPad Pro (M5) simulator passed all five suites (50 tests) |
+| Signed integers and bools | Bitcast round trip, population count, division of -7 by 2, and `toInt` truncation match on five floats. A bool uniform selects 0 then 1. Integer uniform 4, then 5, then -2 (whose bits are a float NaN) produces 11, 13 and -1 without a second pipeline. A float-only uniform still reads `frostfield_graph_uniform(resources, 0u).x`. Sine of an integer, an integer scaled by a float, and addition of a bool are rejected. An archive round-trips -2 and true. macOS and the iPad Pro (M5) simulator each passed the language and pattern suites (25 tests). macOS also passed the pattern and archive suites together (25 tests); the iPad simulator passed that pair before the float-only rejection was added |
 | Switch, continue and a dynamic loop count | Exact on nine counts, including a count of 2.9 truncating to two iterations and a count above the maximum clamping to eight. A nonfinite count leaves the accumulator at its initial value. The private node of the matching switch arm is generated after that arm's comparison. Discard keeps the low-U half and clears the high-U half in raster and path tracing. macOS and the iPad Pro (M5) simulator each passed the control-flow, rendering and input suites (21 tests) |
 
 ## Semantics
@@ -219,7 +221,8 @@ GPU shades with the same pattern.
 | `cameraPosition`, `cameraNear`, `cameraFar`, `cameraViewMatrix`, `cameraProjectionMatrix` | Same meanings | Raster default, glTF, and explicit camera views. Path-traced perspective and orthographic cameras provide projection inputs, including for render tiles. |
 | `modelWorldMatrix`, `modelNormalMatrix` | `modelMatrix`, `normalMatrix` | Match; path tracer except instanced nodes |
 | `mat2`, `mat3`, `mat4`, matrix operations and `uniform(mat3)` / `uniform(mat4)` | `matrix3`, `matrix4` nodes and `uniform(_:simd_float3x3)`, `uniform(_:simd_float4x4)` | Partial: 3 × 3 and 4 × 4 with multiply, transpose, inverse, determinant, columns and live uniforms; no `mat2`. Matrix uniforms are not animation tracks |
-| `hash`, bitwise operators | `hash`, `bits` | Partial: 24-bit unsigned integers carried in floats, no integer type |
+| `int`, `bool`, `bitcast`, `countOneBits`, `floatBitsToInt` | `Int32`, `Bool`, `bitcast()`, `countOneBits()`, `toInt()`, `toFloat()`, `setInteger(_:_:)`, `setBoolean(_:_:)` | Partial: signed 32-bit values and bools, including uniforms edited without a new pipeline. No `uint`, integer vectors, or struct |
+| `hash`, bitwise operators | `hash`, `bits` | Partial: 24-bit unsigned integers carried in floats. Signed integers use the operations above |
 | `interleavedGradientNoise`, `bayerDither` | `interleavedGradientNoise`, `dither`, `bayerDither` | The ordered RGB offset uses the r187 4×4 phase with caller pixel coordinates and a default of 32 levels. Metal readback matches all phases across 144 samples, including negative coordinates and a live level count. [Three.js r187 Bayer shader](https://github.com/mrdoob/three.js/blob/r187/examples/jsm/tsl/math/Bayer.js) |
 | `snoise`, `curlNoise`, `voronoi3d` | `simplexNoise`, `curlNoise`, `animatedVoronoi` | Three-dimensional simplex and curl, plus animated squared cell distance in two or three dimensions. [Procedural pattern evidence](shader-procedural-patterns.md) |
 | `mx_noise_float` and friends; `ImprovedNoise`, `SimplexNoise` addons | Lattice, fractal and cellular nodes with `ShaderNoise` | Frostfield's CPU and GPU functions agree within 1.2 × 10⁻⁷. MaterialX, Perlin and simplex algorithms remain separate. |
@@ -239,8 +242,18 @@ GPU shades with the same pattern.
   branch arms. Branches and switch arms cannot contain texture samples,
   derivatives, or calls to declared functions that mention derivative or lane
   functions; those always run. Discard is a surface-stage coverage decision.
-- There is no integer type. Bit operations clamp operands to 0–16,777,215 and
-  keep 24-bit results.
+- Signed 32-bit integers and bools are values. Integer division truncates toward
+  zero and a zero divisor yields zero. `toInt` truncates toward zero and maps a
+  nonfinite float to zero. `countOneBits` counts the float's IEEE bits or the
+  integer's two's-complement bits. A bool branch reads the bool; a float branch
+  still tests above 0.5. An integer uniform stores that bit pattern in one float4
+  slot, so values such as -2 are NaN if read as float. JSON stores the declaration
+  as `integerValue`, and an archive stores the live integers in `integerValues`,
+  because those bits do not survive a JSON float. Float scalar uniforms still
+  occupy one slot and read `.x` with no bitcast. There is no struct, unsigned
+  integer, or integer vector. The float `bits` path still clamps to 24-bit
+  unsigned values. `AnimationTrack` rejects an integer, boolean, or matrix
+  uniform (`unknownUniform`).
 - A matrix uniform is one float4 slot per column, column-major, then any later
   uniforms. Scalar and vector uniforms keep one slot each, so a graph that
   declares none of these matrices binds the same buffer as before. There is no
@@ -261,9 +274,9 @@ GPU shades with the same pattern.
   combinations are rejected.
 - `MaterialGraph`, the original unlit graph, still reads only UV0, the normal,
   world position and parameters.
-- The matrix-uniform suites passed on the iPad Pro (M5) simulator. Physical
-  iPhone, iPad and Vision Pro runs have not been made. The lane adds no new
-  dispatches or texture views.
+- The matrix-uniform suites passed on the iPad Pro (M5) simulator, as did the
+  integer and bool pattern and language suites. Physical iPhone, iPad and Vision
+  Pro runs have not been made. The lane adds no new dispatches or texture views.
 
 ## Vector directions
 

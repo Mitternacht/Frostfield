@@ -55,6 +55,42 @@ struct SceneArchiveTests {
         #expect(try fixture.render(loaded).pixels == original.pixels)
     }
 
+    @Test("Integer and boolean uniforms survive an archive, including values whose bits are NaN as floats")
+    func integerUniforms() throws {
+        let graph = try SurfaceShaderGraph { s in
+            let scale = s.uniform("K", Int32(4)).toFloat()
+            let picked = s.branch(s.uniform("On", false)) { s.constant(Float(1)) } else: { s.constant(Float(0)) }
+            return .init(emission: s.vector(scale, picked, s.constant(Float(0))))
+        }
+        let uniforms = try ShaderUniforms(graph: graph)
+        try uniforms.setInteger("K", Int32(-2))
+        try uniforms.setBoolean("On", true)
+        let material = try PhysicallyBasedMaterial(
+            lightIntensity: 0, ambientIntensity: 0, alphaMode: .opaque, surfaceGraph: graph, surfaceUniforms: uniforms
+        )
+        let mesh = try MeshRenderer(
+            device: fixture.device, colorPixelFormat: .rgba16Float, geometry: .plane(width: 2, height: 2),
+            material: .physicallyBased(material)
+        )
+        let scene = SceneGraph(
+            roots: [SceneNode(transform: SceneTransform(translation: SIMD3(0, 0, -2)), mesh: mesh)], camera: fixture.camera
+        )
+        let archive = try SceneArchive(capturing: scene, commandQueue: fixture.queue)
+        let manifest = try #require(String(data: archive.manifest, encoding: .utf8))
+        #expect(manifest.contains("\"integerValues\""))
+        #expect(manifest.contains("\"integerValue\" : 4"))
+        #expect(!manifest.contains("NaN"))
+        let loaded = try archive.load(device: fixture.device, commandQueue: fixture.queue).graph
+        guard case .physicallyBased(let restoredMaterial) = loaded.roots.first?.mesh?.material else {
+            Issue.record("Expected a physically based material.")
+            return
+        }
+        let restored = try #require(restoredMaterial.surfaceUniforms)
+        #expect(restored.integer(named: "K") == -2)
+        #expect(restored.boolean(named: "On") == true)
+        #expect(try SceneArchive(capturing: loaded, commandQueue: fixture.queue) == archive)
+    }
+
     /// A scene that exercises every archived feature that draws.
     private func richScene() throws -> (SceneGraph, [AnimationClip], LightRig) {
         let device = fixture.device

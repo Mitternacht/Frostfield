@@ -48,7 +48,7 @@ The Mac run takes about 3 to 13 minutes, the focused simulator runs about 1 to 5
   `setRenderObjectFunction` is left missing on purpose. The reasons are in [`docs/evidence/render-hooks.md`](evidence/render-hooks.md).
 - Every new behavior needs a test that fails when the behavior is broken. Several lanes got extra tests after review showed their first ones could not fail.
 - Default paths must stay byte-identical when a new option is off. Prove it with stored digests or a before-and-after comparison.
-- Update the evidence page, then the ledger row, then recount with `python3 docs/parity/recount-parity.py docs/parity/threejs.md`. It rewrites the summary table. Edit the line "306 of 524 capabilities ..." by hand so it matches.
+- Update the evidence page, then the ledger row, then recount with `python3 docs/parity/recount-parity.py docs/parity/threejs.md`. It rewrites the summary table. Edit the line "307 of 524 capabilities ..." by hand so it matches.
 
 ## Open items left by the lanes finished on 2026-11-11
 

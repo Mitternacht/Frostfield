@@ -430,6 +430,8 @@ extension MaterialGraph.Node: Codable {
         }
         switch kind {
         case "scalar": self = .scalar(try container.decode(Float.self, forKey: .value))
+        case "integer": self = .integer(Int32(try container.decode(Int32.self, forKey: .value)))
+        case "boolean": self = .boolean(try container.decode(Bool.self, forKey: .value))
         case "color": self = .color(try container.decode(SIMD3<Float>.self, forKey: .value))
         case "vector2": self = .vector2(try container.decode(SIMD2<Float>.self, forKey: .value))
         case "vector4": self = .vector4(try container.decode(SIMD4<Float>.self, forKey: .value))
@@ -583,7 +585,11 @@ extension MaterialGraph.Node: Codable {
             self = .matrixUnary(try container.decode(MaterialGraph.MatrixOperation.self, forKey: .operation), try operands(1)[0])
         case "matrixColumn":
             self = .matrixColumn(try operands(1)[0], try container.decode(Int.self, forKey: .index))
-        case "function": self = .function(try container.decode(Int.self, forKey: .index), arguments: inputs)
+        case "function":
+            self = .function(try container.decode(Int.self, forKey: .index), arguments: inputs)
+        case "bitcast": self = .bitcast(try operands(1)[0])
+        case "countOneBits": self = .countOneBits(try operands(1)[0])
+        case "numericCast": self = .numericCast(try operands(1)[0])
         default: throw corrupted(container, "Unknown graph node \(kind).", codingPath: decoder.codingPath)
         }
     }
@@ -596,6 +602,8 @@ extension MaterialGraph.Node: Codable {
         }
         switch self {
         case .scalar(let value): try write("scalar"); try container.encode(value, forKey: .value)
+        case .integer(let value): try write("integer"); try container.encode(value, forKey: .value)
+        case .boolean(let value): try write("boolean"); try container.encode(value, forKey: .value)
         case .color(let value): try write("color"); try container.encode(value, forKey: .value)
         case .vector2(let value): try write("vector2"); try container.encode(value, forKey: .value)
         case .vector4(let value): try write("vector4"); try container.encode(value, forKey: .value)
@@ -711,37 +719,48 @@ extension MaterialGraph.Node: Codable {
             try container.encode(index, forKey: .index)
         case .function(let index, let arguments):
             try write("function", arguments); try container.encode(index, forKey: .index)
+        case .bitcast(let value): try write("bitcast", [value])
+        case .countOneBits(let value): try write("countOneBits", [value])
+        case .numericCast(let value): try write("numericCast", [value])
         }
     }
 }
 
 extension ShaderUniform: Codable {
-    private enum CodingKeys: String, CodingKey { case name, type, defaultValue, columns }
+    private enum CodingKeys: String, CodingKey { case name, type, defaultValue, columns, integerValue }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let name = try container.decode(String.self, forKey: .name)
         let type = try container.decode(MaterialGraph.ValueType.self, forKey: .type)
-        let header = try container.decode(SIMD4<Float>.self, forKey: .defaultValue)
         switch type {
-        case .scalar: self.init(name, header.x)
-        case .vector2: self.init(name, SIMD2(header.x, header.y))
-        case .vector3: self.init(name, SIMD3(header.x, header.y, header.z))
-        case .vector4: self.init(name, header)
-        case .matrix3, .matrix4:
-            let columns = try container.decode([SIMD4<Float>].self, forKey: .columns)
-            guard columns.count == type.uniformSlotCount else {
-                throw corrupted(
-                    container, "A \(type.rawValue) uniform needs \(type.uniformSlotCount) columns.",
-                    codingPath: decoder.codingPath
-                )
-            }
-            self.init(name: name, type: type, columns: columns)
-            guard defaultValue == type.storedColumn(header) else {
-                throw corrupted(
-                    container, "A matrix uniform's defaultValue must equal its first column.",
-                    codingPath: decoder.codingPath
-                )
+        case .int:
+            self.init(name, try container.decode(Int32.self, forKey: .integerValue))
+        case .scalar, .bool, .vector2, .vector3, .vector4, .matrix3, .matrix4:
+            let header = try container.decode(SIMD4<Float>.self, forKey: .defaultValue)
+            switch type {
+            case .scalar: self.init(name, header.x)
+            case .bool: self.init(name, header.x != 0)
+            case .vector2: self.init(name, SIMD2(header.x, header.y))
+            case .vector3: self.init(name, SIMD3(header.x, header.y, header.z))
+            case .vector4: self.init(name, header)
+            case .matrix3, .matrix4:
+                let columns = try container.decode([SIMD4<Float>].self, forKey: .columns)
+                guard columns.count == type.uniformSlotCount else {
+                    throw corrupted(
+                        container, "A \(type.rawValue) uniform needs \(type.uniformSlotCount) columns.",
+                        codingPath: decoder.codingPath
+                    )
+                }
+                self.init(name: name, type: type, columns: columns)
+                guard defaultValue == type.storedColumn(header) else {
+                    throw corrupted(
+                        container, "A matrix uniform's defaultValue must equal its first column.",
+                        codingPath: decoder.codingPath
+                    )
+                }
+            case .int:
+                throw corrupted(container, "An integer uniform is stored as integerValue.", codingPath: decoder.codingPath)
             }
         }
     }
@@ -750,6 +769,10 @@ extension ShaderUniform: Codable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(name, forKey: .name)
         try container.encode(type, forKey: .type)
+        if type == .int {
+            try container.encode(Int32(bitPattern: defaultValue.x.bitPattern), forKey: .integerValue)
+            return
+        }
         try container.encode(defaultValue, forKey: .defaultValue)
         if type.isMatrix { try container.encode(columns, forKey: .columns) }
     }

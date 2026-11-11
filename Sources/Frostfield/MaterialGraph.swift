@@ -38,6 +38,10 @@ public struct MaterialGraph: Sendable {
         case matrix3
         /// A 4 × 4 float matrix in column-major order.
         case matrix4
+        /// A signed 32-bit integer.
+        case int
+        /// A boolean. Comparisons and branches can read it directly.
+        case bool
 
         /// A linear RGB color is a vector3.
         public static let color = ValueType.vector3
@@ -50,6 +54,7 @@ public struct MaterialGraph: Sendable {
             case .vector4: 4
             case .matrix3: 9
             case .matrix4: 16
+            case .int, .bool: 1
             }
         }
 
@@ -83,6 +88,8 @@ public struct MaterialGraph: Sendable {
             case .vector4: "float4"
             case .matrix3: "float3x3"
             case .matrix4: "float4x4"
+            case .int: "int"
+            case .bool: "bool"
             }
         }
     }
@@ -102,6 +109,10 @@ public struct MaterialGraph: Sendable {
     /// The associated values define each operation's input count.
     public enum Node: Hashable, Sendable {
         case scalar(Float)
+        /// A signed 32-bit integer constant.
+        case integer(Int32)
+        /// A boolean constant.
+        case boolean(Bool)
         /// A vector3 constant, usually a linear RGB color.
         case color(SIMD3<Float>)
         case vector2(SIMD2<Float>)
@@ -193,6 +204,12 @@ public struct MaterialGraph: Sendable {
         case animatedVoronoi(position: NodeID, time: NodeID)
         /// Calls a declared `ShaderFunction` with typed arguments.
         case function(Int, arguments: [NodeID])
+        /// Reinterprets a float's bits as an int, or an int's bits as a float.
+        case bitcast(NodeID)
+        /// The number of set bits. A float uses its exact bits; an int uses its two's-complement bits.
+        case countOneBits(NodeID)
+        /// Truncates a float toward zero, or converts an int to a float.
+        case numericCast(NodeID)
 
         // MARK: Control flow
 

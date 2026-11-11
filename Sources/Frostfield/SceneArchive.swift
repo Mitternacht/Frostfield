@@ -620,7 +620,43 @@ struct ArchiveEnvironment: Codable {
 struct ArchiveUniforms: Codable {
     var declarations: [ShaderUniform]
     /// One float4 per value slot, in declaration order. A matrix contributes one slot per column.
+    /// An integer uniform's slot is zero here. JSON numbers cannot carry every IEEE bit pattern,
+    /// and a signed integer such as -2 is a NaN when those bits are read as a float.
     var values: [SIMD4<Float>]
+    /// Signed values for `.int` uniforms, in declaration order. Absent when the set has none.
+    var integerValues: [Int32]?
+
+    init(declarations: [ShaderUniform], values: [SIMD4<Float>]) {
+        var stored = values
+        var integers: [Int32] = []
+        var cursor = 0
+        for declaration in declarations {
+            if declaration.type == .int, stored.indices.contains(cursor) {
+                integers.append(Int32(bitPattern: stored[cursor].x.bitPattern))
+                stored[cursor] = .zero
+            }
+            cursor += declaration.type.uniformSlotCount
+        }
+        self.declarations = declarations
+        self.values = stored
+        self.integerValues = integers.isEmpty ? nil : integers
+    }
+
+    private enum CodingKeys: String, CodingKey { case declarations, values, integerValues }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        declarations = try container.decode([ShaderUniform].self, forKey: .declarations)
+        values = try container.decode([SIMD4<Float>].self, forKey: .values)
+        integerValues = try container.decodeIfPresent([Int32].self, forKey: .integerValues)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(declarations, forKey: .declarations)
+        try container.encode(values, forKey: .values)
+        try container.encodeIfPresent(integerValues, forKey: .integerValues)
+    }
 }
 
 struct ArchiveInstanceSet: Codable {
@@ -1692,6 +1728,7 @@ private struct ArchiveLoader {
         }
         let set = try ShaderUniforms(record.declarations)
         var cursor = 0
+        var integerCursor = 0
         for declaration in record.declarations {
             let count = declaration.type.uniformSlotCount
             let slots = Array(record.values[cursor..<(cursor + count)])
@@ -1709,7 +1746,23 @@ private struct ArchiveLoader {
                 ))
             case .matrix4:
                 try set.set(declaration.name, to: simd_float4x4(columns: (slots[0], slots[1], slots[2], slots[3])))
+            case .int:
+                let value: Int32
+                if let integerValues = record.integerValues {
+                    guard integerValues.indices.contains(integerCursor) else {
+                        throw SceneArchive.Failure.invalidReference("integer values of uniform set \(index)")
+                    }
+                    value = integerValues[integerCursor]
+                    integerCursor += 1
+                } else {
+                    value = Int32(bitPattern: slots[0].x.bitPattern)
+                }
+                try set.setInteger(declaration.name, value)
+            case .bool: try set.setBoolean(declaration.name, slots[0].x != 0)
             }
+        }
+        if let integerValues = record.integerValues, integerCursor != integerValues.count {
+            throw SceneArchive.Failure.invalidReference("integer values of uniform set \(index)")
         }
         uniforms[index] = set
         return set
