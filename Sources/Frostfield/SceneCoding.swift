@@ -920,7 +920,7 @@ private struct GraphDeclarations {
 
 extension SurfaceShaderGraph.Outputs: Codable {
     private enum CodingKeys: String, CodingKey {
-        case baseColor, metallic, roughness, emission, transmissionMask, normal, occlusion, positionOffset, opacity, alphaTest, mask
+        case baseColor, metallic, roughness, emission, transmissionMask, normal, occlusion, positionOffset, pointSize, opacity, alphaTest, mask
         case castShadowColor, castShadowMask
     }
 
@@ -935,6 +935,7 @@ extension SurfaceShaderGraph.Outputs: Codable {
             normal: try container.decodeIfPresent(Int.self, forKey: .normal),
             occlusion: try container.decodeIfPresent(Int.self, forKey: .occlusion),
             positionOffset: try container.decodeIfPresent(Int.self, forKey: .positionOffset),
+            pointSize: try container.decodeIfPresent(Int.self, forKey: .pointSize),
             opacity: try container.decodeIfPresent(Int.self, forKey: .opacity),
             alphaTest: try container.decodeIfPresent(Int.self, forKey: .alphaTest),
             mask: try container.decodeIfPresent(Int.self, forKey: .mask),
@@ -953,6 +954,7 @@ extension SurfaceShaderGraph.Outputs: Codable {
         try container.encodeIfPresent(normal, forKey: .normal)
         try container.encodeIfPresent(occlusion, forKey: .occlusion)
         try container.encodeIfPresent(positionOffset, forKey: .positionOffset)
+        try container.encodeIfPresent(pointSize, forKey: .pointSize)
         try container.encodeIfPresent(opacity, forKey: .opacity)
         try container.encodeIfPresent(alphaTest, forKey: .alphaTest)
         try container.encodeIfPresent(mask, forKey: .mask)

@@ -312,4 +312,37 @@ struct PointsAndSpritesTests {
             )
         }
     }
+
+    @Test
+    func `A point graph replaces the material size and edits without a new pipeline`() throws {
+        let fixture = try PrimitiveRenderFixture(side: 64)
+        let graph = try SurfaceShaderGraph { s in
+            .init(pointSize: s.uniform("Size", Float(6)))
+        }
+        let uniforms = try ShaderUniforms(graph: graph)
+        let renderer = try PointsRenderer(
+            device: fixture.device, cloud: try PointCloud(positions: [SIMD3(-2, 0, -4)]),
+            material: PointsMaterial(
+                size: .pixels(2), color: SIMD4(1, 0, 0, 1), colorGraph: graph, colorUniforms: uniforms
+            )
+        )
+        let node = SceneNode(primitive: .points(renderer))
+        let six = try fixture.render(fixture.graph([node])).pixels
+        #expect(coveredPixels(six, side: 64, columns: 0..<64).count == 36)
+        try uniforms.set("Size", to: 4)
+        let four = try fixture.render(fixture.graph([node])).pixels
+        #expect(coveredPixels(four, side: 64, columns: 0..<64).count == 16)
+        try uniforms.set("Size", to: 0)
+        let hidden = try fixture.render(fixture.graph([node])).pixels
+        #expect(coveredPixels(hidden, side: 64, columns: 0..<64).isEmpty)
+        #expect(throws: PhysicallyBasedMaterial.Failure.pointSizeOutput) {
+            try PhysicallyBasedMaterial(surfaceGraph: graph)
+        }
+        #expect(throws: PrimitiveRendererError.colorGraph("A primitive color graph reads base color and opacity.")) {
+            _ = try SpriteRenderer(
+                device: fixture.device, sprites: [Sprite(position: .zero, size: SIMD2(1, 1))],
+                material: SpriteMaterial(colorGraph: graph)
+            )
+        }
+    }
 }

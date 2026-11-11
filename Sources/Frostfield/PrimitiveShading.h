@@ -82,11 +82,20 @@ vertex FrostfieldBillboardVaryings frostfield_points_vertex(
     const device half4* colors [[buffer(1), function_constant(frostfieldPrimitiveHasColors)]],
     constant FrostfieldPrimitiveView& view [[buffer(2)]],
     constant FrostfieldPointStyle& style [[buffer(3)]]
+#if defined(FROSTFIELD_PRIMITIVE_NODE)
+    , constant float4* graphUniforms [[buffer(4)]]
+    , constant FrostfieldGraphView& graphView [[buffer(5)]]
+#endif
 ) {
     FrostfieldBillboardVaryings out = {};
     float4 point = points[instance];
     float4 clip = view.clipFromLocal * float4(point.xyz, 1.0f);
     float size = style.size.x * point.w;
+#if defined(FROSTFIELD_PRIMITIVE_NODE)
+    FrostfieldGraphResources graphResources = { graphUniforms, &graphView };
+    float graphSize = frostfield_point_size(graphResources);
+    if (graphSize >= 0.0f) size = graphSize * point.w;
+#endif
     // A zero per-point size hides the point in every blending mode.
     if (!(clip.w > 0.0f) || !(size > 0.0f)) {
         out.position = frostfieldPrimitiveCulled;

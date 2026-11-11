@@ -50,7 +50,11 @@ All values come from the tests above, rendered into RGBA16Float targets with a
   forward and reversed depth, with no pixels outside its visible half.
 - Unit-wide square points at depths 4 and 8 cover exactly 64 and 16 pixels;
   6-pixel points cover 36 at both depths. A 16-pixel antialiased disc's total
-  alpha is within 1% of π × 8².
+  alpha is within 1% of π × 8². A material size of 2 pixels whose graph size is
+  6, then 4, then 0 covers 36, 16, and 0 pixels on the same renderer. macOS
+  passed `PointsAndSpritesTests` (13 tests, 0.446 seconds). The iPad Pro (M5)
+  simulator passed that suite and `LineRenderingTests` (25 tests, 3.347 seconds).
+  Both runs had Metal API Validation on.
 - Under a rotated and translated camera, a 2.5 × 1.25 unit sprite at distance 5
   covers exactly the 16 × 8 pixel rectangle about its projection; a quarter turn
   covers 8 × 16, and a top-left anchor hangs it right and down.
@@ -109,7 +113,9 @@ very long wide lines. The test's 100 ms bound is only a regression guard.
 - Primitives are unlit, do not cast or receive shadows, and are ignored by the
   path tracer and by glTF import and export (no glTF `POINTS` or `LINES` modes).
 - Renderers are immutable. Changing positions, colors or materials needs a new
-  renderer; only the node's tint and transform change per frame.
+  renderer; only the node's tint and transform change per frame. A uniform on a
+  point, sprite, or line color graph, including a point's graph size, edits
+  without a new renderer.
 - Blending sorts whole nodes. Points and sprites within one renderer draw in
   array order.
 - Pixel-sized points, sprites and lines cull by their anchor points, as Three.js

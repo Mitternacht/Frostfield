@@ -835,6 +835,7 @@ public struct PhysicallyBasedMaterial {
             self.surfaceUniforms = declaredUniforms.isEmpty && !readsClock ? nil : try ShaderUniforms(declaredUniforms)
         }
         let declaredTextures = surfaceGraph?.textures ?? []
+        if surfaceGraph?.outputs.pointSize != nil { throw Failure.pointSizeOutput }
         if let extra = surfaceTextures.keys.first(where: { name in !declaredTextures.contains { $0.name == name } }) {
             throw Failure.surfaceTexture(extra)
         }
@@ -1016,6 +1017,7 @@ public struct PhysicallyBasedMaterial {
         case surfaceUniforms
         case unlitGraphEmission
         case surfaceTexture(String)
+        case pointSizeOutput
         case invalidTextureTransform
         case invalidEmissiveStrength
         case invalidSpecular
@@ -1059,6 +1061,7 @@ public struct PhysicallyBasedMaterial {
             case .unlitGraphEmission: "Graph emission as color requires unlit shading and a connected emission output."
             case .surfaceTexture(let name):
                 "Bind each declared surface graph texture exactly once with a shader-readable 2D texture. Color inputs accept RGBA8, BGRA8, sRGB, float, or RGBA block-compressed formats; data inputs use linear formats. Linear filtering of 32-bit float textures needs a GPU that supports it. Problem: \(name)."
+            case .pointSizeOutput: "A point size output belongs on a points material."
             case .invalidTextureTransform: "Texture transforms need a finite offset and rotation and finite, nonzero scale components."
             case .invalidEmissiveStrength: "Emissive strength must be finite and nonnegative."
             case .invalidSpecular: "Specular factor must be between zero and one, and specular color components finite and nonnegative."
