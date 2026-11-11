@@ -348,8 +348,8 @@ static inline FrostfieldLineJoin frostfieldLineJoin(float2 incoming, float2 outg
 }
 
 static inline float frostfieldLineHalfWidth(float4 clip, constant FrostfieldPrimitiveView& view,
-                                            constant FrostfieldLineStyle& style) {
-    return style.width.y > 0.5f ? style.width.x * view.projection.x / clip.w : style.width.x;
+                                            constant FrostfieldLineStyle& style, float width) {
+    return style.width.y > 0.5f ? width * view.projection.x / clip.w : width;
 }
 
 vertex FrostfieldLineVaryings frostfield_line_vertex(
@@ -360,9 +360,20 @@ vertex FrostfieldLineVaryings frostfield_line_vertex(
     const device FrostfieldLineSegment* segments [[buffer(2)]],
     constant FrostfieldPrimitiveView& view [[buffer(3)]],
     constant FrostfieldLineStyle& style [[buffer(4)]]
+#if defined(FROSTFIELD_PRIMITIVE_NODE)
+    , constant float4* graphUniforms [[buffer(5)]]
+    , constant FrostfieldGraphView& graphView [[buffer(6)]]
+#endif
 ) {
     FrostfieldLineVaryings out = {};
     FrostfieldLineSegment segment = segments[instance];
+    float width = style.width.x;
+#if defined(FROSTFIELD_PRIMITIVE_NODE)
+    FrostfieldGraphResources graphResources = { graphUniforms, &graphView };
+    float graphWidth = frostfield_line_width(graphResources);
+    // The packed style stores half of the public pixel or world width.
+    if (graphWidth >= 0.0f) width = graphWidth * 0.5f;
+#endif
     float4 a = view.clipFromLocal * float4(points[segment.points.y].xyz, 1.0f);
     float4 b = view.clipFromLocal * float4(points[segment.points.z].xyz, 1.0f);
     float nearA = frostfieldPrimitiveNearDistance(a, view);
@@ -403,8 +414,8 @@ vertex FrostfieldLineVaryings frostfield_line_vertex(
 
     float2 pixelA = frostfieldPrimitivePixel(a, view);
     float2 pixelB = frostfieldPrimitivePixel(b, view);
-    float halfA = frostfieldLineHalfWidth(a, view, style);
-    float halfB = frostfieldLineHalfWidth(b, view, style);
+    float halfA = frostfieldLineHalfWidth(a, view, style, width);
+    float halfB = frostfieldLineHalfWidth(b, view, style, width);
     bool antialias = style.width.z > 0.5f;
     float drawnA = antialias ? max(halfA, 0.5f) : halfA;
     float drawnB = antialias ? max(halfB, 0.5f) : halfB;
@@ -440,7 +451,7 @@ vertex FrostfieldLineVaryings frostfield_line_vertex(
             }
             float kind = trim > 0.0f ? frostfieldLineEndTrimmed
                 : (known && neighbor.points.x < 0 ? frostfieldLineEndCap : frostfieldLineEndNothing);
-            out.previousEnd = float4(previousPixel, frostfieldLineHalfWidth(previous, view, style), 1.0f / previous.w);
+            out.previousEnd = float4(previousPixel, frostfieldLineHalfWidth(previous, view, style, width), 1.0f / previous.w);
             out.previousInfo = float4(mix(distances.x, distances.y, trim), distances.y, opacity, kind);
         }
     }
@@ -468,7 +479,7 @@ vertex FrostfieldLineVaryings frostfield_line_vertex(
             }
             float kind = trim > 0.0f ? frostfieldLineEndTrimmed
                 : (known && neighbor.points.w < 0 ? frostfieldLineEndCap : frostfieldLineEndNothing);
-            out.nextEnd = float4(nextPixel, frostfieldLineHalfWidth(next, view, style), 1.0f / next.w);
+            out.nextEnd = float4(nextPixel, frostfieldLineHalfWidth(next, view, style, width), 1.0f / next.w);
             out.nextInfo = float4(mix(distances.y, distances.x, trim), distances.x, opacity, kind);
         }
     }

@@ -354,7 +354,11 @@ public final class PointsRenderer {
         encoder.setFragmentBytes(&style, length: MemoryLayout<PackedPointStyle>.stride, index: 0)
         if let map = material.map { encoder.setFragmentTexture(map, index: 0) }
         if let fade = material.softParticleFade { softParticles?.bind(fade, into: encoder) }
-        if material.colorGraph != nil { PrimitivePipeline.bindColorGraph(material.colorUniforms, into: encoder, bindVertex: true) }
+        if material.colorGraph != nil {
+            PrimitivePipeline.bindColorGraph(
+                material.colorUniforms, into: encoder, vertexUniformIndex: 4, vertexViewIndex: 5
+            )
+        }
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: range.count)
     }
 }
@@ -508,7 +512,9 @@ public final class LineRenderer {
             throw PrimitiveRendererError.miterLimit
         }
         try PrimitivePipeline.validate(color: material.color, alphaTest: 0)
-        try PrimitivePipeline.validate(colorGraph: material.colorGraph, uniforms: material.colorUniforms)
+        try PrimitivePipeline.validate(
+            colorGraph: material.colorGraph, uniforms: material.colorUniforms, allowsLineWidth: true
+        )
         let library = try material.colorGraph.map { try PrimitivePipeline.nodeLibrary($0, device: device) }
             ?? PrimitivePipeline.library(device: device)
         let hairline = material.width == .hairline
@@ -631,7 +637,11 @@ public final class LineRenderer {
         var style = PackedLineStyle(material: material, tint: draw.tint, sampleCount: sampleCount)
         encoder.setVertexBytes(&style, length: MemoryLayout<PackedLineStyle>.stride, index: 4)
         encoder.setFragmentBytes(&style, length: MemoryLayout<PackedLineStyle>.stride, index: 0)
-        if material.colorGraph != nil { PrimitivePipeline.bindColorGraph(material.colorUniforms, into: encoder) }
+        if material.colorGraph != nil {
+            PrimitivePipeline.bindColorGraph(
+                material.colorUniforms, into: encoder, vertexUniformIndex: 5, vertexViewIndex: 6
+            )
+        }
         let count = lines.segments.count
         if material.width == .hairline {
             encoder.drawPrimitives(type: .line, vertexStart: 0, vertexCount: count * 2)
@@ -1130,7 +1140,10 @@ enum PrimitivePipeline {
         }
     }
 
-    static func validate(colorGraph: SurfaceShaderGraph?, uniforms: ShaderUniforms?, allowsPointSize: Bool = false) throws {
+    static func validate(
+        colorGraph: SurfaceShaderGraph?, uniforms: ShaderUniforms?, allowsPointSize: Bool = false,
+        allowsLineWidth: Bool = false
+    ) throws {
         guard let colorGraph else {
             guard uniforms == nil else {
                 throw PrimitiveRendererError.colorGraph("Color uniforms need a color graph.")
@@ -1138,13 +1151,16 @@ enum PrimitivePipeline {
             return
         }
         let channels = Set(colorGraph.outputs.connected.map(\.0))
-        let allowed: Set<SurfaceShaderGraph.Channel> = allowsPointSize
-            ? [.baseColor, .opacity, .pointSize] : [.baseColor, .opacity]
+        var allowed: Set<SurfaceShaderGraph.Channel> = [.baseColor, .opacity]
+        if allowsPointSize { allowed.insert(.pointSize) }
+        if allowsLineWidth { allowed.insert(.lineWidth) }
         guard !channels.isEmpty, channels.isSubset(of: allowed) else {
             throw PrimitiveRendererError.colorGraph(
                 allowsPointSize
                     ? "A point graph reads base color, opacity, and point size."
-                    : "A primitive color graph reads base color and opacity."
+                    : allowsLineWidth
+                        ? "A line graph reads base color, opacity, and line width."
+                        : "A primitive color graph reads base color and opacity."
             )
         }
         guard colorGraph.textures.isEmpty else {
@@ -1174,6 +1190,7 @@ enum PrimitivePipeline {
         }
         let function = try graph.metalFunction(named: "frostfield_generated_surface")
         let pointSize = try graph.metalPointSizeFunction(named: "frostfield_point_size")
+        let lineWidth = try graph.metalLineWidthFunction(named: "frostfield_line_width")
         let source = """
         #include <metal_stdlib>
         using namespace metal;
@@ -1189,6 +1206,7 @@ enum PrimitivePipeline {
         }
         \(function)
         \(pointSize)
+        \(lineWidth)
         \(try String(contentsOf: softURL, encoding: .utf8))
         \(try String(contentsOf: shadingURL, encoding: .utf8))
         """
@@ -1200,19 +1218,22 @@ enum PrimitivePipeline {
     }
 
     static func bindColorGraph(
-        _ uniforms: ShaderUniforms?, into encoder: any MTLRenderCommandEncoder, bindVertex: Bool = false
+        _ uniforms: ShaderUniforms?, into encoder: any MTLRenderCommandEncoder,
+        vertexUniformIndex: Int? = nil, vertexViewIndex: Int? = nil
     ) {
         let values = uniforms?.bufferSnapshot().values ?? []
         if values.isEmpty {
             var unused = SIMD4<Float>.zero
             encoder.setFragmentBytes(&unused, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
-            if bindVertex {
-                encoder.setVertexBytes(&unused, length: MemoryLayout<SIMD4<Float>>.stride, index: 4)
+            if let vertexUniformIndex {
+                encoder.setVertexBytes(&unused, length: MemoryLayout<SIMD4<Float>>.stride, index: vertexUniformIndex)
             }
         } else {
             values.withUnsafeBytes { bytes in
                 encoder.setFragmentBytes(bytes.baseAddress!, length: bytes.count, index: 3)
-                if bindVertex { encoder.setVertexBytes(bytes.baseAddress!, length: bytes.count, index: 4) }
+                if let vertexUniformIndex {
+                    encoder.setVertexBytes(bytes.baseAddress!, length: bytes.count, index: vertexUniformIndex)
+                }
             }
         }
         var view = PackedGraphView(
@@ -1220,7 +1241,9 @@ enum PrimitivePipeline {
             camera: .zero, viewport: .zero, clip: .zero, depthRange: .zero
         )
         encoder.setFragmentBytes(&view, length: MemoryLayout<PackedGraphView>.stride, index: 4)
-        if bindVertex { encoder.setVertexBytes(&view, length: MemoryLayout<PackedGraphView>.stride, index: 5) }
+        if let vertexViewIndex {
+            encoder.setVertexBytes(&view, length: MemoryLayout<PackedGraphView>.stride, index: vertexViewIndex)
+        }
     }
 
     static func make(

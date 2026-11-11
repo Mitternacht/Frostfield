@@ -23,6 +23,9 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
         /// A point's size in the material's pixel or world units, evaluated per point.
         /// A missing or nonfinite value leaves the material size unchanged.
         case pointSize
+        /// A line's width in the material's pixel or world units.
+        /// A missing or nonfinite value leaves the material width unchanged. Hairlines ignore it.
+        case lineWidth
         /// Multiplies the sampled material alpha before coverage is decided.
         case opacity
         /// Rejects alpha at or below the graph cutoff, replacing any material cutoff.
@@ -39,11 +42,13 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
             case .baseColor, .emission, .normal, .positionOffset: .vector3
             case .castShadowColor: .vector4
             case .metallic, .roughness, .transmissionMask, .occlusion, .opacity, .alphaTest, .mask, .castShadowMask,
-                 .pointSize: .scalar
+                 .pointSize, .lineWidth: .scalar
             }
         }
 
-        var stage: MaterialGraph.Stage { self == .positionOffset || self == .pointSize ? .vertex : .surface }
+        var stage: MaterialGraph.Stage {
+            self == .positionOffset || self == .pointSize || self == .lineWidth ? .vertex : .surface
+        }
         var isCoverage: Bool { self == .opacity || self == .alphaTest || self == .mask }
         var isCastShadow: Bool { self == .castShadowColor || self == .castShadowMask }
     }
@@ -63,6 +68,8 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
         public let positionOffset: MaterialGraph.NodeID?
         /// A point size in the material's units. Only a points material reads it.
         public let pointSize: MaterialGraph.NodeID?
+        /// A line width in the material's units. Only an analytic line material reads it.
+        public let lineWidth: MaterialGraph.NodeID?
         /// A scalar multiplier clamped to zero through one.
         public let opacity: MaterialGraph.NodeID?
         /// A cutoff clamped to zero through one. Alpha equal to the cutoff is discarded.
@@ -87,7 +94,7 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
             roughness: MaterialGraph.NodeID? = nil, emission: MaterialGraph.NodeID? = nil,
             transmissionMask: MaterialGraph.NodeID? = nil, normal: MaterialGraph.NodeID? = nil,
             occlusion: MaterialGraph.NodeID? = nil, positionOffset: MaterialGraph.NodeID? = nil,
-            pointSize: MaterialGraph.NodeID? = nil,
+            pointSize: MaterialGraph.NodeID? = nil, lineWidth: MaterialGraph.NodeID? = nil,
             opacity: MaterialGraph.NodeID? = nil, alphaTest: MaterialGraph.NodeID? = nil, mask: MaterialGraph.NodeID? = nil,
             castShadowColor: MaterialGraph.NodeID? = nil, castShadowMask: MaterialGraph.NodeID? = nil
         ) {
@@ -100,6 +107,7 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
             self.occlusion = occlusion
             self.positionOffset = positionOffset
             self.pointSize = pointSize
+            self.lineWidth = lineWidth
             self.opacity = opacity
             self.alphaTest = alphaTest
             self.mask = mask
@@ -111,7 +119,7 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
             [
                 (Channel.baseColor, baseColor), (.metallic, metallic), (.roughness, roughness),
                 (.emission, emission), (.transmissionMask, transmissionMask), (.normal, normal),
-                (.occlusion, occlusion), (.positionOffset, positionOffset), (.pointSize, pointSize),
+                (.occlusion, occlusion), (.positionOffset, positionOffset), (.pointSize, pointSize), (.lineWidth, lineWidth),
                 (.opacity, opacity), (.alphaTest, alphaTest), (.mask, mask),
                 (.castShadowColor, castShadowColor), (.castShadowMask, castShadowMask),
             ].compactMap { channel, id in id.map { (channel, $0) } }
@@ -333,8 +341,18 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
 
     /// A finite point size in material units, or −1 when the graph does not replace the material size.
     public func metalPointSizeFunction(named name: String) throws -> String {
+        try metalReplacingScalar(named: name, output: outputs.pointSize)
+    }
+
+    /// A finite line width in material units, or −1 when the graph does not replace the material width.
+    public func metalLineWidthFunction(named name: String) throws -> String {
+        try metalReplacingScalar(named: name, output: outputs.lineWidth)
+    }
+
+    /// A finite replacement scalar, or −1 when `output` is absent or nonfinite.
+    private func metalReplacingScalar(named name: String, output: MaterialGraph.NodeID?) throws -> String {
         try Self.checkName(name)
-        guard let size = outputs.pointSize else {
+        guard let output else {
             return "static inline float \(name)(thread const FrostfieldGraphResources&) { return -1.0f; }"
         }
         return """
@@ -342,9 +360,9 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
 
         static inline float \(name)(thread const FrostfieldGraphResources& resources) {
             FrostfieldSurfaceInput input = {};
-        \(try program.statements(for: [size], prefix: name))
-            float size = frostfield_graph_finite(n\(size)) ? max(n\(size), 0.0f) : -1.0f;
-            return size + (input.parameters.x - input.parameters.x);
+        \(try program.statements(for: [output], prefix: name))
+            float replacement = frostfield_graph_finite(n\(output)) ? max(n\(output), 0.0f) : -1.0f;
+            return replacement + (input.parameters.x - input.parameters.x);
         }
         """
     }

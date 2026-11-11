@@ -321,4 +321,41 @@ struct LineRenderingTests {
         #expect(pairs.segments.map(\.endDistance) == [2, 3])
         #expect(pairs.segments.allSatisfy { $0.previous == nil && $0.next == nil })
     }
+
+    @Test
+    func `A line graph replaces the material width and edits without a new pipeline`() throws {
+        let fixture = try PrimitiveRenderFixture(side: 128)
+        let depth: Float = 5
+        let start = fixture.point(pixel: SIMD2(44.8, 40.3), depth: depth)
+        let end = fixture.point(pixel: SIMD2(83.2, 40.3), depth: depth)
+        let line = try LineGeometry(positions: [start, end])
+        let graph = try SurfaceShaderGraph { s in
+            .init(lineWidth: s.uniform("Width", Float(4)))
+        }
+        let uniforms = try ShaderUniforms(graph: graph)
+        let material = LineMaterial(
+            width: .pixels(2), cap: .butt, color: SIMD4(1, 1, 1, 1), colorGraph: graph, colorUniforms: uniforms
+        )
+        let node = SceneNode(primitive: try fixture.lines(line, material))
+        let wide = try fixture.render(fixture.graph([node])).pixels
+        let wideCoverage = columnCoverage(wide, column: 64, side: 128)
+        #expect(abs(wideCoverage.sum - 4) < 0.02)
+        try uniforms.set("Width", to: 2)
+        let narrow = try fixture.render(fixture.graph([node])).pixels
+        let narrowCoverage = columnCoverage(narrow, column: 64, side: 128)
+        #expect(abs(narrowCoverage.sum - 2) < 0.02)
+        let hairlineGraph = try SurfaceShaderGraph { s in .init(lineWidth: s.constant(Float(8))) }
+        let hairline = LineMaterial(width: .hairline, color: SIMD4(1, 1, 1, 1), blending: .opaque, colorGraph: hairlineGraph)
+        let hairPixels = try fixture.render(fixture.graph([
+            SceneNode(primitive: try fixture.lines(line, hairline)),
+        ])).pixels
+        let rows = (0..<128).filter { fixture.alpha(hairPixels, x: 64, y: $0) > 0 }
+        #expect(rows.count == 1)
+        #expect(throws: PrimitiveRendererError.colorGraph("A point graph reads base color, opacity, and point size.")) {
+            _ = try PointsRenderer(
+                device: fixture.device, cloud: try PointCloud(positions: [.zero]),
+                material: PointsMaterial(colorGraph: graph)
+            )
+        }
+    }
 }

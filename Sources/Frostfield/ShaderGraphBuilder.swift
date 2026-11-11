@@ -834,6 +834,8 @@ extension SurfaceShaderGraph {
         public var positionOffset: ShaderValue<SIMD3<Float>>?
         /// A point size in the material's units, evaluated per point.
         public var pointSize: ShaderValue<Float>?
+        /// A line width in the material's units. Hairlines ignore it.
+        public var lineWidth: ShaderValue<Float>?
         public var opacity: ShaderValue<Float>?
         public var alphaTest: ShaderValue<Float>?
         public var mask: ShaderValue<Float>?
@@ -848,7 +850,7 @@ extension SurfaceShaderGraph {
             roughness: ShaderValue<Float>? = nil, emission: ShaderValue<SIMD3<Float>>? = nil,
             transmissionMask: ShaderValue<Float>? = nil, normal: ShaderValue<SIMD3<Float>>? = nil,
             occlusion: ShaderValue<Float>? = nil, positionOffset: ShaderValue<SIMD3<Float>>? = nil,
-            pointSize: ShaderValue<Float>? = nil,
+            pointSize: ShaderValue<Float>? = nil, lineWidth: ShaderValue<Float>? = nil,
             opacity: ShaderValue<Float>? = nil, alphaTest: ShaderValue<Float>? = nil, mask: ShaderValue<Float>? = nil,
             castShadowColor: ShaderValue<SIMD4<Float>>? = nil, castShadowMask: ShaderValue<Float>? = nil
         ) {
@@ -861,6 +863,7 @@ extension SurfaceShaderGraph {
             self.occlusion = occlusion
             self.positionOffset = positionOffset
             self.pointSize = pointSize
+            self.lineWidth = lineWidth
             self.opacity = opacity
             self.alphaTest = alphaTest
             self.mask = mask
@@ -885,6 +888,7 @@ extension SurfaceShaderGraph {
         let values: [(any ShaderArgument)?] = [
             result.baseColor, result.metallic, result.roughness, result.emission,
             result.transmissionMask, result.normal, result.occlusion, result.positionOffset, result.pointSize,
+            result.lineWidth,
             result.opacity, result.alphaTest, result.mask, result.castShadowColor, result.castShadowMask,
         ]
         for case let value? in values {
@@ -901,7 +905,7 @@ extension SurfaceShaderGraph {
                 baseColor: result.baseColor?.id, metallic: result.metallic?.id, roughness: result.roughness?.id,
                 emission: result.emission?.id, transmissionMask: result.transmissionMask?.id,
                 normal: result.normal?.id, occlusion: result.occlusion?.id, positionOffset: result.positionOffset?.id,
-                pointSize: result.pointSize?.id,
+                pointSize: result.pointSize?.id, lineWidth: result.lineWidth?.id,
                 opacity: result.opacity?.id, alphaTest: result.alphaTest?.id, mask: result.mask?.id,
                 castShadowColor: result.castShadowColor?.id, castShadowMask: result.castShadowMask?.id
             )

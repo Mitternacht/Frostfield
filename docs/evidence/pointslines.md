@@ -54,7 +54,11 @@ All values come from the tests above, rendered into RGBA16Float targets with a
   6, then 4, then 0 covers 36, 16, and 0 pixels on the same renderer. macOS
   passed `PointsAndSpritesTests` (13 tests, 0.446 seconds). The iPad Pro (M5)
   simulator passed that suite and `LineRenderingTests` (25 tests, 3.347 seconds).
-  Both runs had Metal API Validation on.
+  Both runs had Metal API Validation on. A material width of 2 pixels whose graph
+  width is 4, then 2, covers 4 and 2 pixels in an interior column. A hairline
+  with a graph width of 8 stays one row. macOS passed `LineRenderingTests`
+  (13 tests, 0.443 seconds). The iPad simulator passed that suite and
+  `PointsAndSpritesTests` (26 tests, 4.162 seconds), again with Metal API Validation.
 - Under a rotated and translated camera, a 2.5 × 1.25 unit sprite at distance 5
   covers exactly the 16 × 8 pixel rectangle about its projection; a quarter turn
   covers 8 × 16, and a top-left anchor hangs it right and down.
@@ -114,8 +118,9 @@ very long wide lines. The test's 100 ms bound is only a regression guard.
   path tracer and by glTF import and export (no glTF `POINTS` or `LINES` modes).
 - Renderers are immutable. Changing positions, colors or materials needs a new
   renderer; only the node's tint and transform change per frame. A uniform on a
-  point, sprite, or line color graph, including a point's graph size, edits
-  without a new renderer.
+  point, sprite, or line color graph, including a point's graph size or an
+  analytic line's graph width, edits without a new renderer. Hairlines ignore
+  a graph width and stay one pixel wide.
 - Blending sorts whole nodes. Points and sprites within one renderer draw in
   array order.
 - Pixel-sized points, sprites and lines cull by their anchor points, as Three.js
