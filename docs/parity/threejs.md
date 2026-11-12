@@ -49,14 +49,14 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
 | [`loaders-assets`](#loaders-assets) | 5 | 1 | 1 | 32 | 9 | 5 | 1 | 2 | 4 |
 | [`post-processing`](#post-processing) | 7 | 4 | 1 | 29 | 5 | 0 | 6 | 7 | 1 |
-| [`effects-misc`](#effects-misc) | 2 | 2 | 0 | 6 | 2 | 2 | 0 | 2 | 6 |
+| [`effects-misc`](#effects-misc) | 2 | 2 | 0 | 7 | 2 | 1 | 0 | 2 | 6 |
 | [`path-tracing`](#path-tracing) | 0 | 0 | 0 | 1 | 0 | 1 | 12 | 4 | 0 |
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 8 | 3 | 1 | 2 | 1 | 5 | 2 | 3 | 2 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **196** | **60** | **13** | **118** | **22** | **28** | **32** | **33** | **22** |
+| **Total** | **196** | **60** | **13** | **119** | **22** | **27** | **32** | **33** | **22** |
 
-346 of 524 capabilities are complete, with 115 partial and 63 missing.
+347 of 524 capabilities are complete, with 115 partial and 62 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -733,7 +733,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Planar mirror and refraction | `Reflector`, `Refractor` | `PlanarReflectorSet`, `PlanarReflection`, `PlanarRefraction`, `ShaderTexture.samplePlanarRefraction()` | ✅ | Oblique clipping keeps the correct side of each plane. Refraction retains view alignment and supports graph-authored UV distortion. Mirrors support automatic discovery and bounded bounces. [Refraction evidence](../evidence/planar-refraction.md) · [Reflection evidence](../evidence/planar-reflection.md) |
 | Sprite lens flares | `Lensflare`, `LensflareMesh` | `SpriteLensFlare` | ✅ | Compose ordered textured elements with authored color, size and position along the source-to-center axis. GPU scene depth controls visibility. [Flare evidence](../evidence/sprite-lens-flare.md) |
 | Marching cubes | `MarchingCubes` | `MarchingCubes(resolution:bounds:)`, `MarchingCubes.mesh(isovalue:boundary:)`, `MeshRenderer.updateGeometry` | 🟡 | Indexed isosurfaces from scalar grids, compact metaballs and planes. Shared face saddle decisions and topology validation cover open and closed fields. Per-ball colors interpolate and regenerated surfaces can update a prepared raster mesh. Interior ambiguities and partial buffer updates remain open. `MarchingCubesTests`, `DynamicGeometryTests`. [Isosurface evidence](../evidence/marching-cubes.md) |
-| Stereoscopic effects | `AnaglyphEffect`, `ParallaxBarrierEffect`, `StereoEffect` | — | ❌ |  |
+| Stereoscopic effects | `AnaglyphEffect`, `ParallaxBarrierEffect`, `StereoEffect` | `StereoPresentation.anaglyphEyes`, `StereoPresentation.anaglyph`, `StereoPresentation.stereoEye`, `StereoPresentation.parallaxBarrier` | ✅ | Anaglyph eyes share one screen through `CameraUtils.frameCorners` and combine with the r187 Dubois matrices, clamped, before tone mapping. Barrier and side-by-side eyes use the `StereoCamera` off-axis frustum. Side-by-side passes half the camera aspect, and each eye is drawn into one half of the existing encode viewport. `mod(fragmentY, 2) > 1` selects the left barrier row. Zoom scales the frustum. A scaled camera keeps the stereo offset on the camera matrix's X column. `StereoPresentationTests`. [Stereo evidence](../evidence/stereo.md) |
 | Toon inverted-hull outlines | `OutlineEffect` | `ToonOutlinePass.outlineEffect` | ✅ | Draws compatible mesh hulls after scene color, inherits material opacity and supports per-node thickness, color, alpha and visibility. Native Metal tests cover scene capture and indirect base draws. [Outline evidence](../evidence/toon-outline-pass.md) |
 | Convex object fracture | `ConvexObjectBreaker` | — | ❌ |  |
 | Scalar colormap LUTs | `Lut` | `ScalarColorLookupTable`, `ScalarColorLookupTable.makeTexture` | ✅ | Four r187 palettes, custom stops, mutable domain and nearest-sample lookup. Generates linear Metal lookup and legend textures with both endpoints. `ScalarColorLookupTableTests`. [Colormap evidence](../evidence/scalar-colormap.md) |
