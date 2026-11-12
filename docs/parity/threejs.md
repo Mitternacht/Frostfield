@@ -41,7 +41,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`renderer`](#renderer) | 19 | 4 | 3 | 1 | 0 | 2 | 0 | 1 | 1 |
 | [`scene-graph`](#scene-graph) | 13 | 4 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 1 | 2 | 0 |
-| [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 0 | 5 | 1 |
+| [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 1 | 4 | 1 |
 | [`materials-textures`](#materials-textures) | 36 | 16 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
 | [`shader-authoring`](#shader-authoring) | 21 | 21 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 21 | 4 | 0 | 5 | 2 | 2 | 1 | 1 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **186** | **69** | **14** | **112** | **26** | **30** | **24** | **39** | **24** |
+| **Total** | **186** | **69** | **14** | **112** | **26** | **30** | **25** | **38** | **24** |
 
-322 of 524 capabilities are complete, with 134 partial and 68 missing.
+323 of 524 capabilities are complete, with 133 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -252,7 +252,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | CSG booleans | three-bvh-csg `Evaluator`, `Brush` | `MeshBoolean.evaluate(_:_:_:)`, `MeshGeometry.union(_:)`, `MeshGeometry.subtracting(_:)`, `MeshGeometry.intersection(_:)` | 🟡 | Union, subtraction and intersection for closed solids, with UVs retained on tested cut faces. Additional operators and group/material transfer remain open. `MeshBooleanTests`. [Shape evidence](../evidence/geoshapes.md) |
 | Geometry helper components | drei `<Decal>`, `<Outlines>`, `<Edges>`, `<Sampler>`, `<RoundedBox>`, `<Trail>` | `LineGeometry.edges(of:thresholdAngle:color:)`, `DecalProjector`, `MeshGeometry.decal(projector:localToWorld:maximumAngle:surfaceOffset:bvh:)`, `MeshSurfaceSampler`, `MeshGeometry.bevelBox(size:bevel:segments:)` | 🟡 | Edges, decals, mesh sampling and rounded boxes. Geometry outlines, trails and marching cubes remain open. |
 | Mesh processing (tangents, normals, unwrap) | @gltf-transform/functions `tangents`, `normals`, `unwrap` | `MeshGeometry.generatingTangentsWithRemap`, `MeshGeometry.creasedNormalsWithRemap`, `MeshGeometry.unwrappedUVAtlas` | 🟡 | MikkTSpace tangents, crease normals and UV1 unwrapping with vertex remaps. glTF Transform pipeline integration remains open. `MeshTangentGenerationTests`, `MeshWeldingTests`. |
-| Noise, random sampling and shape math | `math/noise`, `math/random`, maath | `MaterialGraph.Node.fractalNoise(_:position:octaves:lacunarity:gain:)`, `MeshSurfaceSampler.samples(count:seed:)` | 🟡 | Noise exists only as GPU graph nodes; no public CPU noise or random library |
+| Noise, random sampling and shape math | `math/noise`, `math/random`, maath | `ShaderNoise`, `SeededRandom`, `MaterialGraph.Node.fractalNoise(_:position:octaves:lacunarity:gain:)`, `MeshSurfaceSampler.samples(count:seed:)` | ✅ | CPU value, gradient, fractal and cellular noise match the graph nodes. `SeededRandom` is the Three.js Park-Miller generator with its own seed, including a unit direction. Mesh surfaces can be sampled. `ShaderNoiseTests`, `SeededRandomTests`. |
 
 <a id="materials-textures"></a>
 
