@@ -10,6 +10,7 @@
 | Distance LOD with Three.js hysteresis, used by color, shadows, picking and path tracing | `LevelOfDetail`, `SceneNode.levelsOfDetail`, `SceneGraph.updateLevelsOfDetail` | `CullingAndLODTests` |
 | A static node keeps a captured world matrix while its parent and local pose change | `SceneNode.isStatic`, `SceneNode.staticWorldMatrix`, `SceneGraph.freezeStaticNodes()` | `StaticNodeTests` |
 | Stable CPU radix sort and a GPU bitonic sort of finite float keys | `RadixSort.indices(of:ascending:)`, `BitonicSort.encode(keys:into:ascending:commandBuffer:)` | `SortTests` |
+| Frame-time quality factor and a pixel scale between two bounds | `PerformanceMonitor.record(frameTime:)`, `PerformanceMonitor.pixelScale(minimum:maximum:)` | `PerformanceMonitorTests` |
 
 The instancing tests compare one instanced draw with the same instances drawn as
 separate nodes, and they hold an edit buffer ring under five encodes in flight.

@@ -52,11 +52,11 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`effects-misc`](#effects-misc) | 2 | 2 | 0 | 6 | 2 | 2 | 0 | 2 | 6 |
 | [`path-tracing`](#path-tracing) | 0 | 0 | 0 | 1 | 0 | 1 | 12 | 4 | 0 |
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
-| [`performance-scale`](#performance-scale) | 8 | 3 | 1 | 2 | 1 | 5 | 1 | 3 | 3 |
+| [`performance-scale`](#performance-scale) | 8 | 3 | 1 | 2 | 1 | 5 | 2 | 3 | 2 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **196** | **60** | **13** | **117** | **22** | **29** | **31** | **33** | **23** |
+| **Total** | **196** | **60** | **13** | **117** | **22** | **29** | **32** | **33** | **22** |
 
-344 of 524 capabilities are complete, with 115 partial and 65 missing.
+345 of 524 capabilities are complete, with 115 partial and 64 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -866,7 +866,7 @@ Three.js has no capability in this tier.
 | BVH-accelerated raycasting | three-mesh-bvh `acceleratedRaycast`, workers, drei `<Bvh>` | `MeshBVH.build(geometry:progress:)`, `PointCloudBVH`, `PointsRenderer(device:pickingBVH:material:)`, `SceneGraph.intersections` | 🟡 | Static builds support cooperative cancellation and progress off the caller's actor. Scene raycasts cache static and curve-flow hierarchies and refit CPU poses. Opt-in point hierarchies preserve source IDs and draw windows. Installing a prebuilt scene cache and accelerating shader-displaced picking remain open. [BVH evidence](../evidence/bvh-proximity.md) |
 | Instancing helpers | drei `<Instances>`, `<Merged>`, three-instanced-uniforms-mesh, `InstancedMesh2` | `InstanceSet` | 🟡 | Per-instance transform and RGBA tint only; no per-instance uniforms, culling, sorting or LOD, and no merged multi-geometry draws; `InstancingTests` |
 | Distance LOD component | drei `<Detailed>` | `SceneNode.levelsOfDetail`, `LevelOfDetail(levels:currentLevel:)` | ✅ | The core level-of-detail API; `CullingAndLODTests` |
-| Adaptive quality | drei `<PerformanceMonitor>`, `<AdaptiveDpr>` | — | ❌ |  |
+| Adaptive quality | drei `<PerformanceMonitor>`, `<AdaptiveDpr>` | `PerformanceMonitor`, `PerformanceMonitor.record(frameTime:)`, `PerformanceMonitor.pixelScale(minimum:maximum:)` | ✅ | Every sample of 1–240 frames compares the average rate with the bounds. A slow sample decreases the factor by the step and a fast sample increases it. The first move is not a reversal. After the reversal limit, the factor stays. The pixel scale maps factor 0 to the minimum and factor 1 to the maximum. The app supplies each frame time. `PerformanceMonitorTests`. [Scale evidence](../evidence/scale-and-dynamics.md) |
 | glTF optimization pipeline | @gltf-transform `optimize`, `simplify`, `meshopt` | — | ❌ | The loader consumes compressed, quantized and WebP output. Mesh simplification is available as a separate operation. An end-to-end glTF optimizer remains missing |
 | Simplification and compression codecs | meshoptimizer, draco3d | `MeshoptDecoder.decode(_:count:byteStride:mode:filter:specification:)` | 🟡 | Native meshopt and Draco triangle decoders plus attribute-aware mesh simplification. Compression encoders and meshoptimizer-specific simplify controls remain open. `MeshoptDecoderTests`, `DracoDecoderTests`, `MeshSimplificationTests`. |
 | 3D Tiles streaming | 3d-tiles-renderer | — | ❌ |  |
