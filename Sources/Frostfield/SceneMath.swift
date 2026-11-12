@@ -7,6 +7,12 @@ public struct SceneTransform: Equatable, Sendable {
     /// The unit quaternion that rotates the scaled point.
     public var rotation: simd_quatf
     public var scale: SIMD3<Float>
+    /// When true, ``matrix`` is composed from translation, rotation and scale.
+    /// ``setMatrix(_:)`` sets this to false and keeps that matrix until ``updateMatrix()``.
+    /// Defaults to true, like Three.js `matrixAutoUpdate`.
+    public var matrixAutoUpdate: Bool = true
+    /// The matrix returned while ``matrixAutoUpdate`` is false. Nil until ``setMatrix(_:)`` or ``updateMatrix()``.
+    var authoredMatrix: simd_float4x4?
 
     public init(
         translation: SIMD3<Float> = .zero,
@@ -18,14 +24,103 @@ public struct SceneTransform: Equatable, Sendable {
         self.scale = scale
     }
 
-    /// A column-major matrix that applies scale, rotation, then translation.
+    /// XYZ Euler angles in radians, `Rx · Ry · Rz`, the Three.js default order.
+    /// Reading decomposes ``rotation``. Writing replaces ``rotation`` and leaves a
+    /// manually set matrix unchanged until ``updateMatrix()``.
+    public var euler: SceneEuler {
+        get { SceneEuler(rotation) }
+        set { rotation = newValue.quaternion }
+    }
+
+    /// The local matrix. Composed from translation, rotation and scale unless
+    /// ``matrixAutoUpdate`` is false and ``setMatrix(_:)`` stored one.
     public var matrix: simd_float4x4 {
+        if let authoredMatrix, !matrixAutoUpdate { return authoredMatrix }
+        return composedMatrix
+    }
+
+    /// Stores an affine matrix and stops composing until ``updateMatrix()``.
+    /// Translation, rotation and scale are the matrix's decomposition. Shear beyond
+    /// the decomposer's tolerance is rejected.
+    public mutating func setMatrix(_ matrix: simd_float4x4) throws {
+        let decomposed = try SceneTransform(decomposing: matrix, tolerance: 1e-4)
+        translation = decomposed.translation
+        rotation = decomposed.rotation
+        scale = decomposed.scale
+        authoredMatrix = matrix
+        matrixAutoUpdate = false
+    }
+
+    /// Writes the composed translation, rotation and scale into the stored matrix.
+    /// ``matrixAutoUpdate`` stays as it is, so a later component edit is not visible
+    /// in ``matrix`` until this runs again.
+    public mutating func updateMatrix() {
+        authoredMatrix = composedMatrix
+    }
+
+    private var composedMatrix: simd_float4x4 {
         var result = simd_float4x4(rotation)
         result.columns.0 *= scale.x
         result.columns.1 *= scale.y
         result.columns.2 *= scale.z
         result.columns.3 = SIMD4<Float>(translation, 1)
         return result
+    }
+}
+
+/// XYZ Euler angles in radians. The rotation is `Rx · Ry · Rz`, matching Three.js
+/// `Euler` with its default order and `Euler.setFromRotationMatrix`.
+public struct SceneEuler: Equatable, Sendable {
+    public var x: Float
+    public var y: Float
+    public var z: Float
+
+    public init(x: Float, y: Float, z: Float) throws {
+        guard x.isFinite, y.isFinite, z.isFinite else { throw Failure.nonfinite }
+        self.x = x
+        self.y = y
+        self.z = z
+    }
+
+    public init(_ rotation: simd_quatf) {
+        let angles = Self.angles(rotation)
+        x = angles.x
+        y = angles.y
+        z = angles.z
+    }
+
+    /// The unit quaternion for these angles.
+    public var quaternion: simd_quatf {
+        let x = simd_quatd(angle: Double(x), axis: SIMD3(1, 0, 0))
+        let y = simd_quatd(angle: Double(y), axis: SIMD3(0, 1, 0))
+        let z = simd_quatd(angle: Double(z), axis: SIMD3(0, 0, 1))
+        let vector = simd_normalize((x * y * z).vector)
+        return simd_quatf(vector: SIMD4(Float(vector.x), Float(vector.y), Float(vector.z), Float(vector.w)))
+    }
+
+    private static func angles(_ rotation: simd_quatf) -> SIMD3<Float> {
+        let vector = rotation.vector
+        let unit = simd_normalize(simd_quatd(vector: SIMD4(Double(vector.x), Double(vector.y), Double(vector.z), Double(vector.w))))
+        let m = simd_double3x3(unit)
+        let m13 = m.columns.2.x
+        let y = asin(min(max(m13, -1), 1))
+        let angles: SIMD3<Double>
+        if abs(m13) < 0.9999999 {
+            angles = SIMD3(atan2(-m.columns.2.y, m.columns.2.z), y, atan2(-m.columns.1.x, m.columns.0.x))
+        } else {
+            angles = SIMD3(atan2(m.columns.1.z, m.columns.1.y), y, 0)
+        }
+        return SIMD3(Float(angles.x), Float(angles.y), Float(angles.z))
+    }
+
+    public enum Failure: LocalizedError, Equatable {
+        case nonfinite
+
+        public var errorDescription: String? {
+            switch self {
+            case .nonfinite: "Euler angles must be finite."
+            }
+        }
     }
 }
 

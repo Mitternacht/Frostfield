@@ -26,9 +26,10 @@ private func validated<T>(_ codingPath: [any CodingKey], _ make: () throws -> T)
 // MARK: Transforms, cameras and bounds
 
 extension SceneTransform: Codable {
-    private enum CodingKeys: String, CodingKey { case translation, rotation, scale }
+    private enum CodingKeys: String, CodingKey { case translation, rotation, scale, matrixAutoUpdate, authoredMatrix }
 
     /// Rotation is stored as quaternion components `[x, y, z, w]`.
+    /// A manual matrix is stored only when automatic composition is off.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
@@ -36,6 +37,11 @@ extension SceneTransform: Codable {
             rotation: simd_quatf(vector: try container.decode(SIMD4<Float>.self, forKey: .rotation)),
             scale: try container.decode(SIMD3<Float>.self, forKey: .scale)
         )
+        if try container.decodeIfPresent(Bool.self, forKey: .matrixAutoUpdate) == false,
+           let columns = try container.decodeIfPresent([SIMD4<Float>].self, forKey: .authoredMatrix),
+           columns.count == 4 {
+            try setMatrix(simd_float4x4(columns: (columns[0], columns[1], columns[2], columns[3])))
+        }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -43,6 +49,13 @@ extension SceneTransform: Codable {
         try container.encode(translation, forKey: .translation)
         try container.encode(rotation.vector, forKey: .rotation)
         try container.encode(scale, forKey: .scale)
+        if !matrixAutoUpdate, let authoredMatrix {
+            try container.encode(false, forKey: .matrixAutoUpdate)
+            try container.encode(
+                [authoredMatrix.columns.0, authoredMatrix.columns.1, authoredMatrix.columns.2, authoredMatrix.columns.3],
+                forKey: .authoredMatrix
+            )
+        }
     }
 }
 

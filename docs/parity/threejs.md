@@ -39,7 +39,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Area | Core ✅ | Core 🟡 | Core ❌ | Addons ✅ | Addons 🟡 | Addons ❌ | Third-party ✅ | Third-party 🟡 | Third-party ❌ |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | [`renderer`](#renderer) | 19 | 4 | 3 | 1 | 0 | 2 | 0 | 1 | 1 |
-| [`scene-graph`](#scene-graph) | 12 | 5 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
+| [`scene-graph`](#scene-graph) | 13 | 4 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 1 | 2 | 0 |
 | [`geometry`](#geometry) | 21 | 2 | 0 | 14 | 2 | 0 | 0 | 5 | 1 |
 | [`materials-textures`](#materials-textures) | 34 | 18 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **183** | **72** | **14** | **111** | **27** | **30** | **24** | **39** | **24** |
+| **Total** | **184** | **71** | **14** | **111** | **27** | **30** | **24** | **39** | **24** |
 
-318 of 524 capabilities are complete, with 138 partial and 68 missing.
+319 of 524 capabilities are complete, with 137 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -120,7 +120,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 
 | Capability | Three.js API | Frostfield API | Status | Evidence / gaps |
 | --- | --- | --- | :---: | --- |
-| Object transforms | `position`, `quaternion`, `scale`, `rotation` (Euler), `lookAt` | `SceneTransform(translation:rotation:scale:)`, `SceneTransform.init(decomposing:tolerance:)`, `SceneGraph.lookAt` | 🟡 | Quaternion TRS, matrix decomposition and configurable look-at axis. Euler rotation and manual matrix updates remain open. `SceneMathTests`, `SceneNodeConveniencesTests`. |
+| Object transforms | `position`, `quaternion`, `scale`, `rotation` (Euler), `lookAt` | `SceneTransform(translation:rotation:scale:)`, `SceneTransform.euler`, `SceneTransform.setMatrix(_:)`, `SceneTransform.updateMatrix()`, `SceneTransform.matrixAutoUpdate`, `SceneTransform.init(decomposing:tolerance:)`, `SceneGraph.lookAt` | ✅ | Quaternion TRS, XYZ Euler angles, matrix decomposition and configurable look-at axis. `setMatrix` stores an affine matrix and stops composing until `updateMatrix`. Archive version 34 keeps that matrix. `SceneMathTests`, `SceneNodeConveniencesTests`. |
 | Object pivot | `Object3D.pivot` | `SceneNode.pivot`, `SceneNode.localTransformMatrix` | ✅ | Rotation and scale use the authored local pivot. Hierarchy edits, animation, tools, raster, picking and path snapshots share the transform. Native archive v8 preserves the pivot, and glTF and USDZ preserve poses. `ScenePivotTests`. [Pivot evidence](../evidence/scene-pivots.md) |
 | Hierarchy management | `add`, `remove`, `attach`, `parent` | `SceneGraph.add`, `SceneGraph.removeNode(withID:)`, `SceneGraph.attach(_:to:)`, `SceneGraph.parentID(of:)` | ✅ | Edits the value tree by node ID and preserves the world transform on attach where TRS can represent it. Rejects cycles, duplicate IDs and reparenting that would introduce shear. `SceneNodeConveniencesTests`. |
 | Traversal and lookup | `traverse`, `getObjectByName`, `getObjectById` | `SceneGraph.forEachNode`, `SceneGraph.forEachVisibleNode`, `SceneGraph.node(named:)`, `SceneGraph.node(withID:)` | ✅ | Depth-first traversal with parent IDs, visible-only traversal, name and ID lookup, and predicate queries. `SceneNodeConveniencesTests`. |

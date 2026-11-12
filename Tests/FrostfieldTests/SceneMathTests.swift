@@ -1,3 +1,4 @@
+import Foundation
 import Frostfield
 import Testing
 import simd
@@ -68,5 +69,32 @@ struct SceneMathTests {
         #expect(throws: PerspectiveCamera.ValidationError.unrepresentableProjection) {
             try camera.projection(aspectRatio: .leastNonzeroMagnitude)
         }
+    }
+
+    @Test("XYZ Euler angles round-trip through the quaternion and a manual matrix stays put")
+    func eulerAndManualMatrix() throws {
+        let angles = try SceneEuler(x: 0.3, y: -0.4, z: 0.5)
+        var transform = SceneTransform(rotation: angles.quaternion)
+        let decoded = transform.euler
+        #expect(abs(decoded.x - 0.3) < 1e-5)
+        #expect(abs(decoded.y + 0.4) < 1e-5)
+        #expect(abs(decoded.z - 0.5) < 1e-5)
+        transform.euler = try SceneEuler(x: 0, y: .pi / 2, z: 0)
+        let turned = transform.rotation.act(SIMD3<Float>(0, 0, 1))
+        #expect(simd_length(turned - SIMD3<Float>(1, 0, 0)) < 1e-4)
+
+        var manual = SceneTransform(translation: SIMD3(1, 2, 3))
+        try manual.setMatrix(manual.matrix)
+        manual.translation = .zero
+        #expect(manual.matrix.columns.3 == SIMD4<Float>(1, 2, 3, 1))
+        manual.updateMatrix()
+        #expect(manual.matrix.columns.3 == SIMD4<Float>(0, 0, 0, 1))
+        #expect(!manual.matrixAutoUpdate)
+
+        let data = try JSONEncoder().encode(manual)
+        let restored = try JSONDecoder().decode(SceneTransform.self, from: data)
+        #expect(restored.matrix == manual.matrix)
+        #expect(!restored.matrixAutoUpdate)
+        #expect(throws: SceneEuler.Failure.nonfinite) { try SceneEuler(x: .nan, y: 0, z: 0) }
     }
 }
