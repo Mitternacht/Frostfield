@@ -44,7 +44,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 1 | 4 | 1 |
 | [`materials-textures`](#materials-textures) | 38 | 14 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
 | [`shader-authoring`](#shader-authoring) | 22 | 20 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
-| [`lights-shadows`](#lights-shadows) | 22 | 3 | 0 | 6 | 1 | 2 | 1 | 1 | 1 |
+| [`lights-shadows`](#lights-shadows) | 22 | 3 | 0 | 7 | 0 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 0 | 3 | 1 |
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
 | [`loaders-assets`](#loaders-assets) | 5 | 1 | 1 | 32 | 9 | 5 | 1 | 2 | 4 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **191** | **64** | **14** | **114** | **24** | **30** | **27** | **36** | **24** |
+| **Total** | **191** | **64** | **14** | **115** | **23** | **30** | **27** | **36** | **24** |
 
-332 of 524 capabilities are complete, with 124 partial and 68 missing.
+333 of 524 capabilities are complete, with 123 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -453,7 +453,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Sun light with auto-fitted cascades | `SunLight`, `SunShadowNode` | `SunLight`, `SolarPosition` | ✅ | A reusable, aimable sun fits cascades to the active perspective or orthographic view at scene encode. A linear RGB tint and a separate nonnegative intensity scale the direct light in stock and generated PBR, classic lit materials and shadowed Lambert. A tint-only update reuses the cached depth and cascade projections, and a rejected update keeps the previous settings. `SunLightTests`. [Raster lighting evidence](../evidence/rasterlight.md) · [Sun RGB evidence](../evidence/sun-light-rgb.md) |
 | Tiled shadow maps | `TileShadowNode` | — | ❌ |  |
 | Raster rect area lights (LTC) | `RectAreaLightUniformsLib`, `RectAreaLightTexturesLib` | `PunctualLight.Kind.rectangle(width:height:)`, `PunctualLight(rectangleWidth:height:power:)` | ✅ | Integrated r187 LTC tables and polygon evaluator for isotropic GGX and clearcoat. Tilted rough panels and grazing clearcoat match a numeric r187 reference in Metal readback. Diffuse uses analytic clipped Lambertian irradiance. Anisotropic specular and the small-emitter limit use native approximations. [LTC evidence](../evidence/rectangle-ltc.md) |
-| IES light profiles | `IESLoader` | `IESProfile(data:)`, `IESProfile(contentsOf:)`, `IESProfile(string:)` | 🟡 | LM-63 profiles from 1986–2019 with type A, B or C photometry. Only `TILT=NONE` is supported. Profiles resample to a 144 × 361 table. `IESProfileTests`, `IESRenderTests`. [Camera and light evidence](../evidence/pathcamera.md) |
+| IES light profiles | `IESLoader` | `IESProfile(data:tilt:)`, `IESProfile(string:tilt:)`, `IESProfile.lampTilt` | ✅ | LM-63 profiles from 1986–2019 with type A, B or C photometry. `TILT=NONE`, `TILT=INCLUDE`, and a named tilt document passed to the parser. The measured candela is not scaled by the tilt factors, matching the r187 loader, and `lampTilt` keeps the curve. Profiles resample to a 144 × 361 table. `IESProfileTests`, `IESRenderTests`. [Camera and light evidence](../evidence/pathcamera.md) |
 | Clustered and batched many-light shading | `ClusteredLighting`, `DynamicLighting` | — | ❌ | Raster loops over at most 16 punctual lights per fragment; the path tracer takes 16 area and 16 analytic lights with one shadow ray per analytic light per bounce |
 | Planar projected shadows | `ShadowMesh` | `PlanarShadowProjection`, `PlanarProjectedShadowPass` | ✅ | Directional and positional light project a transformed caster onto a plane. Readable scene depth rejects occluded pixels and stencil blends overlapping faces once. Metal verifies forward and reversed depth. [Projected shadow evidence](../evidence/planar-projected-shadows.md) |
 | Screen-space contact shadows | `sss()` | `ScreenSpaceShadows.encodeVisibility`, `.DirectionalVisibility`, `SceneGraph.encode(...screenSpaceDirectionalShadow:)` | ✅ | Directional depth ray marching produces a full-size or reduced visibility mask. Stock and generated PBR apply it to the matching directional light alongside its shadow map and independent GTAO. [Contact shadow evidence](../evidence/screen-space-shadows.md) |

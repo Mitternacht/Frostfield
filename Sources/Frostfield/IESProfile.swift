@@ -71,15 +71,46 @@ public struct IESProfile: Equatable, Sendable {
     /// The luminous flux in lumens of the distribution both renderers draw: the
     /// resampled table integrated over the sphere and scaled by `maximumIntensity`.
     public var luminousFlux: Float { Float(Double(storage.maximumIntensity) * storage.normalizedSolidAngle) }
+    /// The lamp-tilt curve from `TILT=INCLUDE` or a supplied tilt document.
+    /// The measured candela table is not scaled by these factors, matching the r187 loader.
+    public var lampTilt: LampTilt? { storage.lampTilt }
+
+    /// Relative lamp output against the angle between the lamp axis and vertical.
+    public struct LampTilt: Equatable, Sendable {
+        public enum Orientation: Int, Equatable, Sendable {
+            case vertical = 1
+            case horizontal = 2
+            case neither = 3
+        }
+
+        public var orientation: Orientation
+        public var angles: [Float]
+        public var factors: [Float]
+
+        public init(orientation: Orientation, angles: [Float], factors: [Float]) {
+            self.orientation = orientation
+            self.angles = angles
+            self.factors = factors
+        }
+    }
 
     let storage: Storage
 
     /// Parses LM-63 text in UTF-8, or Latin-1 when it is not valid UTF-8.
-    public init(data: Data) throws {
+    public init(data: Data, tilt: Data? = nil) throws {
         guard let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
             throw Failure.encoding
         }
-        try self.init(string: text)
+        let tiltText: String?
+        if let tilt {
+            guard let decoded = String(data: tilt, encoding: .utf8) ?? String(data: tilt, encoding: .isoLatin1) else {
+                throw Failure.encoding
+            }
+            tiltText = decoded
+        } else {
+            tiltText = nil
+        }
+        try self.init(string: text, tilt: tiltText)
     }
 
     /// Reads and parses an `.ies` file.
@@ -87,9 +118,9 @@ public struct IESProfile: Equatable, Sendable {
         try self.init(data: Data(contentsOf: url))
     }
 
-    /// Parses LM-63 text.
-    public init(string: String) throws {
-        storage = try Storage(parsing: string)
+    /// Parses LM-63 text. `tilt` is the document named by `TILT=<filename>`.
+    public init(string: String, tilt: String? = nil) throws {
+        storage = try Storage(parsing: string, tilt: tilt)
     }
 
     public static func == (left: IESProfile, right: IESProfile) -> Bool {
@@ -128,6 +159,7 @@ public struct IESProfile: Equatable, Sendable {
         case encoding
         case missingTilt
         case unsupportedTilt(String)
+        case tilt(String)
         case header(String)
         case angles(String)
         case values(String)
@@ -137,7 +169,8 @@ public struct IESProfile: Equatable, Sendable {
             case .encoding: "The IES file is not UTF-8 or Latin-1 text."
             case .missingTilt: "The IES file has no TILT= line before its photometric data."
             case .unsupportedTilt(let tilt):
-                "The IES file uses TILT=\(tilt). Frostfield reads TILT=NONE photometry; remove the tilt block or export without lamp tilt data."
+                "The IES file names tilt document \(tilt). Pass that document to the profile."
+            case .tilt(let detail): "The IES lamp tilt block is invalid: \(detail)."
             case .header(let detail): "The IES photometric header is invalid: \(detail)."
             case .angles(let detail): "The IES angle table is invalid: \(detail)."
             case .values(let detail): "The IES candela table is invalid: \(detail)."
@@ -155,6 +188,7 @@ public struct IESProfile: Equatable, Sendable {
         let verticalAngles: [Float]
         let horizontalAngles: [Float]
         let candela: [Float]
+        let lampTilt: LampTilt?
         let lampCount: Int
         let lumensPerLamp: Float?
         let inputWatts: Float
@@ -168,7 +202,7 @@ public struct IESProfile: Equatable, Sendable {
 
         // Every stored value is checked before the table is built.
         // swiftlint:disable:next function_body_length
-        init(parsing text: String) throws {
+        init(parsing text: String, tilt tiltDocument: String?) throws {
             let lines = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
                 .split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
             var index = 0
@@ -197,7 +231,7 @@ public struct IESProfile: Equatable, Sendable {
             }
             guard let tiltLine, let equals = tiltLine.firstIndex(of: "=") else { throw Failure.missingTilt }
             let tilt = tiltLine[tiltLine.index(after: equals)...].trimmingCharacters(in: .whitespaces)
-            guard tilt.uppercased() == "NONE" else { throw Failure.unsupportedTilt(tilt) }
+            let tiltKind = tilt.uppercased()
 
             let separators = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ","))
             let tokens = lines[index...].joined(separator: "\n").components(separatedBy: separators).filter { !$0.isEmpty }
@@ -216,6 +250,64 @@ public struct IESProfile: Equatable, Sendable {
                     throw Failure.header("\(name) must be a whole number from 1 to \(IESProfile.maximumAngleCount)")
                 }
                 return Int(value)
+            }
+            func tiltCurve(in source: [String], from start: inout Int) throws -> LampTilt {
+                func value(_ name: String) throws -> Double {
+                    guard start < source.count else { throw Failure.tilt("missing \(name)") }
+                    guard let number = Double(source[start]), number.isFinite else {
+                        throw Failure.tilt("\(name) “\(source[start])” is not a finite number")
+                    }
+                    start += 1
+                    return number
+                }
+                let geometry = try value("lamp orientation")
+                guard geometry == geometry.rounded(), let orientation = LampTilt.Orientation(rawValue: Int(geometry)) else {
+                    throw Failure.tilt("the lamp orientation must be 1 (vertical), 2 (horizontal) or 3 (neither)")
+                }
+                let pairs = try value("number of tilt angles")
+                guard pairs == pairs.rounded(), pairs >= 1, pairs <= Double(IESProfile.maximumAngleCount) else {
+                    throw Failure.tilt("the number of tilt angles must be a whole number from 1 to \(IESProfile.maximumAngleCount)")
+                }
+                var angles: [Float] = []
+                var previous = -Double.greatestFiniteMagnitude
+                for _ in 0..<Int(pairs) {
+                    let angle = try value("tilt angle")
+                    guard angle >= 0, angle <= 180, angle > previous else {
+                        throw Failure.tilt("tilt angles must increase from 0 through 180 degrees")
+                    }
+                    previous = angle
+                    angles.append(Float(angle))
+                }
+                var factors: [Float] = []
+                for _ in 0..<Int(pairs) {
+                    let factor = try value("tilt factor")
+                    guard factor >= 0 else { throw Failure.tilt("a tilt factor must be finite and nonnegative") }
+                    factors.append(Float(factor))
+                }
+                return LampTilt(orientation: orientation, angles: angles, factors: factors)
+            }
+            func tiltTokens(_ document: String) -> [String] {
+                let rows = document.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+                    .split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+                let start = rows.firstIndex { $0.trimmingCharacters(in: .whitespaces).uppercased().hasPrefix("TILT") }
+                    .map { rows.index(after: $0) } ?? rows.startIndex
+                return rows[start...].joined(separator: "\n").components(separatedBy: separators).filter { !$0.isEmpty }
+            }
+
+            let resolvedTilt: LampTilt?
+            switch tiltKind {
+            case "NONE":
+                guard tiltDocument == nil else { throw Failure.tilt("a TILT=NONE file has no tilt document") }
+                resolvedTilt = nil
+            case "INCLUDE":
+                guard tiltDocument == nil else { throw Failure.tilt("TILT=INCLUDE already contains the tilt curve") }
+                resolvedTilt = try tiltCurve(in: tokens, from: &cursor)
+            default:
+                guard let tiltDocument else { throw Failure.unsupportedTilt(tilt) }
+                var tiltCursor = 0
+                let documentTokens = tiltTokens(tiltDocument)
+                resolvedTilt = try tiltCurve(in: documentTokens, from: &tiltCursor)
+                guard tiltCursor == documentTokens.count else { throw Failure.tilt("the tilt document has trailing values") }
             }
 
             let lamps = try number("number of lamps")
@@ -278,6 +370,7 @@ public struct IESProfile: Equatable, Sendable {
             verticalAngles = vertical
             horizontalAngles = horizontal
             candela = values
+            lampTilt = resolvedTilt
             lampCount = Int(lamps)
             lumensPerLamp = lumens > 0 ? Float(lumens) : nil
             inputWatts = Float(watts)
@@ -493,7 +586,7 @@ public struct IESProfile: Equatable, Sendable {
 
         func isEqual(to other: Storage) -> Bool {
             photometricType == other.photometricType && verticalAngles == other.verticalAngles
-                && horizontalAngles == other.horizontalAngles && candela == other.candela
+                && horizontalAngles == other.horizontalAngles && candela == other.candela && lampTilt == other.lampTilt
                 && lampCount == other.lampCount && lumensPerLamp == other.lumensPerLamp
                 && inputWatts == other.inputWatts && format == other.format && keywords == other.keywords
         }

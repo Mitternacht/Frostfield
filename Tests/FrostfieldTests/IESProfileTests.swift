@@ -8,7 +8,7 @@ import simd
 enum IESFixture {
     static func text(
         format: String = "IES:LM-63-2019", type: Int = 1, lumens: Double = -1, multiplier: Double = 1,
-        ballast: Double = 1, secondFactor: Double = 1, tilt: String = "NONE",
+        ballast: Double = 1, secondFactor: Double = 1, tilt: String = "NONE", tiltBlock: String? = nil,
         vertical: [Double], horizontal: [Double], candela: (Double, Double) -> Double
     ) -> String {
         var lines = [
@@ -17,11 +17,16 @@ enum IESFixture {
             "[MANUFAC] Frostfield",
             "[MORE] Test fixture",
             "TILT=\(tilt)",
+        ]
+        if let tiltBlock {
+            lines.append(contentsOf: tiltBlock.split(whereSeparator: \.isNewline).map(String.init))
+        }
+        lines.append(contentsOf: [
             "1 \(lumens) \(multiplier) \(vertical.count) \(horizontal.count) \(type) 2 0.1 0.1 0.05",
             "\(ballast) \(secondFactor) 25",
             vertical.map { String($0) }.joined(separator: " "),
             horizontal.map { String($0) }.joined(separator: " "),
-        ]
+        ])
         for h in horizontal {
             // Values wrap at ten per line, as luminaire exporters write them.
             let values = vertical.map { String(format: "%.4f", candela($0, h)) }
@@ -34,9 +39,13 @@ enum IESFixture {
 
     /// A quadrant-symmetric type C downlight, 1,000 cos V (1 + 0.5 sin² V cos 2H) cd below the
     /// horizon: elongated along the 0°–180° plane and single-valued at the nadir.
-    static func quadrantDownlight(format: String = "IES:LM-63-2019", multiplier: Double = 1, ballast: Double = 1, secondFactor: Double = 1) -> String {
+    static func quadrantDownlight(
+        format: String = "IES:LM-63-2019", multiplier: Double = 1, ballast: Double = 1, secondFactor: Double = 1,
+        tilt: String = "NONE", tiltBlock: String? = nil
+    ) -> String {
         text(
             format: format, multiplier: multiplier, ballast: ballast, secondFactor: secondFactor,
+            tilt: tilt, tiltBlock: tiltBlock,
             vertical: Array(stride(from: 0.0, through: 90, by: 7.5)), horizontal: [0, 22.5, 45, 67.5, 90]
         ) { v, h in shape(v, h) }
     }
@@ -188,7 +197,9 @@ struct IESProfileTests {
         func parse(_ text: String) -> IESProfile.Failure? {
             do { _ = try IESProfile(string: text); return nil } catch { return error as? IESProfile.Failure }
         }
-        #expect(parse(IESFixture.text(tilt: "INCLUDE", vertical: vertical, horizontal: [0]) { _, _ in 1 }) == .unsupportedTilt("INCLUDE"))
+        if case .tilt? = parse(IESFixture.text(tilt: "INCLUDE", vertical: vertical, horizontal: [0]) { _, _ in 1 }) {} else {
+            Issue.record("TILT=INCLUDE without a tilt curve should fail")
+        }
         #expect(parse("IES:LM-63-2019\n1 -1 1 1 1 1 2 0 0 0\n1 1 0\n0\n0\n1\n") == .missingTilt)
         if case .angles? = parse(IESFixture.text(vertical: [0, 90, 45], horizontal: [0]) { _, _ in 1 }) {} else {
             Issue.record("decreasing vertical angles should fail")
@@ -246,6 +257,32 @@ struct IESProfileTests {
         #expect(abs(Double(try light.intensity()) * spotSolidAngle / 1_000 - 1) < 0.003)
         light.kind = .directional()
         #expect(throws: LightRig.Failure.lightTables("ies")) { try LightRig(lights: [light]) }
+    }
+
+    @Test("An included lamp tilt is kept and does not scale the measured candela")
+    func includedTilt() throws {
+        let plain = try IESProfile(string: IESFixture.quadrantDownlight())
+        let tilted = try IESProfile(string: IESFixture.quadrantDownlight(
+            tilt: "INCLUDE", tiltBlock: "1\n3\n0 45 90\n1 0.5 0.25"
+        ))
+        let curve = try #require(tilted.lampTilt)
+        #expect(curve.orientation == .vertical)
+        #expect(curve.angles == [0, 45, 90])
+        #expect(curve.factors == [1, 0.5, 0.25])
+        #expect(plain.lampTilt == nil)
+        #expect(plain.candela == tilted.candela)
+        #expect(plain.intensity(verticalAngle: 30, horizontalAngle: 45) == tilted.intensity(verticalAngle: 30, horizontalAngle: 45))
+
+        let named = IESFixture.quadrantDownlight(tilt: "lamp.tilt")
+        #expect(throws: IESProfile.Failure.unsupportedTilt("lamp.tilt")) {
+            try IESProfile(string: named)
+        }
+        let external = try IESProfile(string: named, tilt: "TILT=INCLUDE\n2\n2\n0 90\n1 0.25\n")
+        #expect(external.lampTilt == IESProfile.LampTilt(orientation: .horizontal, angles: [0, 90], factors: [1, 0.25]))
+        #expect(external.candela == plain.candela)
+        #expect(throws: IESProfile.Failure.tilt("a TILT=NONE file has no tilt document")) {
+            try IESProfile(string: IESFixture.quadrantDownlight(), tilt: "1\n1\n0\n1\n")
+        }
     }
 }
 

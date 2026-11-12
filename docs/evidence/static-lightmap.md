@@ -150,7 +150,7 @@ and bilinear filtering with clamped edges, including resampling to the
 light list's largest cookie dimensions and RGBA16Float texel conversion.
 The baker retains the immutable CPU inputs and samples those texels on
 demand. The native light constructors still define supported kinds and
-resources. IES profiles require supported LM-63 data with `TILT=NONE`,
+resources. IES profiles require supported LM-63 data. `TILT=INCLUDE` and a supplied tilt document are kept on `lampTilt` and do not scale the measured candela.
 and cookies require a spot with an outer angle of at most 89°.
 
 Rectangles emit uniformly from their front along local −Z. The bake keeps
