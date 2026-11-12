@@ -630,6 +630,7 @@ public struct TextureLoader {
         case ktx2TranscodingRequired(String)
         /// This Metal device cannot sample the named block-compressed format.
         case unsupportedTextureFormat(String)
+        case invalidDocument(String)
 
         public var errorDescription: String? {
             switch self {
@@ -659,6 +660,7 @@ public struct TextureLoader {
             case .ktx2TranscodingRequired(let format):
                 "The KTX2 texture stores \(format) data, which needs Basis Universal transcoding. Frostfield does not transcode Basis payloads; use a GPU-native KTX2 format or a PNG or JPEG image."
             case .unsupportedTextureFormat(let name): "This Metal device cannot sample \(name) textures."
+            case .invalidDocument(let reason): "The texture document is not usable. \(reason)"
             }
         }
     }

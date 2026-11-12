@@ -47,16 +47,16 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`lights-shadows`](#lights-shadows) | 22 | 3 | 0 | 7 | 0 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 2 | 2 | 0 |
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
-| [`loaders-assets`](#loaders-assets) | 5 | 1 | 1 | 33 | 9 | 4 | 1 | 2 | 4 |
+| [`loaders-assets`](#loaders-assets) | 6 | 1 | 0 | 33 | 9 | 4 | 1 | 2 | 4 |
 | [`post-processing`](#post-processing) | 7 | 4 | 1 | 29 | 5 | 0 | 6 | 7 | 1 |
 | [`effects-misc`](#effects-misc) | 2 | 2 | 0 | 7 | 2 | 1 | 0 | 2 | 6 |
 | [`path-tracing`](#path-tracing) | 0 | 0 | 0 | 1 | 0 | 1 | 12 | 4 | 0 |
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 8 | 3 | 1 | 3 | 1 | 4 | 2 | 3 | 2 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **197** | **60** | **12** | **121** | **22** | **25** | **33** | **33** | **21** |
+| **Total** | **198** | **60** | **11** | **121** | **22** | **25** | **33** | **33** | **21** |
 
-351 of 524 capabilities are complete, with 115 partial and 58 missing.
+352 of 524 capabilities are complete, with 115 partial and 57 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -563,7 +563,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Raw file loading | `FileLoader` | — | 🌐 | Foundation `Data(contentsOf:)` and `URLSession` |
 | Image and texture loading | `ImageLoader`, `ImageBitmapLoader`, `TextureLoader` | `TextureLoader(device:)`, `TextureLoader.load(contentsOf:interpretation:mipmapped:)`, `TextureLoader.load(data:interpretation:mipmapped:)`, `TextureLoader.loadHighDynamicRange(data:precision:mipmapped:)` | ✅ | ImageIO SDR images, KTX2 stored levels and linear HDR images from files or data. The encoded input limit is 64 MiB. Loading is synchronous. `TextureLoaderTests`, `KTX2LoaderTests`, `HighDynamicRangeImageTests`. [Format evidence](../evidence/formats.md) |
 | Cube texture loading | `CubeTextureLoader` | `CubeTextureLoader(queue:)`, `CubeTextureLoader.load(data:interpretation:mipmapped:)`, `CubeTextureLoader.load(contentsOf:interpretation:mipmapped:)` | ✅ | Six equal square files or encoded images in Metal slice order, with sRGB sampling and optional mip generation. Compatible with raster sky and IBL. `CubeTextureLoaderTests`. [Format evidence](../evidence/formats.md#six-face-cube-textures) |
-| Data and compressed texture loader bases | `DataTextureLoader`, `CompressedTextureLoader` | — | ❌ | `TextureLoader` loads KTX2, DDS, KTX1 and PVR directly. An extensible loader base remains open. |
+| Data and compressed texture loader bases | `DataTextureLoader`, `CompressedTextureLoader` | `TextureDocument`, `TextureDocumentParser`, `TextureLoader.load(data:parser:)`, `TextureLoader.upload(_:)` | ✅ | A parser turns file bytes into straight RGBA8 or block levels. The loader checks the existing size limits and uploads them. ASTC 4×4 and BC1 are the block layouts. KTX2, DDS, KTX1, PVR and HDR stay on their direct methods. `TextureDocumentTests`. [Texture document evidence](../evidence/texture-document.md) |
 | JSON scene serialization | `toJSON`, `ObjectLoader` | `SceneArchive(capturing:animations:lightRig:commandQueue:)`, `SceneArchive.load(device:commandQueue:colorPixelFormat:)` | 🟡 | Versioned JSON and binary sidecar preserve typed tracks, live materials and uniforms, and shared IES profiles and light cookies. glTF camera bindings retain external source indices. Custom Metal libraries remain open. `SceneArchiveTests`, `SceneArchiveAnimationTests`, `SceneArchivePhotometryTests`. [Scene evidence](../evidence/scenekit.md) |
 | Node material serialization | `NodeMaterialLoader` | `SurfaceShaderGraph`, `MaterialGraph`, `SceneArchive` | ✅ | Native Codable graph definitions revalidate on decode. Scene archives restore a graph-backed material’s inputs, texture bindings and uniform values. `SceneCodingTests`, `SceneArchiveTests`. |
 | Asset cache | `Cache` | `AssetLoader.cachedValue(for:as:)`, `AssetLoader.removeValue(for:)`, `AssetLoader.removeAll()` | ✅ | Typed keys with decode variants, request coalescing, and cost-based LRU eviction. `AssetLoaderTests`. |
