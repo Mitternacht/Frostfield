@@ -1361,7 +1361,10 @@ public struct PhysicallyBasedMaterial {
             encoder.setFragmentSamplerState(samplers[index], index: slot)
         }
 
-        func encode(into encoder: any MTLRenderCommandEncoder, sceneEnvironment: RasterSceneEnvironment) {
+        func encode(
+            into encoder: any MTLRenderCommandEncoder, sceneEnvironment: RasterSceneEnvironment,
+            object: ShaderObjectContext? = nil
+        ) {
             for (index, slot) in bindingSlots.enumerated() {
                 encodeTexture(at: index, slot: slot, into: encoder)
             }
@@ -1416,7 +1419,7 @@ public struct PhysicallyBasedMaterial {
             }
             if material.surfaceGraph != nil {
                 // Copy the live uniform values into this draw. A graph without uniforms binds one unused slot.
-                let values = material.surfaceUniforms?.bufferSnapshot().values ?? []
+                let values = material.surfaceUniforms?.bufferSnapshot(object: object).values ?? []
                 if values.isEmpty {
                     var unused = SIMD4<Float>.zero
                     encoder.setFragmentBytes(&unused, length: MemoryLayout<SIMD4<Float>>.stride, index: 19)

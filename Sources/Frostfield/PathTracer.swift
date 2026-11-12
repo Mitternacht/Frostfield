@@ -915,7 +915,9 @@ public final class PathTracer {
         var surfaceRevisions: [ShaderUniformRevision] = []
         surfaceRevisions.reserveCapacity(scene.surfaceUniforms.count)
         for (uniforms, offset, mask, readsClock) in scene.surfaceUniforms {
-            let snapshot = uniforms.bufferSnapshot(reading: mask)
+            let snapshot = uniforms.bufferSnapshot(
+                reading: mask, object: ShaderObjectContext(world: cameraTransform.matrix)
+            )
             surfaceValues.replaceSubrange(offset..<(offset + snapshot.values.count), with: snapshot.values)
             // History follows traced shading inputs. Vertex-only edits are tracked by the scene pose.
             surfaceRevisions.append(ShaderUniformRevision(

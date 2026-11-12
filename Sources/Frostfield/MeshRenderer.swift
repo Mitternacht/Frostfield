@@ -3108,7 +3108,7 @@ public final class MeshRenderer {
                 encoder.setFragmentTexture(classic.prepared.shadowFallback, index: 1)
             }
             if classic.material.surfaceGraph != nil {
-                classic.prepared.encodeNodeGraph(into: encoder)
+                classic.prepared.encodeNodeGraph(into: encoder, object: ShaderObjectContext(world: draw.world))
                 var view = graphView.packed(model: draw.world, normal: draw.normal)
                 encoder.setFragmentBytes(&view, length: MemoryLayout<PackedGraphView>.stride, index: 24)
             }
@@ -3257,7 +3257,9 @@ public final class MeshRenderer {
         sceneEnvironment: RasterSceneEnvironment, graphView: GraphViewContext,
         viewportTextures: SceneViewportSnapshot.Prepared? = nil
     ) {
-        pbrBindings?.encode(into: encoder, sceneEnvironment: sceneEnvironment)
+        pbrBindings?.encode(
+            into: encoder, sceneEnvironment: sceneEnvironment, object: ShaderObjectContext(world: draw.world)
+        )
         var settings = material.current.settings
         encoder.setFragmentBytes(&settings, length: MemoryLayout<SIMD4<Float>>.size, index: 2)
         if material.surfaceGraph != nil {

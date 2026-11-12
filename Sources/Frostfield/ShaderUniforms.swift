@@ -21,6 +21,19 @@ public struct ShaderFrame: Hashable, Sendable {
     var packed: SIMD4<Float> { SIMD4(Float(time), deltaTime, Float(index & 0xFF_FFFF), 0) }
 }
 
+/// The transform a uniform object hook sees for one draw or dispatch.
+public struct ShaderObjectContext: Equatable, Sendable {
+    public var world: simd_float4x4
+
+    public init(world: simd_float4x4) {
+        self.world = world
+    }
+
+    public var position: SIMD3<Float> {
+        SIMD3(world.columns.3.x, world.columns.3.y, world.columns.3.z)
+    }
+}
+
 /// Live values for a graph's declared uniforms and its clock.
 ///
 /// Materials and passes keep a reference to this object and copy its current
@@ -43,6 +56,12 @@ public final class ShaderUniforms: Sendable {
     /// Float4 slots occupied by the declared values, before the clock.
     let valueSlotCount: Int
     private let state: Mutex<State>
+    private let updateHooks = Mutex(UpdateHooks())
+
+    private struct UpdateHooks: Sendable {
+        var frame: (@Sendable (ShaderUniforms) -> Void)?
+        var object: (@Sendable (ShaderUniforms, ShaderObjectContext) -> Void)?
+    }
 
     private struct State {
         var values: [SIMD4<Float>]
@@ -175,8 +194,25 @@ public final class ShaderUniforms: Sendable {
     /// The values renderers bind: every value slot, then the clock as
     /// (time, deltaTime, frame, 0), with the revision of the selected values
     /// and the clock's independent revision.
-    func bufferSnapshot(reading mask: UInt32 = .max) -> (values: [SIMD4<Float>], revision: UInt64, frameRevision: UInt64) {
-        state.withLock { state in
+    /// Runs before each uniform snapshot. A raster draw passes the node matrix.
+    /// A path dispatch passes the camera matrix. The hook may edit values or the clock.
+    /// It must not snapshot these uniforms again.
+    public func setFrameUpdate(_ hook: (@Sendable (ShaderUniforms) -> Void)?) {
+        updateHooks.withLock { $0.frame = hook }
+    }
+
+    /// Runs before each raster draw and path dispatch that reads these uniforms.
+    public func setObjectUpdate(_ hook: (@Sendable (ShaderUniforms, ShaderObjectContext) -> Void)?) {
+        updateHooks.withLock { $0.object = hook }
+    }
+
+    func bufferSnapshot(
+        reading mask: UInt32 = .max, object: ShaderObjectContext? = nil
+    ) -> (values: [SIMD4<Float>], revision: UInt64, frameRevision: UInt64) {
+        let hooks = updateHooks.withLock { $0 }
+        hooks.frame?(self)
+        if let object { hooks.object?(self, object) }
+        return state.withLock { state in
             let revision: UInt64
             if mask == .max {
                 revision = state.revision

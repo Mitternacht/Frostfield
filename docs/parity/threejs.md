@@ -43,7 +43,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 2 | 1 | 0 |
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 2 | 3 | 1 |
 | [`materials-textures`](#materials-textures) | 38 | 14 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
-| [`shader-authoring`](#shader-authoring) | 22 | 20 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
+| [`shader-authoring`](#shader-authoring) | 23 | 19 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 22 | 3 | 0 | 7 | 0 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 1 | 2 | 1 |
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **192** | **63** | **14** | **115** | **23** | **30** | **29** | **34** | **24** |
+| **Total** | **193** | **62** | **14** | **115** | **23** | **30** | **29** | **34** | **24** |
 
-336 of 524 capabilities are complete, with 120 partial and 68 missing.
+337 of 524 capabilities are complete, with 119 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -362,7 +362,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Shadow node customization | `castShadowNode`, `receivedShadowNode` | `SurfaceShaderGraph` `castShadowColor` and `castShadowMask` outputs, `directionalShadowVisibility` input | 🟡 | A PBR surface graph authors its caster's colored transmission and a separate shadow mask for every raster shadow pass. It can read the directional shadow visibility its fragment receives. A graph cannot replace the shadow term that lights apply, so `receivedShadowNode` has no equivalent, and path tracing ignores the cast outputs. `GraphCastShadowTests`. [Graph caster evidence](../evidence/directional-transmitted-shadows.md#graph-authored-casters) |
 | Typed values and Swift builder | TSL `Fn`, `float`, `vec2`–`vec4`, `mat*`, swizzles, `struct` | `SurfaceShaderGraph(building:)`, `ShaderGraphBuilder`, `ShaderValue`, `ShaderStruct`, `ShaderGraphBuilder.defineStruct(_:_:)`, `make(_:_:)`, `function(_:returns:parameters:body:)`, `MaterialGraph.ValueType.int`, `.bool`, `.matrix3`, `.matrix4`, `ShaderUniforms.setInteger(_:_:)`, `setBoolean(_:_:)`, `set(_:to:)` | 🟡 | Typed scalar, vector, bool, signed 32-bit integer, nested struct, and 3 × 3 and 4 × 4 matrix expressions. Structs can be built, branched, read by field, and passed through a declared function. Struct uniforms remain open. Integer, boolean, matrix, and struct uniforms are not animation tracks. `ShaderPatternTests`, `ShaderGraphLanguageTests`, `ShaderGraphRenderingTests`, `MeshDeformationTests`, `SceneArchiveTests`. [Graph evidence](../evidence/graphlang.md) |
 | Control flow | `If`, `Switch`, `Loop`, `Discard` | `MaterialGraph.Node.branch`, `.switchSelect`, `.discard`, `ShaderGraphBuilder.branch(_:then:else:)`, `` `switch` ``, `discard(_:_:)`, `loop(count:iterations:initial:_:)`, `ShaderLoopStep.skip` | ✅ | Lazy branch arms, an exact switch of one to 16 arms, and bounded loops with an accumulator, break, continue and a dynamic count clamped to the loop's maximum. Discard clears coverage so raster and path tracing reject the fragment. `ShaderControlFlowTests`, `ShaderGraphRenderingTests`. [Graph evidence](../evidence/graphlang.md) |
-| Uniform nodes and update events | `uniform()`, `onFrameUpdate`, `onObjectUpdate` | `ShaderGraphBuilder.uniform(_:_:)`, `MaterialGraph.Node.uniform(_:)`, `ShaderUniforms.revision` | 🟡 | Named, typed, editable without recompiling in both renderers, post-process and compute; no per-frame or per-object hooks (the app sets values; `materialParameters` gives one float4 per node); `ShaderGraphRenderingTests` |
+| Uniform nodes and update events | `uniform()`, `onFrameUpdate`, `onObjectUpdate` | `ShaderUniforms.setFrameUpdate(_:)`, `ShaderUniforms.setObjectUpdate(_:)` | ✅ | Named uniforms stay editable without a new pipeline in raster, path tracing, post and compute. The frame hook and the object hook run when a snapshot is taken. A raster draw passes the node matrix and a path dispatch passes the camera matrix. `ShaderUniformUpdateTests`, `ShaderGraphRenderingTests`. |
 | Attribute and varying nodes | `attribute()`, `varying()`, `vertexStage()` | — | ❌ | Fixed built-in inputs only |
 | Geometry and camera accessors | `positionWorld`, `normalWorld`, `tangentView`, `uv(n)`, `cameraPosition`, `instanceIndex` | `MaterialGraph.Input`, `ShaderGraphCamera`, `GLTFScene.Camera.View.graphCamera` | 🟡 | Built-in geometry, tangent frame, camera position, near/far and planar view/projection inputs. Custom attributes, instance index and front-facing flag remain open. `ShaderGraphViewTests`. [Graph evidence](../evidence/graphlang.md) |
 | Screen and time accessors | `screenUV`, `viewportSize`, `time`, `deltaTime` | `MaterialGraph.Input.screenUV`, `.viewportSize`, `.screenCoordinate`, `.screenSize`, `ShaderFrame`, `ShaderUniforms.setFrame(_:)` | 🟡 | Raster and post-process screen inputs and an explicit graph clock. Screen inputs are raster-only and automatic renderer clock updates remain open. `ShaderGraphViewTests`, `ShaderGraphInputTests`. [Graph evidence](../evidence/graphlang.md) |
@@ -947,9 +947,9 @@ Typed graphs drive raster PBR, the path tracer, vertex deformation, post-process
   - ✅ Control flow (`shader-authoring`, core)
   - 🟡 Node material family (`shader-authoring`, core)
   - 🟡 Custom shader material (`shader-authoring`, core)
-- **Textures, vector math, normals and displacement, editable uniforms** (6 of 12 ✅)
+- **Textures, vector math, normals and displacement, editable uniforms** (7 of 12 ✅)
   - 🟡 Texture sampling nodes (`shader-authoring`, core)
-  - 🟡 Uniform nodes and update events (`shader-authoring`, core)
+  - ✅ Uniform nodes and update events (`shader-authoring`, core)
   - 🟡 Normal and bump map nodes (`shader-authoring`, core)
   - ✅ Vector math nodes (`shader-authoring`, core)
   - ✅ Derivatives (`shader-authoring`, core)

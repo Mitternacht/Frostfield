@@ -618,9 +618,9 @@ public struct ClassicMaterial {
 
         /// Binds the node graph's uniforms and textures. The color fragment declares them;
         /// the attribute fragment does not, so call this only for the color pass.
-        func encodeNodeGraph(into encoder: any MTLRenderCommandEncoder) {
+        func encodeNodeGraph(into encoder: any MTLRenderCommandEncoder, object: ShaderObjectContext? = nil) {
             guard !graphTextures.isEmpty else { return }
-            let values = materialUniforms?.bufferSnapshot().values ?? []
+            let values = materialUniforms?.bufferSnapshot(object: object).values ?? []
             if values.isEmpty {
                 var unused = SIMD4<Float>.zero
                 encoder.setFragmentBytes(&unused, length: MemoryLayout<SIMD4<Float>>.stride, index: 19)
