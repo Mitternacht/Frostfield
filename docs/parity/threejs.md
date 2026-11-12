@@ -39,7 +39,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Area | Core ✅ | Core 🟡 | Core ❌ | Addons ✅ | Addons 🟡 | Addons ❌ | Third-party ✅ | Third-party 🟡 | Third-party ❌ |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | [`renderer`](#renderer) | 20 | 3 | 3 | 1 | 0 | 2 | 0 | 1 | 1 |
-| [`scene-graph`](#scene-graph) | 13 | 4 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
+| [`scene-graph`](#scene-graph) | 13 | 4 | 0 | 2 | 0 | 0 | 1 | 2 | 0 |
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 2 | 1 | 0 |
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 2 | 3 | 1 |
 | [`materials-textures`](#materials-textures) | 38 | 14 | 0 | 3 | 1 | 1 | 1 | 2 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **193** | **62** | **14** | **116** | **22** | **30** | **29** | **34** | **24** |
+| **Total** | **193** | **62** | **14** | **116** | **22** | **30** | **30** | **33** | **24** |
 
-338 of 524 capabilities are complete, with 118 partial and 68 missing.
+339 of 524 capabilities are complete, with 117 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -153,7 +153,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | --- | --- | --- | :---: | --- |
 | Portals, render-to-texture, HUDs and multi-view | drei `MeshPortalMaterial`, `<RenderTexture>`, `<Hud>`, `<View>` | `TextureOutput` | 🟡 | Offscreen targets and per-view encodes exist; no portal material, HUD or view helpers |
 | Staging helpers | drei `<Stage>`, `<Center>`, `<Bounds>` | `OrbitCameraController.frame(_:aspectRatio:)` | 🟡 | Fits an orbit camera to a box like `<Bounds>`; no centering or stage presets; asset normalization exists only in the Lab; `CameraControllerTests` |
-| Declarative scene graph and render loop | R3F `<Canvas>`, `useFrame`, `frameloop` | `FrostfieldSceneView(commandQueue:graph:colorPixelFormat:shadowMap:onError:)` | 🟡 | Immutable `SceneGraph` values redraw on change; continuous rendering is Lab-only |
+| Declarative scene graph and render loop | R3F `<Canvas>`, `useFrame`, `frameloop` | `FrostfieldSceneView(commandQueue:graph:colorPixelFormat:shadowMap:onError:)`, `FrostfieldSceneView.renderLoop(_:)` | ✅ | Immutable scene values redraw on change. `renderLoop(.continuous)` keeps drawing while the view is active. `RenderScheduleTests`. |
 
 <a id="cameras-controls"></a>
 

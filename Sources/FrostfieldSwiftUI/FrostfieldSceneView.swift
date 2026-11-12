@@ -16,7 +16,8 @@ private typealias ScenePlatformView = UIView
 #endif
 
 /// Displays a prepared mesh or scene graph in a native Metal view.
-/// The view draws on demand and lets native overlays handle input.
+/// The view draws when its inputs change, or continuously when ``renderLoop(_:)`` asks it to.
+/// Native overlays handle input.
 @MainActor
 public struct FrostfieldSceneView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -26,6 +27,15 @@ public struct FrostfieldSceneView: View {
     private var resolution: DrawableResolution = .display
     private var presentation: ScenePresentation?
     private var onDrawableResize: (@MainActor (CGSize) -> Void)?
+    private var renderLoop: RenderLoop = .onChange
+
+    /// When the Metal host draws.
+    public enum RenderLoop: Equatable, Sendable {
+        /// Draws again after the graph, clear color, resolution, or drawable size changes.
+        case onChange
+        /// Draws a frame whenever the display is ready and no frame is still encoding.
+        case continuous
+    }
 
     /// Use an 8-bit BGRA renderer for direct presentation or RGBA16Float with
     /// `.hdrDisplay(_:settings:)`. The callback receives failures on the main actor.
@@ -57,13 +67,21 @@ public struct FrostfieldSceneView: View {
     public var body: some View {
         SceneHost(
             content: content, clearColor: drawableClearColor, resolution: resolution, presentation: presentation,
-            active: scenePhase == .active, onError: onError, onDrawableResize: onDrawableResize
+            active: scenePhase == .active, renderLoop: renderLoop, onError: onError, onDrawableResize: onDrawableResize
         )
         .id(SceneHost.Identity(
             content: content.identity, usesHDRDisplay: presentation != nil,
             drawableFormat: presentation?.display.destinationPixelFormat ?? content.colorPixelFormat
         ))
         .allowsHitTesting(false)
+    }
+
+    /// `.onChange` redraws when the scene inputs change. `.continuous` keeps drawing
+    /// while the view is active.
+    public func renderLoop(_ loop: RenderLoop) -> Self {
+        var view = self
+        view.renderLoop = loop
+        return view
     }
 
     /// Clears each acquired drawable to this premultiplied linear RGBA color.
@@ -135,7 +153,8 @@ public struct FrostfieldPathTracingView: View {
         let content = SceneContent.path(input)
         SceneHost(
             content: content, clearColor: SIMD4(0, 0, 0, 1), resolution: resolution, presentation: presentation,
-            active: scenePhase == .active, onError: onError, onDrawableResize: nil, onPathProgress: onProgress
+            active: scenePhase == .active, renderLoop: .onChange, onError: onError, onDrawableResize: nil,
+            onPathProgress: onProgress
         )
         .id(SceneHost.Identity(
             content: content.identity, usesHDRDisplay: presentation != nil,
@@ -296,6 +315,7 @@ private struct SceneHost {
     let resolution: FrostfieldSceneView.DrawableResolution
     let presentation: ScenePresentation?
     let active: Bool
+    let renderLoop: FrostfieldSceneView.RenderLoop
     let onError: (@MainActor (any Error) -> Void)?
     let onDrawableResize: (@MainActor (CGSize) -> Void)?
     var onPathProgress: (@MainActor (Int) -> Void)? = nil
@@ -307,7 +327,8 @@ private struct SceneHost {
     func update(_ coordinator: SceneCoordinator) {
         coordinator.update(
             content: content, clearColor: clearColor, resolution: resolution, presentation: presentation,
-            active: active, onError: onError, onDrawableResize: onDrawableResize, onPathProgress: onPathProgress
+            active: active, renderLoop: renderLoop, onError: onError, onDrawableResize: onDrawableResize,
+            onPathProgress: onPathProgress
         )
     }
 }
@@ -488,9 +509,11 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
 
     func update(
         content: SceneContent, clearColor: SIMD4<Double>, resolution: FrostfieldSceneView.DrawableResolution,
-        presentation: ScenePresentation?, active: Bool, onError: (@MainActor (any Error) -> Void)?,
+        presentation: ScenePresentation?, active: Bool, renderLoop: FrostfieldSceneView.RenderLoop,
+        onError: (@MainActor (any Error) -> Void)?,
         onDrawableResize: (@MainActor (CGSize) -> Void)?, onPathProgress: (@MainActor (Int) -> Void)?
     ) {
+        schedule.setContinuous(renderLoop == .continuous)
         self.onError = onError
         self.onPathProgress = onPathProgress
         if (self.onDrawableResize == nil) != (onDrawableResize == nil) {
@@ -643,7 +666,8 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
     }
 
     private func requestDisplay() {
-        guard schedule.shouldRequestDisplay, let view,
+        let wantsFrame = schedule.shouldRequestDisplay || schedule.shouldRunContinuously
+        guard wantsFrame, let view,
               view.bounds.width > 0, view.bounds.height > 0 else {
             displayLink?.isPaused = true
             return
@@ -682,7 +706,7 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
         guard CGFloat(color.width) == drawableSize.width, CGFloat(color.height) == drawableSize.height,
               color.pixelFormat == drawableFormat, schedule.beginFrame() else { return }
 
-        link.isPaused = true
+        if !schedule.shouldRunContinuously { link.isPaused = true }
         do {
             guard let buffer = queue.makeCommandBuffer() else { throw HostError.commandBuffer }
             let pathSubmission: (generation: UInt64, refined: Bool)?
@@ -764,6 +788,7 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
         pathSubmission: (generation: UInt64, refined: Bool)? = nil
     ) {
         schedule.finishFrame()
+        if schedule.shouldRunContinuously { displayLink?.isPaused = false }
         if let error {
             if pathSubmission == nil || pathSubmission?.generation == pathGeneration {
                 Task { @MainActor [weak self] in self?.onError?(error) }

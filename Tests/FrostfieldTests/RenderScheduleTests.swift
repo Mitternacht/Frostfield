@@ -91,6 +91,11 @@ struct RenderScheduleTests {
     @Test
     func `Continuous mode pauses and can return to on-demand rendering`() throws {
         var schedule = RenderSchedule()
+        schedule.setContinuous(true)
+        #expect(!schedule.shouldRunContinuously)
+        schedule.setActive(true)
+        #expect(schedule.shouldRunContinuously)
+        schedule.setActive(false)
         schedule.setMode(.continuous)
         #expect(!schedule.shouldRunContinuously)
 

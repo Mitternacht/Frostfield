@@ -37,6 +37,10 @@ package struct RenderSchedule {
         self.mode = mode
     }
 
+    package mutating func setContinuous(_ continuous: Bool) {
+        setMode(continuous ? .continuous : .onDemand)
+    }
+
     package mutating func invalidate() {
         needsDisplay = true
         canRetryDrawable = true
