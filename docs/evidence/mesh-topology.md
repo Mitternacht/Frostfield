@@ -11,7 +11,10 @@ silently begin drawing the ungrouped triangles.
 
 `creasedNormalsWithRemap` uses corner-angle weighting across manifold edges
 that join by position. This keeps smooth normals consistent across UV seams
-while each side retains its own attributes. `splittingEdgesWithRemap` can keep
+while each side retains its own attributes. `creasedNormals(creaseAngle:)` is
+the native stand-in for `TileCreasedNormalsPlugin`: the default crease is π/3,
+and the `Sendable` geometry can move off the main actor. There is no tileset
+callback. 3D Tiles streaming is a separate capability. `splittingEdgesWithRemap` can keep
 the original shading on vertices that do not split. Both keep the original
 vertex slots and append any split copies with their source indices. Regenerate
 tangents after changing normals if the material uses a normal map.

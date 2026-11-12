@@ -52,11 +52,11 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`effects-misc`](#effects-misc) | 2 | 2 | 0 | 7 | 2 | 1 | 0 | 2 | 6 |
 | [`path-tracing`](#path-tracing) | 0 | 0 | 0 | 1 | 0 | 1 | 12 | 4 | 0 |
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
-| [`performance-scale`](#performance-scale) | 8 | 3 | 1 | 2 | 1 | 5 | 2 | 3 | 2 |
+| [`performance-scale`](#performance-scale) | 8 | 3 | 1 | 3 | 1 | 4 | 2 | 3 | 2 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **197** | **60** | **12** | **120** | **22** | **26** | **32** | **33** | **22** |
+| **Total** | **197** | **60** | **12** | **121** | **22** | **25** | **32** | **33** | **22** |
 
-349 of 524 capabilities are complete, with 115 partial and 60 missing.
+350 of 524 capabilities are complete, with 115 partial and 59 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -857,7 +857,7 @@ Three.js has no capability in this tier.
 | Visibility buffer | `VisibilityBufferDrawingPipeline` | — | ❌ |  |
 | CPU and GPU sorting | `BitonicSort`, `SortUtils.radixSort` | `RadixSort.indices(of:ascending:)`, `BitonicSort.encode(keys:into:ascending:commandBuffer:)` | ✅ | The CPU sort is a stable four-pass radix order of finite float keys. Negative zero sorts before positive zero. The GPU bitonic sort matches that order for distinct keys and can run descending; equal keys are not kept in their original GPU order. Both accept at most 2²⁰ keys. `SortTests`. [Scale evidence](../evidence/scale-and-dynamics.md) |
 | GPGPU texture simulation | `GPUComputationRenderer` | `ShaderTextureGenerator(graph:device:)`, `ShaderTextureGenerator.encode(into:commandBuffer:uniforms:textures:)`, `ShaderBufferKernel(graph:device:)` | 🟡 | Graph kernels read declared textures or a source buffer and write another, so callers ping-pong state; buffer ping-pong is tested, texture feedback is not; no variable manager with dependencies and automatic swaps; `ComputeShaderGraphTests`, `BufferShaderGraphTests`; [shader-graphs](../evidence/shader-graphs.md) |
-| 3D Tiles creased normals | `TileCreasedNormalsPlugin` | — | ❌ |  |
+| 3D Tiles creased normals | `TileCreasedNormalsPlugin` | `MeshGeometry.creasedNormals(creaseAngle:)` | ✅ | Recomputes normals with hard edges beyond the crease angle. The default is π/3, matching the plugin and `toCreasedNormals`. Corner-angle weighting stays smooth across UV seams. The geometry is `Sendable`, so the caller can run it off the main actor the way the plugin uses a worker. There is no tileset callback; 3D Tiles streaming is a separate row. `MeshWeldingTests`. [Geometry evidence](../evidence/mesh-topology.md) |
 
 ### Third-party ecosystem
 
