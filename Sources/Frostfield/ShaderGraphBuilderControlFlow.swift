@@ -233,6 +233,14 @@ extension ShaderGraphBuilder {
         add(.checker(coordinates.id), operands: [coordinates])
     }
 
+    /// 1 inside the circle and 0 outside. `center` defaults to the middle of a unit square.
+    public func circle(
+        _ uv: ShaderValue<SIMD2<Float>>, radius: ShaderValue<Float>, center: SIMD2<Float> = SIMD2(repeating: 0.5)
+    ) -> ShaderValue<Float> {
+        let pivot = constant(center)
+        return add(.circle(uv.id, center: pivot.id, radius: radius.id), operands: [uv, pivot, radius])
+    }
+
     /// Triplanar weights that sum to 1. Sharpness 1 matches Three.js `triplanarTexture`.
     public func triplanarWeights(normal: ShaderValue<SIMD3<Float>>, sharpness: Float = 1) -> ShaderValue<SIMD3<Float>> {
         let k = constant(sharpness)

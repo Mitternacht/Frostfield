@@ -94,6 +94,21 @@ struct ShaderPatternTests {
                     && abs(polar[3].y - 0.75) < 1e-6)
     }
 
+    @Test("A circle is 1 inside its radius and 0 outside")
+    func circle() throws {
+        let samples = [
+            SIMD4<Float>(0.5, 0.5, 0, 0),
+            SIMD4(0.5, 0.7, 0, 0),
+            SIMD4(0.5, 0.9, 0, 0),
+            SIMD4(0, 0, 0, 0),
+        ]
+        let masks = try probe.map(samples) { b, field in
+            let inside = b.circle(field.xy, radius: b.constant(0.25))
+            return b.vector(inside, inside, inside, inside)
+        }
+        #expect(masks.map(\.x) == [1, 1, 0, 0])
+    }
+
     @Test("Triplanar weights sum to 1, follow |n|^k, and blend the yz, zx and xy projections")
     func triplanar() throws {
         var random = SeededGenerator(seed: 11)

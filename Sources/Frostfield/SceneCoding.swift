@@ -600,6 +600,9 @@ extension MaterialGraph.Node: Codable {
             let x = try operands(2)
             self = .polar(x[0], center: x[1])
         case "checker": self = .checker(try operands(1)[0])
+        case "circle":
+            let x = try operands(3)
+            self = .circle(x[0], center: x[1], radius: x[2])
         case "triplanarWeights":
             let x = try operands(2)
             self = .triplanarWeights(normal: x[0], sharpness: x[1])
@@ -751,6 +754,7 @@ extension MaterialGraph.Node: Codable {
         case .spherizeUV(let uv, let strength, let center): try write("spherizeUV", [uv, strength, center])
         case .polar(let uv, let center): try write("polar", [uv, center])
         case .checker(let uv): try write("checker", [uv])
+        case .circle(let uv, let center, let radius): try write("circle", [uv, center, radius])
         case .triplanarWeights(let normal, let sharpness): try write("triplanarWeights", [normal, sharpness])
         case .triplanarSample(let slots, let position, let normal, let sharpness):
             try write("triplanarSample", [position, normal, sharpness])

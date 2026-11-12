@@ -807,6 +807,11 @@ struct ShaderProgram: Hashable, Sendable {
         case .checker(let uv):
             try require(uv, .vector2)
             return .scalar
+        case .circle(let uv, let center, let radius):
+            try require(uv, .vector2)
+            try require(center, .vector2)
+            try require(radius, .scalar)
+            return .scalar
         case .triplanarWeights(let normal, let sharpness):
             try require(normal, .vector3)
             try require(sharpness, .scalar)
@@ -991,6 +996,8 @@ struct ShaderProgram: Hashable, Sendable {
              .interleavedGradientNoise(let a), .matrixUnary(_, let a), .matrixColumn(let a, _),
              .bumpMap(_, _, _, let a):
             [a]
+        case .circle(let uv, let center, let radius):
+            [uv, center, radius]
         case .polar(let a, let b), .triplanarWeights(let a, let b), .bits(_, let a, let b), .matrixMultiply(let a, let b),
              .animatedVoronoi(let a, let b):
             [a, b]
@@ -1224,6 +1231,8 @@ struct ShaderProgram: Hashable, Sendable {
             return "frostfield_graph_spherize_uv(\(n(uv)), float2(\(n(strength))), \(n(center)))"
         case .polar(let uv, let center): return "frostfield_graph_polar(\(n(uv)), \(n(center)))"
         case .checker(let uv): return "frostfield_graph_checker(\(n(uv)))"
+        case .circle(let uv, let center, let radius):
+            return "frostfield_graph_circle(\(n(uv)), \(n(center)), \(n(radius)))"
         case .triplanarWeights(let normal, let sharpness):
             return "frostfield_graph_triplanar_weights(\(n(normal)), \(n(sharpness)))"
         case .triplanarSample(let slots, let position, let normal, let sharpness):
@@ -1808,6 +1817,12 @@ struct ShaderProgram: Hashable, Sendable {
     static inline float frostfield_graph_checker(float2 p) {
         float sum = floor(p.x) + floor(p.y);
         return sum - 2.0f * floor(sum * 0.5f);
+    }
+
+    static inline float frostfield_graph_circle(float2 uv, float2 center, float radius) {
+        float r = frostfield_graph_finite(radius) ? max(radius, 0.0f) : 0.0f;
+        if (!all(frostfield_graph_finite(uv)) || !all(frostfield_graph_finite(center))) { return 0.0f; }
+        return length(uv - center) <= r ? 1.0f : 0.0f;
     }
 
     // |n|^k / sum |n|^k, computed as (|n| / max |n|)^k so the dominant axis stays at

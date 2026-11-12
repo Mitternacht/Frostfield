@@ -43,7 +43,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 1 | 2 | 0 |
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 1 | 4 | 1 |
 | [`materials-textures`](#materials-textures) | 36 | 16 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
-| [`shader-authoring`](#shader-authoring) | 21 | 21 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
+| [`shader-authoring`](#shader-authoring) | 22 | 20 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 21 | 4 | 0 | 5 | 2 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 0 | 3 | 1 |
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **187** | **68** | **14** | **113** | **25** | **30** | **25** | **38** | **24** |
+| **Total** | **188** | **67** | **14** | **113** | **25** | **30** | **25** | **38** | **24** |
 
-325 of 524 capabilities are complete, with 131 partial and 68 missing.
+326 of 524 capabilities are complete, with 130 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -375,7 +375,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Derivatives | `dFdx`, `dFdy`, `fwidth` | `ShaderValue.dFdx()`, `ShaderValue.dFdy()`, `ShaderValue.fwidth()`, `MaterialGraph.Derivative` | ✅ | Screen-space derivatives in raster surface and post-process fragment graphs with stage validation. `ShaderPatternTests`, `ShaderGraphInputTests`. [Graph evidence](../evidence/graphlang.md) |
 | Matrix, integer and bit operations | `inverse`, `transpose`, `bitcast`, `countOneBits` | `MaterialGraph.ValueType.int`, `.matrix3`, `.matrix4`, `ShaderValue.bitcast()`, `countOneBits()`, `toInt()`, `toFloat()`, `ShaderMatrixType`, `MaterialGraph.BitOperation` | 🟡 | Matrix multiplication, transpose, inverse, determinant and column access. Signed 32-bit bitcast, population count and truncating arithmetic. 24-bit unsigned bit operations remain carried in floats. No `uint`, integer vectors, or `mat2`. `ShaderPatternTests`. |
 | Procedural noise | `mx_noise_float`, `mx_fractal_noise_float`, `mx_worley_noise_float`, `triNoise3D` | `MaterialGraph.Node.latticeNoise(_:position:)`, `MaterialGraph.Node.fractalNoise(_:position:octaves:lacunarity:gain:)`, `MaterialGraph.Node.cellularNoise(position:)` | ✅ | Value and gradient lattice, 1–8 octave fBm, Worley; gradient range GPU-tested, fBm drawn in `ShaderMaterialMapsTests`, cellular only in the Lab ([shader-graphs](../evidence/shader-graphs.md)); `ShaderGraphLanguageTests` |
-| Pattern and oscillator nodes | `checker`, `shapeCircle`, `oscSine` | `ShaderGraphBuilder.checker`, `MaterialGraph.Oscillator`, `ShaderValue.oscillated(_:)` | 🟡 | Checker pattern and sine, square, triangle and sawtooth oscillators. A dedicated circle pattern and additional generators remain open. `ShaderPatternTests`. [Graph evidence](../evidence/graphlang.md) |
+| Pattern and oscillator nodes | `checker`, `shapeCircle`, `oscSine` | `ShaderGraphBuilder.checker`, `ShaderGraphBuilder.circle`, `MaterialGraph.Oscillator`, `ShaderValue.oscillated(_:)` | ✅ | Checker pattern, a circle that is 1 inside its radius and 0 outside, and sine, square, triangle and sawtooth oscillators. `ShaderPatternTests`. [Graph evidence](../evidence/graphlang.md) |
 | Color utility nodes | `luminance`, `hue`, `saturation`, `convertColorSpace` | `MaterialGraph.UnaryOperation.luminance`, `MaterialGraph.UnaryOperation.hsvToRGB`, `MaterialGraph.UnaryOperation.srgbToLinear` | ✅ | HSV and sRGB round trips GPU-tested; luminance untested; `ShaderGraphLanguageTests` |
 | Blend-mode and tone-mapping nodes | `blendScreen`, `blendOverlay`, `acesFilmicToneMapping`, `posterize`, `cdl` | `ShaderGraphBuilder.blendScreen`, `blendOverlay`, `acesFilmicToneMapping`, `posterize`, `cdl` | ✅ | Typed screen and overlay blends, exposed linear-sRGB ACES, scalar and per-channel posterization, and alpha-preserving color decisions. [Graph color evidence](../evidence/shader-graph-color.md) |
 | UV utility nodes | `rotateUV`, `equirectUV`, `matcapUV`, `spritesheetUV` | `ShaderGraphBuilder.rotateUV`, `equirectUV`, `matcapUV`, `spritesheetUV`, `spherizeUV`, `polar` | ✅ | Native top-left coordinates, explicit panorama directions, camera-aware matcap and wrapped sprite frames. [UV helper evidence](../evidence/shader-graph-uv.md) |

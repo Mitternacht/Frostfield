@@ -284,6 +284,9 @@ public struct MaterialGraph: Sendable {
         /// 1 where `floor(x) + floor(y)` of vector2 coordinates is odd, else 0. Three.js
         /// `checker(uv)` equals this node at `uv × 2`.
         case checker(NodeID)
+        /// 1 where the distance from vector2 coordinates to a vector2 center is within a
+        /// scalar radius, else 0. The edge is exact, including in compute graphs.
+        case circle(NodeID, center: NodeID, radius: NodeID)
         /// Triplanar blend weights from a vector3 normal and a scalar sharpness `k ≥ 0`:
         /// `|n|ᵏ / (|n.x|ᵏ + |n.y|ᵏ + |n.z|ᵏ)`, which sum to 1. A zero normal gives equal
         /// weights. Sharpness 1 matches Three.js `triplanarTexture`.
