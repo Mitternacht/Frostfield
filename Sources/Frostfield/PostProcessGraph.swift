@@ -300,16 +300,21 @@ extension PostProcessGraph {
     /// "CameraNear" and "CameraFar" uniforms, which start at the camera's clip
     /// planes. The fog factor is `smoothstep(Near, Far, distance)`, as in Three.js
     /// `Fog`, with "Near" and "Far" in world units; equal or reversed bounds make a
-    /// step at Near. The result is `mix(scene, (Color, 1), factor)` in premultiplied
+    /// step at Near. When `respectsMaterialFog` is true, white texels in the
+    /// "FogExclusion" mask keep the source color. The result is `mix(scene, (Color, 1), factor)` in premultiplied
     /// RGBA, so fully fogged transparent pixels become opaque fog. Cleared depth
     /// reads as the far plane. Update the camera uniforms when the camera changes.
     public static func depthFog(
-        color: SIMD3<Float>, near: Float, far: Float, camera: PerspectiveCamera, depthMode: MeshDepthMode = .forward
+        color: SIMD3<Float>, near: Float, far: Float, camera: PerspectiveCamera, depthMode: MeshDepthMode = .forward,
+        respectsMaterialFog: Bool = false
     ) throws -> PostProcessGraph {
         try PostProcessGraph { p in
             try depthMode.requireProjectionDepth()
             let distance = perspectiveDistance(p, camera: camera, depthMode: depthMode)
-            let factor = distance.smoothstep(p.uniform("Near", near), p.uniform("Far", far))
+            let factor = fogCoverage(
+                distance.smoothstep(p.uniform("Near", near), p.uniform("Far", far)),
+                respectsMaterialFog: respectsMaterialFog, p
+            )
             let fog = p.vector(p.uniform("Color", color), p.constant(Float(1)))
             return p.sceneColor(at: p.screenUV).mix(fog, by: factor)
         }
@@ -318,9 +323,12 @@ extension PostProcessGraph {
     /// Blends toward "Color" by `1 - exp(-(Density * viewDistance)^2)`, keeping source alpha.
     /// Camera planes initialize "CameraNear" and "CameraFar". Update both when the camera changes.
     public static func exponentialDepthFog(
-        color: SIMD3<Float>, density: Float, camera: PerspectiveCamera, depthMode: MeshDepthMode = .forward
+        color: SIMD3<Float>, density: Float, camera: PerspectiveCamera, depthMode: MeshDepthMode = .forward,
+        respectsMaterialFog: Bool = false
     ) throws -> PostProcessGraph {
-        try exponentialFog(color: color, density: density, camera: camera, depthMode: depthMode) { _, distance in
+        try exponentialFog(
+            color: color, density: density, camera: camera, depthMode: depthMode, respectsMaterialFog: respectsMaterialFog
+        ) { _, distance in
             distance
         }
     }
@@ -332,12 +340,14 @@ extension PostProcessGraph {
     /// the camera changes. "CameraWorldY" is the Y row of its local-to-world matrix.
     public static func exponentialHeightFog(
         color: SIMD3<Float>, density: Float, height: Float, camera: PerspectiveCamera,
-        cameraTransform: SceneTransform, depthMode: MeshDepthMode = .forward
+        cameraTransform: SceneTransform, depthMode: MeshDepthMode = .forward, respectsMaterialFog: Bool = false
     ) throws -> PostProcessGraph {
         let matrix = cameraTransform.matrix
         let worldYRow = SIMD4(matrix.columns.0.y, matrix.columns.1.y, matrix.columns.2.y, matrix.columns.3.y)
         let tanHalfFOV = tan(camera.verticalFieldOfView * 0.5)
-        return try exponentialFog(color: color, density: density, camera: camera, depthMode: depthMode) { p, distance in
+        return try exponentialFog(
+            color: color, density: density, camera: camera, depthMode: depthMode, respectsMaterialFog: respectsMaterialFog
+        ) { p, distance in
             let fieldOfView = p.uniform("CameraTanHalfFOV", tanHalfFOV)
             let worldY = p.uniform("CameraWorldY", worldYRow)
             let aspect = p.texelSize.y / p.texelSize.x
@@ -351,6 +361,7 @@ extension PostProcessGraph {
 
     private static func exponentialFog(
         color: SIMD3<Float>, density: Float, camera: PerspectiveCamera, depthMode: MeshDepthMode,
+        respectsMaterialFog: Bool = false,
         distance: (ShaderGraphBuilder, ShaderValue<Float>) -> ShaderValue<Float>
     ) throws -> PostProcessGraph {
         try depthMode.requireProjectionDepth()
@@ -358,11 +369,21 @@ extension PostProcessGraph {
         return try PostProcessGraph { p in
             let viewDistance = perspectiveDistance(p, camera: camera, depthMode: depthMode)
             let scaled = p.uniform("Density", density).max(0) * distance(p, viewDistance)
-            let factor = (-(scaled * scaled)).exp().oneMinus()
+            let factor = fogCoverage((-(scaled * scaled)).exp().oneMinus(), respectsMaterialFog: respectsMaterialFog, p)
             let scene = p.sceneColor(at: p.screenUV)
             let fogColor = p.uniform("Color", color) * scene.a
             return p.vector(scene.rgb.mix(fogColor, by: factor), scene.a)
         }
+    }
+
+    /// White texels in the "FogExclusion" mask keep the source color. The default leaves the factor unchanged.
+    private static func fogCoverage(
+        _ factor: ShaderValue<Float>, respectsMaterialFog: Bool, _ p: ShaderGraphBuilder
+    ) -> ShaderValue<Float> {
+        guard respectsMaterialFog else { return factor }
+        let excluded = p.texture("FogExclusion", content: .data, addressing: .clampToEdge, filtering: .nearest)
+            .sample(p.screenUV).r
+        return factor * excluded.oneMinus()
     }
 
     private static func perspectiveDistance(

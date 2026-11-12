@@ -28,7 +28,7 @@ import simd
 public struct SceneArchive: Sendable, Equatable {
     /// The newest manifest version this build reads and writes. Captures use the
     /// earliest version that can store the scene.
-    public static let formatVersion = 35
+    public static let formatVersion = 36
     /// Maximum root-to-leaf node count. Keeps nested scene values safe to release
     /// on a Swift task stack even though archive traversal itself is iterative.
     public static let maximumHierarchyDepth = 1_024
@@ -239,6 +239,12 @@ public struct SceneArchive: Sendable, Equatable {
             $0.classic?.wireframe == true || $0.physicallyBased?.wireframe == true || $0.physicallyBased?.flatShading == true
         }) {
             throw Failure.decoding("a wireframe or flat-shaded physically based material requires archive version 35")
+        }
+        if document.version < 36, document.materials.contains(where: {
+            $0.classic?.isVisible == false || $0.classic?.fog == false
+                || $0.physicallyBased?.isVisible == false || $0.physicallyBased?.fog == false
+        }) {
+            throw Failure.decoding("a hidden material or a material that skips fog requires archive version 36")
         }
         let rotation = (document.scene.environmentEulerRotation ?? .zero) + SIMD3(0, document.scene.environmentRotation, 0)
         guard rotation.isFiniteVector else { throw Failure.decoding("scene environment rotation angles must be finite") }
@@ -637,6 +643,10 @@ struct ArchivePBR: Codable {
     var wireframe: Bool? = nil
     /// Nil means interpolated normals. True is stored from archive version 35.
     var flatShading: Bool? = nil
+    /// Nil means the material is drawn. False is stored from archive version 36.
+    var isVisible: Bool? = nil
+    /// Nil means the material accepts fog. False is stored from archive version 36.
+    var fog: Bool? = nil
 }
 
 struct ArchiveEnvironment: Codable {
@@ -803,6 +813,10 @@ private struct ArchiveCapture {
         let rig = photometry.rig(lightRig, writer: &writer)
         let lighting = photometry.record
         let version = if materials.contains(where: {
+            $0.classic?.isVisible == false || $0.classic?.fog == false
+                || $0.physicallyBased?.isVisible == false || $0.physicallyBased?.fog == false
+        }) { 36 }
+        else if materials.contains(where: {
             $0.classic?.wireframe == true || $0.physicallyBased?.wireframe == true || $0.physicallyBased?.flatShading == true
         }) { 35 }
         else if nodes.contains(where: { !$0.transform.matrixAutoUpdate }) { 34 }
@@ -1102,6 +1116,8 @@ private struct ArchiveCapture {
             },
             ambient: material.ambient, receivesShadows: material.receivesShadows, flatShading: material.flatShading,
             wireframe: material.wireframe ? true : nil,
+            isVisible: material.isVisible ? nil : false,
+            fog: material.fog ? nil : false,
             depthPacking: material.depthPacking, distanceOutput: material.distanceOutput == .red ? .red : nil,
             bumpMap: try material.bumpMap.map { .init(texture: try archiveBinding($0.texture, "classic bump"), scale: $0.scale) },
             normalMap: try binding(material.normalMap, "classic normal"),
@@ -1233,7 +1249,9 @@ private struct ArchiveCapture {
             unlitUsesGraphEmission: material.unlitUsesGraphEmission ? true : nil,
             toneMapped: material.toneMapped ? nil : false,
             wireframe: material.wireframe ? true : nil,
-            flatShading: material.flatShading ? true : nil
+            flatShading: material.flatShading ? true : nil,
+            isVisible: material.isVisible ? nil : false,
+            fog: material.fog ? nil : false
         )
     }
 
@@ -1677,7 +1695,9 @@ private struct ArchiveLoader {
             surfaceGraph: try record.surfaceGraph.map { try element(document.surfaceGraphs, $0, "surface graph") },
             surfaceUniforms: try record.surfaceUniforms.map { try uniformSet($0) },
             surfaceTextures: try record.surfaceTextures?.mapValues { try texture($0) } ?? [:],
-            wireframe: record.wireframe ?? false
+            wireframe: record.wireframe ?? false,
+            isVisible: record.isVisible ?? true,
+            fog: record.fog ?? true
         )
     }
 
@@ -1782,7 +1802,9 @@ private struct ArchiveLoader {
             unlitUsesGraphEmission: record.unlitUsesGraphEmission ?? false,
             toneMapped: record.toneMapped ?? true,
             wireframe: record.wireframe ?? false,
-            flatShading: record.flatShading ?? false
+            flatShading: record.flatShading ?? false,
+            isVisible: record.isVisible ?? true,
+            fog: record.fog ?? true
         )
     }
 

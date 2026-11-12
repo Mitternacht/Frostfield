@@ -450,11 +450,53 @@ extension SceneGraph {
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else {
             throw HDRDisplay.Failure.encoder
         }
-        encoder.label = "Frostfield tone-map exclusion"
+        try encodeMaterialMask(
+            into: mask, depthMode: depthMode, label: "Frostfield tone-map exclusion", encoder: encoder
+        ) { mesh in
+            mesh.isMaterialVisible && !mesh.toneMapped
+        }
+    }
+
+    /// Marks visible pixels whose material has `fog == false`.
+    /// The depth texture must be the one stored by the color pass. The mask is cleared to zero,
+    /// then each opted-out mesh is drawn white with an equal depth test.
+    public func encodeFogExclusionMask(
+        depth: any MTLTexture, into mask: any MTLTexture, commandBuffer: any MTLCommandBuffer,
+        depthMode: MeshDepthMode = .forward
+    ) throws {
+        guard mask.pixelFormat == .r8Unorm, mask.textureType == .type2D, depth.textureType == .type2D,
+              mask.width == depth.width, mask.height == depth.height, mask.width > 0,
+              mask.usage.contains(.renderTarget), depth.pixelFormat == .depth32Float,
+              commandBuffer.device === mask.device, depth.device === mask.device else {
+            throw HDRDisplay.Failure.incompatibleTextures
+        }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = mask
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        pass.colorAttachments[0].storeAction = .store
+        pass.depthAttachment.texture = depth
+        pass.depthAttachment.loadAction = .load
+        pass.depthAttachment.storeAction = .store
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else {
+            throw HDRDisplay.Failure.encoder
+        }
+        try encodeMaterialMask(
+            into: mask, depthMode: depthMode, label: "Frostfield fog exclusion", encoder: encoder
+        ) { mesh in
+            mesh.isMaterialVisible && !mesh.participatesInFog
+        }
+    }
+
+    private func encodeMaterialMask(
+        into mask: any MTLTexture, depthMode: MeshDepthMode, label: String, encoder: any MTLRenderCommandEncoder,
+        include: (MeshRenderer) -> Bool
+    ) throws {
+        encoder.label = label
         let aspect = Float(mask.width) / Float(mask.height)
         let clip = try activeProjection(aspectRatio: aspect, depthMode: depthMode) * simd_inverse(cameraTransform.matrix)
         for node in try resolve() where renders(node) {
-            guard let mesh = node.mesh, !mesh.toneMapped else { continue }
+            guard let mesh = node.mesh, include(mesh) else { continue }
             let resources = try ToneMapMaskRenderer.resources(device: mesh.device, skinned: mesh.skin != nil)
             try mesh.encodeToneMapMask(
                 world: node.worldTransform, clipFromWorld: clip, into: encoder,

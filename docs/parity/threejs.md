@@ -42,7 +42,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`scene-graph`](#scene-graph) | 13 | 4 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 1 | 2 | 0 |
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 0 | 5 | 1 |
-| [`materials-textures`](#materials-textures) | 35 | 17 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
+| [`materials-textures`](#materials-textures) | 36 | 16 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
 | [`shader-authoring`](#shader-authoring) | 21 | 21 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 21 | 4 | 0 | 5 | 2 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 0 | 3 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **185** | **70** | **14** | **112** | **26** | **30** | **24** | **39** | **24** |
+| **Total** | **186** | **69** | **14** | **112** | **26** | **30** | **24** | **39** | **24** |
 
-321 of 524 capabilities are complete, with 135 partial and 68 missing.
+322 of 524 capabilities are complete, with 134 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -262,7 +262,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 
 | Capability | Three.js API | Frostfield API | Status | Evidence / gaps |
 | --- | --- | --- | :---: | --- |
-| Material base state | `opacity`, `transparent`, `visible`, `toneMapped`, `fog` | `PhysicallyBasedMaterial.baseColorFactor`, `PhysicallyBasedMaterial.alphaMode`, `MeshRenderState.transparent` | 🟡 | Opacity comes from the material and the transparent bucket is configurable in raster. No visibility, per-material tone mapping or per-material fog flag. `RenderStateTests`. [Primitive evidence](../evidence/primitives.md) |
+| Material base state | `opacity`, `transparent`, `visible`, `toneMapped`, `fog` | `PhysicallyBasedMaterial.baseColorFactor`, `PhysicallyBasedMaterial.alphaMode`, `PhysicallyBasedMaterial.isVisible`, `PhysicallyBasedMaterial.toneMapped`, `PhysicallyBasedMaterial.fog`, `ClassicMaterial.isVisible`, `ClassicMaterial.toneMapped`, `ClassicMaterial.fog`, `MeshRenderState.transparent`, `SceneGraph.encodeFogExclusionMask` | ✅ | Opacity comes from the material and the transparent bucket is configurable in raster. A hidden material is not drawn and does not cast a shadow; picking still hits it. `toneMapped` skips the display curve. `fog` false keeps the pixel when a depth, exponential or height fog pass samples the exclusion mask. Archive version 36 stores either opt-out. `MaterialBaseStateTests`, `ToneMappingTests`, `RenderStateTests`. [Primitive evidence](../evidence/primitives.md) |
 | Face side and culling | `side`, `shadowSide` | `MeshRenderState.side` | 🟡 | Raster front, back or double sided. The path tracer supports front and double sided state, with no separate shadow-side setting. `RenderStateTests`. [Primitive evidence](../evidence/primitives.md) |
 | Blending modes | `blending`, `blendSrc`, `blendDst`, `blendEquation` | `MeshRenderState.blending`, `MeshRenderState.BlendFunction` | ✅ | Raster normal, additive, subtractive, multiply and custom color and alpha equations. The path tracer does not implement general framebuffer blending. `RenderStateTests`. [Primitive evidence](../evidence/primitives.md) |
 | Depth and color-write state | `depthTest`, `depthWrite`, `depthFunc`, `colorWrite` | `MeshRenderState.depthTest`, `MeshRenderState.depthWrite`, `MeshRenderState.depthCompare`, `MeshRenderState.colorWriteMask` | ✅ | Raster depth control and per-channel color write masks. The comparison follows the selected depth convention. `RenderStateTests`. [Primitive evidence](../evidence/primitives.md) |
@@ -719,7 +719,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 
 | Capability | Three.js API | Frostfield API | Status | Evidence / gaps |
 | --- | --- | --- | :---: | --- |
-| Fog (linear, exponential, height) | `Fog`, `FogExp2`, `fog()`, `exponentialHeightFogFactor` | `PostProcessGraph.depthFog`, `PostProcessGraph.exponentialDepthFog`, `PostProcessGraph.exponentialHeightFog`, `PathTracer.Fog` | 🟡 | Raster smooth range, squared exponential depth and analytic height fog. The path tracer also traces a homogeneous world box. Per-material fog and depth on blended surfaces remain open. `PostProcessGraphTests`, `PathMediaTests`. [Media evidence](../evidence/path-media.md) |
+| Fog (linear, exponential, height) | `Fog`, `FogExp2`, `fog()`, `exponentialHeightFogFactor` | `PostProcessGraph.depthFog`, `PostProcessGraph.exponentialDepthFog`, `PostProcessGraph.exponentialHeightFog`, `PathTracer.Fog` | 🟡 | Raster smooth range, squared exponential depth and analytic height fog. The path tracer also traces a homogeneous world box. A classic or physically based material can opt out when the fog pass sets `respectsMaterialFog`. Depth on blended surfaces remains open. `PostProcessGraphTests`, `PathMediaTests`. [Media evidence](../evidence/path-media.md) |
 | Planar reflections | `reflector()` | `PlanarReflectorSet`, `PlanarReflection.encode`, `.encodeBounces`, `.MultisampleTargets`, `ShaderTexture.samplePlanarReflection()` | ✅ | Authored mirror nodes are discovered and bound per view, with oblique clipping and bounded bounces. Explicit captures also support multisample resolve, stored depth, mips, shadows and opaque transmission. [Reflection evidence](../evidence/planar-reflection.md) |
 | Volumetric raymarching | `VolumeNodeMaterial` | `PathTracer.Fog`, `PathTracer.Fog.MeshBoundary`, `PhysicallyBasedMaterial.VolumeScatter` | 🟡 | Path-traced participating fog in boxes and closed mesh regions, plus material volumes. Raster volume raymarching and programmable density fields remain open. `PathMediaTests`, `PathFogDensityTests`. |
 | Spatial audio | `AudioListener`, `PositionalAudio` | `SceneAudio`, `AudioDistanceModel`, `AudioCone`, `AudioAnalyser` | 🟡 | Scene-node sources, camera listener, HRTF and equal-power panning, playback rate, distance, cones and FFT. Stock per-source filter chains and complete playback controls remain open. `SpatialAudioTests`. [Scene evidence](../evidence/scenekit.md) |

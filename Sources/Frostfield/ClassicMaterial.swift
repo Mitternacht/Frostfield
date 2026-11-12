@@ -174,6 +174,12 @@ public struct ClassicMaterial {
     public let toneMapped: Bool
     /// Draws each triangle's edges instead of its face. Defaults to false.
     public let wireframe: Bool
+    /// When false, the material is not drawn and does not cast a shadow. Picking still hits it.
+    /// Defaults to true, like Three.js `Material.visible`.
+    public let isVisible: Bool
+    /// When false, a fog pass that samples this material's exclusion mask leaves the pixel unchanged.
+    /// Defaults to true, like Three.js `Material.fog`.
+    public let fog: Bool
     /// Shades with the triangle's face normal, like Three.js `flatShading`.
     public let flatShading: Bool
     /// Optional depth packing for the depth model. Nil uses near-white grayscale.
@@ -237,7 +243,9 @@ public struct ClassicMaterial {
         surfaceUniforms: ShaderUniforms? = nil,
         surfaceTextures: [String: any MTLTexture] = [:],
         toneMapped: Bool = true,
-        wireframe: Bool = false
+        wireframe: Bool = false,
+        isVisible: Bool = true,
+        fog: Bool = true
     ) throws {
         func nonnegative(_ value: SIMD3<Float>) -> Bool { (0..<3).allSatisfy { value[$0].isFinite && value[$0] >= 0 } }
         guard nonnegative(color) else { throw Failure.invalidValue("color") }
@@ -326,6 +334,8 @@ public struct ClassicMaterial {
         self.receivesShadows = receivesShadows
         self.toneMapped = toneMapped
         self.wireframe = wireframe
+        self.isVisible = isVisible
+        self.fog = fog
         self.flatShading = flatShading
         self.depthPacking = depthPacking
         self.distanceOutput = distanceOutput

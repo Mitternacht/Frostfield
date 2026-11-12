@@ -60,6 +60,10 @@ struct ArchiveClassicMaterial: Codable {
     var flatShading: Bool
     /// Nil means filled triangles. True is stored from archive version 35.
     var wireframe: Bool? = nil
+    /// Nil means the material is drawn. False is stored from archive version 36.
+    var isVisible: Bool? = nil
+    /// Nil means the material accepts fog. False is stored from archive version 36.
+    var fog: Bool? = nil
     var depthPacking: ClassicMaterial.DepthPacking?
     var distanceOutput: ClassicMaterial.DistanceOutput?
     var bumpMap: ArchivePBR.BumpMap?

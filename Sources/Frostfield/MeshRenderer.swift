@@ -144,6 +144,22 @@ public final class MeshRenderer {
         default: true
         }
     }
+    /// False when this renderer's classic or physically based material is hidden.
+    public var isMaterialVisible: Bool {
+        switch material {
+        case .physicallyBased(let material): material.isVisible
+        case .classic(let material): material.isVisible
+        default: true
+        }
+    }
+    /// False when this renderer's classic or physically based material opts out of fog.
+    public var participatesInFog: Bool {
+        switch material {
+        case .physicallyBased(let material): material.fog
+        case .classic(let material): material.fog
+        default: true
+        }
+    }
     private var rawProgram: RawMeshProgram? {
         guard case .rawMetal(let program) = material else { return nil }
         return program
@@ -1436,6 +1452,7 @@ public final class MeshRenderer {
                 }
             }
             guard let renderer = node.mesh ?? node.batch?.renderer else { continue }
+            guard renderer.isMaterialVisible else { continue }
             guard renderer.device === device else { throw Failure.wrongDevice }
             let replacement: (renderer: MeshRenderer, parameters: SIMD4<Float>)?
             if let materialOverride, !materialOverride.excludedNodes.contains(node.id) {
@@ -4677,6 +4694,7 @@ extension MeshRenderer {
         try validateIndirectTargets(indirectDraws, nodes: nodes, commandBuffer: commandBuffer)
         for node in selected {
             guard let renderer = node.mesh ?? node.batch?.renderer else { continue }
+            guard renderer.isMaterialVisible else { continue }
             guard renderer.device === device else { throw Failure.wrongDevice }
             guard renderer.rawProgram == nil else { throw RawMeshProgram.Failure.unsupportedAuxiliaryPass }
             let shadingCamera = graph.orthographicDirectionToCamera.map { SIMD4($0, 0) } ?? SIMD4(cameraPosition, 1)

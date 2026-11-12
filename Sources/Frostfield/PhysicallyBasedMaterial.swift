@@ -535,6 +535,12 @@ public struct PhysicallyBasedMaterial {
     public let wireframe: Bool
     /// Shades with the triangle's face normal instead of the interpolated vertex normal.
     public let flatShading: Bool
+    /// When false, the material is not drawn and does not cast a shadow. Picking still hits it.
+    /// Defaults to true, like Three.js `Material.visible`.
+    public let isVisible: Bool
+    /// When false, a fog pass that samples this material's exclusion mask leaves the pixel unchanged.
+    /// Defaults to true, like Three.js `Material.fog`.
+    public let fog: Bool
     /// Replaces the constant ambient fill with prefiltered diffuse and specular light.
     public let environment: Environment?
     public let clearcoat: Clearcoat?
@@ -766,7 +772,9 @@ public struct PhysicallyBasedMaterial {
         unlitUsesGraphEmission: Bool = false,
         toneMapped: Bool = true,
         wireframe: Bool = false,
-        flatShading: Bool = false
+        flatShading: Bool = false,
+        isVisible: Bool = true,
+        fog: Bool = true
     ) throws {
         guard !unlitUsesGraphEmission || (shadingModel == .unlit && surfaceGraph?.outputs.emission != nil) else {
             throw Failure.unlitGraphEmission
@@ -835,6 +843,8 @@ public struct PhysicallyBasedMaterial {
         self.toneMapped = toneMapped
         self.wireframe = wireframe
         self.flatShading = flatShading
+        self.isVisible = isVisible
+        self.fog = fog
         self.environment = environment
         self.clearcoat = clearcoat
         self.transmission = transmission
