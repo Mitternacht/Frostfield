@@ -224,6 +224,8 @@ struct PTRay {
     float3 origin, direction;
     float minimum, maximum;
     float width, spread;
+    // Pixel coordinate of the camera sample, then the image size. Bounces keep the camera pixel.
+    float4 screen;
 };
 
 // index is the triangle within the instance's bottom level.
@@ -1139,6 +1141,11 @@ static FrostfieldSurfaceInput ptMakeGraphInput(
     graphInput.normalMatrix = float3x3(
         instance.worldToObject[0].xyz, instance.worldToObject[1].xyz, instance.worldToObject[2].xyz
     );
+    float2 imageSize = max(ray.screen.zw, float2(1));
+    graphInput.screenUV = ray.screen.xy / imageSize;
+    graphInput.screenCoordinate = ray.screen.xy;
+    graphInput.viewportSize = imageSize;
+    graphInput.screenSize = imageSize;
     return graphInput;
 }
 
@@ -2099,7 +2106,7 @@ static float3 ptDirect(
     float3 shadowDelta = sampled - origin;
     float shadowLength = length(shadowDelta);
     if (shadowLength <= epsilon) { return float3(0); }
-    PTRay shadow = {origin, shadowDelta / shadowLength, 0, shadowLength - epsilon, footprint, 0};
+    PTRay shadow = {origin, shadowDelta / shadowLength, 0, shadowLength - epsilon, footprint, 0, float4(0)};
     float3 transmittance = ptShadow(shadow, ptShadowStart(point, direction), media, scene, lights, lightCount);
     if (ptMax(transmittance) <= 0.0f) { return float3(0); }
 
@@ -2205,7 +2212,7 @@ static float3 ptEmitterDirect(
     // a medium with no origin offset so rounding cannot shadow a sampled triangle by itself.
     float limit = shadowLength - max(epsilon, ptOffset(sampled));
     if (!(limit > 0.0f)) { return float3(0); }
-    PTRay shadow = {origin, shadowDelta / shadowLength, 0.0f, limit, footprint, 0.0f};
+    PTRay shadow = {origin, shadowDelta / shadowLength, 0.0f, limit, footprint, 0.0f, float4(0)};
     float3 transmission = ptShadow(shadow, ptShadowStart(point, direction), media, scene, lights, lightCount);
     if (ptMax(transmission) <= 0.0f) { return float3(0); }
 
@@ -2303,7 +2310,7 @@ static float3 ptSkyDirect(
     if (!ptGathers(point, direction)) { return float3(0); }
     PTEvaluation evaluation = ptScatterEvaluate(point, bsdf, direction);
     if (ptMax(evaluation.value) <= 0.0f) { return float3(0); }
-    PTRay shadow = {ptShadowOrigin(point, direction), direction, 0.0f, INFINITY, footprint, 0.0f};
+    PTRay shadow = {ptShadowOrigin(point, direction), direction, 0.0f, INFINITY, footprint, 0.0f, float4(0)};
     float3 transmittance = ptShadow(shadow, ptShadowStart(point, direction), media, scene, lights, lightCount);
     if (ptMax(transmittance) <= 0.0f) { return float3(0); }
     float weight = ptMIS(sample.pdf, evaluation.pdf);
@@ -2453,7 +2460,7 @@ static float3 ptAnalyticDirect(
     if (ptMax(evaluation.value) <= 0.0f) { return float3(0); }
 
     float3 origin = ptShadowOrigin(point, toLight);
-    PTRay shadow = {origin, toLight, 0.0f, INFINITY, footprint, 0.0f};
+    PTRay shadow = {origin, toLight, 0.0f, INFINITY, footprint, 0.0f, float4(0)};
     if (positioned) {
         float epsilon = point.kind == ptScatterMedium ? 0.0f : ptOffset(point.position);
         float3 shadowDelta = samplePosition - origin;
@@ -2711,7 +2718,7 @@ static float4 ptTrace(
             // The phase function samples itself exactly, so the weight is one.
             previousPosition = point.position;
             previousPDF = gathers ? frostfieldHenyeyGreenstein(dot(ray.direction, direction), anisotropy) : 0.0f;
-            ray = {point.position, direction, 0.0f, INFINITY, footprint, ray.spread};
+            ray = {point.position, direction, 0.0f, INFINITY, footprint, ray.spread, ray.screen};
             if (frostfield_path_has_mesh_emitters) { emitterRay = ray; }
             if (walking) {
                 if (!ptWalkSurvives(throughput, etaScale, state)) { break; }
@@ -2853,7 +2860,7 @@ static float4 ptTrace(
             previousPosition = exit.position;
             previousPDF = cosine * ptInvPi;
             --mediumCount;
-            ray = {ptOrigin(surface.position, surface.geometricNormal, direction), direction, 0.0f, INFINITY, footprint, ray.spread};
+            ray = {ptOrigin(surface.position, surface.geometricNormal, direction), direction, 0.0f, INFINITY, footprint, ray.spread, ray.screen};
             if (frostfield_path_has_mesh_emitters) { emitterRay = ray; }
             if (!ptWalkSurvives(throughput, etaScale, state)) { break; }
             continue;
@@ -2971,7 +2978,7 @@ static float4 ptTrace(
         }
         ray = {
             ptOrigin(surface.position, surface.geometricNormal, scatter.direction),
-            scatter.direction, 0.0f, INFINITY, footprint, max(ray.spread, 0.04f * surface.roughness)
+            scatter.direction, 0.0f, INFINITY, footprint, max(ray.spread, 0.04f * surface.roughness), ray.screen
         };
         if (frostfield_path_has_mesh_emitters && changesSample) { emitterRay = ray; }
         if (!walking) { ++bounce; }
@@ -3026,7 +3033,8 @@ static PTRay ptCamera(
         float3 horizontal = sin(longitude) * right + cos(longitude) * forward;
         float3 direction = ptUnit(cos(latitude) * horizontal + sin(latitude) * up, forward);
         float spread = max(2.0f * ptPi / float(uniforms.image.x), ptPi / eyeHeight);
-        return {origin, direction, uniforms.projection.x, uniforms.projection.y, 0, spread};
+        return {origin, direction, uniforms.projection.x, uniforms.projection.y, 0, spread,
+            float4((float2(pixel) + offset).x, (float2(pixel) + offset).y, uniforms.image.x, uniforms.image.y)};
     }
     float2 screen = uv * float2(2, -2) + float2(-1, 1);
     if (mode == ptOrthographic) {
@@ -3034,7 +3042,8 @@ static PTRay ptCamera(
         float width = 2.0f * max(
             uniforms.cameraRight.w / float(uniforms.image.x), uniforms.cameraUp.w / float(uniforms.image.y)
         );
-        return {origin, forward, uniforms.projection.x, uniforms.projection.y, width, 0};
+        return {origin, forward, uniforms.projection.x, uniforms.projection.y, width, 0,
+            float4((float2(pixel) + offset).x, (float2(pixel) + offset).y, uniforms.image.x, uniforms.image.y)};
     }
     screen += uniforms.shift.xy;
     float3 direction = normalize(
@@ -3050,7 +3059,8 @@ static PTRay ptCamera(
     float spread = max(
         uniforms.cameraRight.w / float(uniforms.image.x), uniforms.cameraUp.w / float(uniforms.image.y)
     );
-    return {origin, direction, uniforms.projection.x / projection, uniforms.projection.y / projection, 0, 2.0f * spread};
+    return {origin, direction, uniforms.projection.x / projection, uniforms.projection.y / projection, 0, 2.0f * spread,
+        float4((float2(pixel) + offset).x, (float2(pixel) + offset).y, uniforms.image.x, uniforms.image.y)};
 }
 
 // Keep in lockstep with PathTracer.MotionUniforms.

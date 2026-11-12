@@ -2,6 +2,17 @@ import Foundation
 import Synchronization
 import simd
 
+/// Advances graph clocks by one display frame.
+///
+/// `FrostfieldSceneView.graphClocks(_:)` calls this for each presented frame.
+/// Passing an empty list does nothing. A negative or non-finite delta is rejected.
+public enum ShaderDisplayClock {
+    public static func advance(_ uniforms: [ShaderUniforms], by deltaTime: Float) throws {
+        guard deltaTime.isFinite, deltaTime >= 0 else { throw ShaderUniforms.Failure.nonfinite("frame") }
+        for item in uniforms { try item.advanceFrame(by: deltaTime) }
+    }
+}
+
 /// The clock a graph's `time`, `deltaTime` and `frame` inputs read.
 public struct ShaderFrame: Hashable, Sendable {
     /// Seconds since the clock started. Graphs read it as a 32-bit float.

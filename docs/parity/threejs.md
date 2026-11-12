@@ -43,7 +43,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 2 | 1 | 0 |
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 2 | 3 | 1 |
 | [`materials-textures`](#materials-textures) | 38 | 14 | 0 | 4 | 1 | 0 | 1 | 2 | 1 |
-| [`shader-authoring`](#shader-authoring) | 26 | 17 | 5 | 3 | 0 | 3 | 1 | 1 | 1 |
+| [`shader-authoring`](#shader-authoring) | 27 | 16 | 5 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 22 | 3 | 0 | 7 | 0 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 2 | 2 | 0 |
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 8 | 3 | 1 | 3 | 1 | 4 | 2 | 3 | 2 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **198** | **60** | **11** | **122** | **22** | **24** | **33** | **33** | **21** |
+| **Total** | **199** | **59** | **11** | **122** | **22** | **24** | **33** | **33** | **21** |
 
-353 of 524 capabilities are complete, with 115 partial and 56 missing.
+354 of 524 capabilities are complete, with 114 partial and 56 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -365,7 +365,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Uniform nodes and update events | `uniform()`, `onFrameUpdate`, `onObjectUpdate` | `ShaderUniforms.setFrameUpdate(_:)`, `ShaderUniforms.setObjectUpdate(_:)` | ✅ | Named uniforms stay editable without a new pipeline in raster, path tracing, post and compute. The frame hook and the object hook run when a snapshot is taken. A raster draw passes the node matrix and a path dispatch passes the camera matrix. `ShaderUniformUpdateTests`, `ShaderGraphRenderingTests`. |
 | Attribute and varying nodes | `attribute()`, `varying()`, `vertexStage()` | — | ❌ | Fixed built-in inputs only |
 | Geometry and camera accessors | `positionWorld`, `normalWorld`, `tangentView`, `uv(n)`, `cameraPosition`, `instanceIndex` | `MaterialGraph.Input`, `ShaderGraphCamera`, `GLTFScene.Camera.View.graphCamera` | 🟡 | Built-in geometry, tangent frame, camera position, near/far and planar view/projection inputs. Custom attributes, instance index and front-facing flag remain open. `ShaderGraphViewTests`. [Graph evidence](../evidence/graphlang.md) |
-| Screen and time accessors | `screenUV`, `viewportSize`, `time`, `deltaTime` | `MaterialGraph.Input.screenUV`, `.viewportSize`, `.screenCoordinate`, `.screenSize`, `ShaderFrame`, `ShaderUniforms.setFrame(_:)` | 🟡 | Raster and post-process screen inputs and an explicit graph clock. Screen inputs are raster-only and automatic renderer clock updates remain open. `ShaderGraphViewTests`, `ShaderGraphInputTests`. [Graph evidence](../evidence/graphlang.md) |
+| Screen and time accessors | `screenUV`, `viewportSize`, `time`, `deltaTime` | `MaterialGraph.Input.screenUV`, `.viewportSize`, `.screenCoordinate`, `.screenSize`, `ShaderFrame`, `ShaderUniforms.setFrame(_:)`, `ShaderDisplayClock.advance(_:by:)`, `FrostfieldSceneView.graphClocks(_:)` | ✅ | Raster, post-process and path-traced graphs read the screen coordinates. A path keeps the camera pixel through later bounces. Derivatives, stored viewport textures and directional shadow visibility stay raster-only. `ShaderDisplayClock` steps attached clocks, and the scene view does that once per presented frame. With no clocks attached, frames leave the clock where the caller set it. `ShaderGraphInputTests`. [Graph evidence](../evidence/graphlang.md) |
 | Texture sampling nodes | `texture()`, `textureLevel`, `.grad`, `cubeTexture()`, `texture3D()`, `triplanarTexture()` | `ShaderGraphBuilder.texture(_:content:addressing:filtering:)`, `ShaderGraphBuilder.cube(_:content:addressing:filtering:)`, `ShaderGraphBuilder.texture3D(_:content:addressing:filtering:)`, `ShaderTexture.sample(_:)`, `ShaderTexture.sample(_:level:)`, `ShaderTexture.sample(_:ddx:ddy:)`, `ShaderTexture.triplanar(position:normal:sharpness:)` | 🟡 | 2D textures with addressing, filtering, triplanar sampling, an explicit mip level, and explicit UV derivatives. The level clamps to the last mip; a nonfinite level reads level 0. Derivatives choose the nearest mip from log2 of the larger texel footprint, and a nonfinite derivative reads level 0. Both explicit samples may run inside a branch. Compute graphs sample a cube map by direction and a 3D texture by normalized coordinates, both at mip 0. A nonfinite or zero cube direction reads +X, and a nonfinite 3D coordinate reads zero. Raster, post, and path tracing still bind 2D graph textures. `ShaderPatternTests`, `ShaderGraphRenderingTests`. |
 | Material reference nodes | `materialColor`, `materialRoughness`, `reference()` | `ShaderGraphBuilder.reference(_:)`, `referenceColor(_:)`, `referenceVector(_:)` | ✅ | Named reads of sampled base color, metallic, roughness, emission and opacity, the node's parameter vector, and the authored index of refraction, transmission and thickness. An unknown name is rejected. Opacity is the sampled base alpha, so an opaque raster material reports 1. Index of refraction, transmission and thickness are the authored factors. Raster color, attributes and shadow graphs and the path tracer all receive them. An archive that stores one of those scalar reads is version 40. `SurfaceShaderGraphTests`, `ShaderGraphRenderingTests`. [Graph evidence](../evidence/graphlang.md) |
 | Math nodes: arithmetic, trig, exp/log, rounding | `add`, `mul`, `sin`, `pow`, `fract`, `mod` | `MaterialGraph.UnaryOperation`, `MaterialGraph.BinaryOperation` | ✅ | Families GPU-evaluated in `ShaderGraphLanguageTests` and `ComputeShaderGraphTests`; not every operation has its own GPU check |
@@ -960,9 +960,9 @@ Typed graphs drive raster PBR, the path tracer, vertex deformation, post-process
   - 🟡 Vertex slot: position (`shader-authoring`, core)
   - ❌ Attribute and varying nodes (`shader-authoring`, core)
   - 🟡 Geometry and camera accessors (`shader-authoring`, core)
-- **Post-processing graphs** (3 of 4 ✅)
+- **Post-processing graphs** (4 of 4 ✅)
   - ✅ Screen-space scene sampling (`post-processing`, core)
-  - 🟡 Screen and time accessors (`shader-authoring`, core)
+  - ✅ Screen and time accessors (`shader-authoring`, core)
 - **Compute graphs** (2 of 5 ✅)
   - 🟡 Storage buffers and textures (`shader-authoring`, core)
   - 🟡 Compute built-ins, shared memory, atomics and subgroups (`shader-authoring`, core)

@@ -136,6 +136,18 @@ struct ShaderProgram: Hashable, Sendable {
         }
     }
 
+    /// Path tracing can read the camera pixel. It still cannot take derivatives, viewport textures,
+    /// soft-particle fade, or the raster shadow-visibility input.
+    func firstPathRejectedScreenNode(from outputs: [NodeID]) -> NodeID? {
+        order(for: outputs).first { id in
+            switch nodes[id] {
+            case .derivative, .sampleScene, .sampleSceneLevel, .sampleDepth, .viewportSafeUV, .softParticleOpacity: true
+            case .input(let input): input == .directionalShadowVisibility
+            default: false
+            }
+        }
+    }
+
     /// Whether the outputs read the camera's view or projection matrix or clip distances.
     func readsCameraProjection(from outputs: [NodeID]) -> Bool {
         uses({ node in

@@ -29,6 +29,7 @@ public struct FrostfieldSceneView: View {
     private var onDrawableResize: (@MainActor (CGSize) -> Void)?
     private var renderLoop: RenderLoop = .onChange
     private var postChain: PostProcessChain?
+    private var graphClocks: [ShaderUniforms] = []
 
     /// When the Metal host draws.
     public enum RenderLoop: Equatable, Sendable {
@@ -68,8 +69,8 @@ public struct FrostfieldSceneView: View {
     public var body: some View {
         SceneHost(
             content: content, clearColor: drawableClearColor, resolution: resolution, presentation: presentation,
-            active: scenePhase == .active, renderLoop: renderLoop, postChain: postChain, onError: onError,
-            onDrawableResize: onDrawableResize
+            active: scenePhase == .active, renderLoop: renderLoop, postChain: postChain, graphClocks: graphClocks,
+            onError: onError, onDrawableResize: onDrawableResize
         )
         .id(SceneHost.Identity(
             content: content.identity, usesHDRDisplay: presentation != nil,
@@ -85,6 +86,14 @@ public struct FrostfieldSceneView: View {
     public func postChain(_ chain: PostProcessChain?) -> Self {
         var view = self
         view.postChain = chain
+        return view
+    }
+
+    /// Advances these uniform clocks once per presented frame, using the display
+    /// interval. An empty list leaves every clock where the caller set it.
+    public func graphClocks(_ clocks: [ShaderUniforms]) -> Self {
+        var view = self
+        view.graphClocks = clocks
         return view
     }
 
@@ -329,6 +338,7 @@ private struct SceneHost {
     let active: Bool
     let renderLoop: FrostfieldSceneView.RenderLoop
     var postChain: PostProcessChain?
+    var graphClocks: [ShaderUniforms] = []
     let onError: (@MainActor (any Error) -> Void)?
     let onDrawableResize: (@MainActor (CGSize) -> Void)?
     var onPathProgress: (@MainActor (Int) -> Void)? = nil
@@ -336,14 +346,14 @@ private struct SceneHost {
     func makeCoordinator() -> SceneCoordinator {
         SceneCoordinator(
             content: content, clearColor: clearColor, resolution: resolution, presentation: presentation,
-            postChain: postChain
+            postChain: postChain, graphClocks: graphClocks
         )
     }
 
     func update(_ coordinator: SceneCoordinator) {
         coordinator.update(
             content: content, clearColor: clearColor, resolution: resolution, presentation: presentation,
-            active: active, renderLoop: renderLoop, postChain: postChain, onError: onError,
+            active: active, renderLoop: renderLoop, postChain: postChain, graphClocks: graphClocks, onError: onError,
             onDrawableResize: onDrawableResize, onPathProgress: onPathProgress
         )
     }
@@ -467,6 +477,8 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
     private var resolution: FrostfieldSceneView.DrawableResolution
     private var presentation: ScenePresentation?
     private var postChain: PostProcessChain?
+    private var graphClocks: [ShaderUniforms] = []
+    private var previousPresentationTime: CFTimeInterval?
     private var sceneIsActive = false
     private var onError: (@MainActor (any Error) -> Void)?
     private var onDrawableResize: (@MainActor (CGSize) -> Void)?
@@ -490,12 +502,13 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
 
     init(
         content: SceneContent, clearColor: SIMD4<Double>, resolution: FrostfieldSceneView.DrawableResolution,
-        presentation: ScenePresentation?, postChain: PostProcessChain? = nil
+        presentation: ScenePresentation?, postChain: PostProcessChain? = nil, graphClocks: [ShaderUniforms] = []
     ) {
         self.content = content
         self.clearColor = clearColor
         self.resolution = resolution
         self.postChain = postChain
+        self.graphClocks = graphClocks
         self.presentation = presentation
         queue = content.makeQueue()
         let format = presentation?.display.destinationPixelFormat ?? content.defaultDrawableFormat
@@ -529,7 +542,7 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
     func update(
         content: SceneContent, clearColor: SIMD4<Double>, resolution: FrostfieldSceneView.DrawableResolution,
         presentation: ScenePresentation?, active: Bool, renderLoop: FrostfieldSceneView.RenderLoop,
-        postChain: PostProcessChain?, onError: (@MainActor (any Error) -> Void)?,
+        postChain: PostProcessChain?, graphClocks: [ShaderUniforms], onError: (@MainActor (any Error) -> Void)?,
         onDrawableResize: (@MainActor (CGSize) -> Void)?, onPathProgress: (@MainActor (Int) -> Void)?
     ) {
         schedule.setContinuous(renderLoop == .continuous)
@@ -537,6 +550,7 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
             self.postChain = postChain
             schedule.invalidate()
         }
+        self.graphClocks = graphClocks
         self.onError = onError
         self.onPathProgress = onPathProgress
         if (self.onDrawableResize == nil) != (onDrawableResize == nil) {
@@ -733,6 +747,14 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
 
     func metalDisplayLink(_ link: CAMetalDisplayLink, needsUpdate update: CAMetalDisplayLink.Update) {
         guard link === displayLink, schedule.canDraw, let queue, let drawableSize else { return }
+        let timestamp = update.targetPresentationTimestamp
+        if !graphClocks.isEmpty, let previous = previousPresentationTime {
+            let delta = Float(timestamp - previous)
+            if delta.isFinite, delta >= 0 {
+                try? ShaderDisplayClock.advance(graphClocks, by: delta)
+            }
+        }
+        previousPresentationTime = timestamp
         let drawable = update.drawable
         let color = drawable.texture
         guard CGFloat(color.width) == drawableSize.width, CGFloat(color.height) == drawableSize.height,

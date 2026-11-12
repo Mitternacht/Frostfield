@@ -12,7 +12,7 @@ struct IndirectDispatchTests {
             [0: builder.vector(builder.elementIndex, builder.elementCount, builder.constant(Float(0)), builder.constant(Float(1)))]
         }
         let kernel = try ShaderBufferKernel(graph: graph, device: device)
-        let width = kernel.indirectPipelineState.threadExecutionWidth
+        let width = try kernel.indirectPipeline().threadExecutionWidth
         let arguments = try ShaderBufferKernel.IndirectArguments(elementCount: 7, threadgroupWidth: width)
         #expect(arguments.threadgroupsX == UInt32((7 + width - 1) / width))
         #expect(arguments.threadgroupsY == 1 && arguments.threadgroupsZ == 1)

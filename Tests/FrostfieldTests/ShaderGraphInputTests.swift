@@ -47,6 +47,20 @@ struct ShaderGraphInputTests {
 
     // MARK: - Clock
 
+    @Test("A display clock advances every attached uniform set and rejects a negative interval")
+    func displayClock() throws {
+        let graph = try BufferShaderGraph(fieldCount: 1) { builder in
+            [0: builder.vector(builder.time, builder.deltaTime, builder.frame, builder.constant(Float(0)))]
+        }
+        let uniforms = try ShaderUniforms(graph: graph)
+        try ShaderDisplayClock.advance([uniforms], by: 0.25)
+        #expect(uniforms.frame == ShaderFrame(time: 0.25, deltaTime: 0.25, index: 1))
+        try ShaderDisplayClock.advance([uniforms], by: 0.25)
+        #expect(uniforms.frame.index == 2)
+        #expect(uniforms.frame.time == 0.5)
+        #expect(throws: ShaderUniforms.Failure.nonfinite("frame")) { try ShaderDisplayClock.advance([uniforms], by: -1) }
+    }
+
     @Test("The graph clock reaches buffer, texture, post-process, vertex, raster and path-traced graphs")
     func clock() throws {
         let frame = ShaderFrame(time: 2.5, deltaTime: 0.25, index: 3)
@@ -290,6 +304,17 @@ struct ShaderGraphInputTests {
             return
         }
         #expect(id == screenNode.id && feature.contains("screen-space derivative"), "\(feature)")
+
+        let coordinates = try SurfaceShaderGraph { s in
+            .init(emission: s.vector(s.screenUV, s.viewportSize.x / 100))
+        }
+        let coordinateNode = SceneNode(transform: .init(translation: SIMD3(0, 0, -1.5)), mesh: try emissive(coordinates))
+        let tracedCoordinates = try renderBoth([coordinateNode])
+        let expectedUV = SIMD4<Float>(32.5 / 65, 32.5 / 65, 0.65, 1)
+        #expect(close(tracedCoordinates.raster(32), expectedUV), "\(tracedCoordinates.raster(32))")
+        #expect(abs(tracedCoordinates.path(32).x - expectedUV.x) < 0.02, "\(tracedCoordinates.path(32))")
+        #expect(abs(tracedCoordinates.path(32).y - expectedUV.y) < 0.02)
+        #expect(abs(tracedCoordinates.path(32).z - 0.65) < 0.02)
 
         // The path tracer has no single model matrix for the instances of an instanced node.
         let model = try SurfaceShaderGraph { s in .init(emission: s.modelMatrix.column(3).xyz) }

@@ -252,8 +252,8 @@ public final class ShaderBufferKernel: Sendable {
     public let device: any MTLDevice
     /// The prepared pipeline. It stays the same for the kernel's lifetime.
     public let pipelineState: any MTLComputePipelineState
-    /// The pipeline used by an indirect dispatch. Its threadgroup width is the width the argument buffer must cover.
-    public let indirectPipelineState: any MTLComputePipelineState
+    private let kernelSource: String
+    private let compiledIndirect = Mutex<(any MTLComputePipelineState)?>(nil)
     private let layout: ShaderComputeResources
 
     private static let kernelName = "frostfield_buffer_graph_kernel"
@@ -322,8 +322,21 @@ public final class ShaderBufferKernel: Sendable {
                 destination[base + field] = fields[field];
             }
         }
+        """
+        pipelineState = try ShaderComputeCache.pipeline(
+            source: source, function: Self.kernelName, label: "Frostfield buffer graph", device: device
+        )
+        kernelSource = source
+        self.graph = graph
+        self.device = device
+    }
 
-        // dispatch.xyz is the Metal threadgroup count. dispatch.w is the authored element count.
+    /// The pipeline used by an indirect dispatch. Its threadgroup width is the width the argument buffer must cover.
+    public func indirectPipeline() throws -> any MTLComputePipelineState {
+        if let existing = compiledIndirect.withLock({ $0 }) { return existing }
+        let fields = graph.fieldCount
+        let source = kernelSource + """
+
         kernel void \(Self.indirectKernelName)(
             device const float4* source [[buffer(0)]],
             device float4* destination [[buffer(1)]],
@@ -332,9 +345,7 @@ public final class ShaderBufferKernel: Sendable {
             uint element [[thread_position_in_grid]]
         ) {
             uint count = min(dispatch.w, capacity);
-            if (element >= count) {
-                return;
-            }
+            if (element >= count) { return; }
             FrostfieldComputeInput input = {};
             input.elementIndex = float(element);
             input.elementCount = float(count);
@@ -350,14 +361,14 @@ public final class ShaderBufferKernel: Sendable {
             }
         }
         """
-        pipelineState = try ShaderComputeCache.pipeline(
-            source: source, function: Self.kernelName, label: "Frostfield buffer graph", device: device
-        )
-        indirectPipelineState = try ShaderComputeCache.pipeline(
+        let pipeline = try ShaderComputeCache.pipeline(
             source: source, function: Self.indirectKernelName, label: "Frostfield indirect buffer graph", device: device
         )
-        self.graph = graph
-        self.device = device
+        return compiledIndirect.withLock { existing in
+            if let existing { return existing }
+            existing = pipeline
+            return pipeline
+        }
     }
 
     /// Encodes one update of `elementCount` elements from `source` into `destination`.
@@ -446,13 +457,14 @@ public final class ShaderBufferKernel: Sendable {
         var capacity = UInt32(min(sourceRoom, destinationRoom, Self.maximumElementCount))
         guard let encoder = commandBuffer.makeComputeCommandEncoder() else { throw Failure.encoder("compute") }
         encoder.label = "Frostfield indirect buffer graph"
-        encoder.setComputePipelineState(indirectPipelineState)
+        let pipeline = try indirectPipeline()
+        encoder.setComputePipelineState(pipeline)
         encoder.setBuffer(source, offset: sourceOffset, index: 0)
         encoder.setBuffer(destination, offset: destinationOffset, index: 1)
         encoder.setBuffer(arguments, offset: argumentsOffset, index: 2)
         encoder.setBytes(&capacity, length: MemoryLayout<UInt32>.stride, index: 3)
         layout.bind(uniforms: values, textures: inputs, firstBuffer: 4, firstTexture: 0, encoder: encoder)
-        let width = indirectPipelineState.threadExecutionWidth
+        let width = pipeline.threadExecutionWidth
         encoder.dispatchThreadgroups(
             indirectBuffer: arguments, indirectBufferOffset: argumentsOffset,
             threadsPerThreadgroup: MTLSize(width: width, height: 1, depth: 1)

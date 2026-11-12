@@ -14,6 +14,8 @@ extension SurfaceShaderGraph {
     /// The first node the per-pixel outputs reach that only a rasterizer can evaluate:
     /// a derivative, screen input, or stored viewport sample.
     var screenSpaceNode: MaterialGraph.NodeID? { program.firstScreenSpaceNode(from: surfaceOutputIDs) }
+    /// Screen coordinates are supplied for the path's camera pixel. Derivatives and viewport textures are not.
+    var pathRejectedScreenNode: MaterialGraph.NodeID? { program.firstPathRejectedScreenNode(from: surfaceOutputIDs) }
 
     var viewportInputs: SurfaceViewportInputs {
         program.order(for: surfaceOutputIDs).reduce(into: []) { inputs, id in
@@ -401,10 +403,10 @@ extension PathTracingScene {
     /// values have no meaning at secondary bounces, and an instanced node's traced
     /// instances carry per-instance matrices where raster graphs see the node's matrix.
     static func validatePathInputs(_ graph: SurfaceShaderGraph, node: ResolvedSceneNode) throws {
-        if let screenSpace = graph.screenSpaceNode {
+        if let screenSpace = graph.pathRejectedScreenNode {
             throw PathTracingScene.Failure.unsupported(
-                node.id, "surface graph node \(screenSpace), which reads a screen-space derivative, screen input "
-                    + "(screenUV, viewportSize, screenCoordinate or screenSize), stored viewport texture, or soft-particle fade"
+                node.id, "surface graph node \(screenSpace), which reads a screen-space derivative, "
+                    + "stored viewport texture, soft-particle fade, or directional shadow visibility"
             )
         }
         if node.instances != nil, graph.readsModelMatrices {

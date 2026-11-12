@@ -44,7 +44,7 @@ groove and show the face of the next brick, and both renderers agree.
 | Graph clock | `Input.time`, `.deltaTime`, `.frame`, `ShaderFrame`, `ShaderUniforms.frame`, `setFrame(_:)`, `advanceFrame(by:)`, `frameRevision` | Yes | Yes | Vertex, post-process, texture and buffer compute, particles | `ShaderGraphInputTests.clock`, `.clockConsumers`, `.particleClock` |
 | Camera | `Input.cameraPosition`, `.cameraNear`, `.cameraFar`, `.viewMatrix`, `.projectionMatrix`; `ShaderGraphCamera` and `GLTFScene.Camera.View.graphCamera` for clip-matrix encodes | Yes, every encode path | Planar matrices use the full image projection, including lens shift and orthographic scale. Panoramas support view and clip inputs. | Rejected | `ShaderGraphInputTests.cameraAndModel`, `ShaderGraphViewTests.graphCameras`, `.pathCameraProjection` |
 | Model | `Input.modelMatrix`, `.normalMatrix` | Yes, the node matrix | Yes, except instanced nodes | Rejected | `ShaderGraphInputTests.cameraAndModel`, `ShaderGraphViewTests.modelMatrices` |
-| Screen | `Input.screenUV`, `.viewportSize`, `.screenCoordinate`, `.screenSize`, `ShaderGraphBuilder.fragmentCoordinate` | Yes | Rejected | Post-process yes | `ShaderGraphInputTests.screenSpace`, `ShaderGraphViewTests.offsetViewport` |
+| Screen | `Input.screenUV`, `.viewportSize`, `.screenCoordinate`, `.screenSize`, `ShaderGraphBuilder.fragmentCoordinate` | Yes | Camera pixel, kept on later bounces | Post-process yes | `ShaderGraphInputTests.screenSpace`, `ShaderGraphViewTests.offsetViewport` |
 | Tangent frame along +U and +V of UV0 | `Input.tangent`, `.bitangent`, `tangentSpace(_:)`; graph normal outputs use the same frame | Yes | Yes | Rejected | `ShaderGraphViewTests.tangentFrames` |
 | CPU noise identical to the GPU nodes | `ShaderNoise.value`, `.gradient`, `.noise`, `.fractal`, `.cellular`, `.hash`, `.interleavedGradient` | n/a | n/a | n/a | `ShaderNoiseTests` |
 
@@ -195,11 +195,16 @@ relative to the viewport (Three.js `viewportUV`, `viewportSize`,
 `viewportCoordinate`); `screenCoordinate` and `screenSize` cover the whole render
 target (Three.js `screenCoordinate` and `screenSize`, with TSL's `screenUV` being
 `screenCoordinate / screenSize`). Post-processing covers its whole output, so the
-two sets agree there. These inputs and derivatives exist only where a rasterizer
-shades a pixel grid: raster surfaces and post-processing. A path at its second
-bounce has no pixel, so `PathTracingScene` rejects such graphs with
-`Failure.unsupported`, naming the node. Compute and vertex stages reject them
-with `MaterialGraph.Failure.unavailable`.
+two sets agree there. Raster surfaces and post-processing shade a pixel grid.
+A path stores the camera sample's pixel and image size on the ray and keeps
+them after a bounce, so `screenUV`, `viewportSize`, `screenCoordinate` and
+`screenSize` match that pixel. Derivatives, stored viewport textures,
+soft-particle fade and directional shadow visibility stay raster-only, and
+`PathTracingScene` rejects those graphs. Compute and vertex stages reject
+screen coordinates with `MaterialGraph.Failure.unavailable`.
+`ShaderDisplayClock.advance` steps every attached uniform clock.
+`FrostfieldSceneView.graphClocks(_:)` does that from the display interval.
+An empty list leaves clocks unchanged.
 
 **Parallax.** The generated helper marches a fixed number of layers and has a
 single return at its end. A view at or below the surface, a nonpositive or
