@@ -47,16 +47,16 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`lights-shadows`](#lights-shadows) | 22 | 3 | 0 | 7 | 0 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 1 | 2 | 1 |
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
-| [`loaders-assets`](#loaders-assets) | 5 | 1 | 1 | 32 | 9 | 5 | 1 | 2 | 4 |
+| [`loaders-assets`](#loaders-assets) | 5 | 1 | 1 | 33 | 9 | 4 | 1 | 2 | 4 |
 | [`post-processing`](#post-processing) | 7 | 4 | 1 | 29 | 5 | 0 | 6 | 7 | 1 |
 | [`effects-misc`](#effects-misc) | 2 | 2 | 0 | 7 | 2 | 1 | 0 | 2 | 6 |
 | [`path-tracing`](#path-tracing) | 0 | 0 | 0 | 1 | 0 | 1 | 12 | 4 | 0 |
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 8 | 3 | 1 | 2 | 1 | 5 | 2 | 3 | 2 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **196** | **60** | **13** | **119** | **22** | **27** | **32** | **33** | **22** |
+| **Total** | **196** | **60** | **13** | **120** | **22** | **26** | **32** | **33** | **22** |
 
-347 of 524 capabilities are complete, with 115 partial and 62 missing.
+348 of 524 capabilities are complete, with 115 partial and 61 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -606,7 +606,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Other DCC and CAD importers | `ColladaLoader`, `TDSLoader`, `VRMLLoader`, `LWOLoader`, `LDrawLoader`, `ThreeMFLoader`, `Rhino3dmLoader`, `GCodeLoader`, `MD2Loader` | — | ❌ | The listed Three.js formats are missing. Frostfield separately imports Alembic meshes through ModelIO. `ModelIOSceneLoaderTests`. [Format evidence](../evidence/formats.md) |
 | Point-cloud, volume and science importers | `PCDLoader`, `XYZLoader`, `VTKLoader`, `PDBLoader`, `NRRDLoader`, `VOXLoader` | `PCDLoader.load`, `XYZLoader.load`, `VTKLoader.load`, `PDBLoader.load`, `NRRDLoader.load`, `VOXLoader.load` | ✅ | Imports PCD and XYZ points, VTK legacy and XML surfaces, PDB atoms and bonds, embedded scalar NRRD volumes and static MagicaVoxel scenes. [PCD](../evidence/pcd-import.md) · [XYZ](../evidence/xyz-import.md) · [Legacy VTK](../evidence/vtk-legacy-import.md) · [XML VTK](../evidence/vtk-xml-import.md) · [PDB](../evidence/pdb-import.md) · [NRRD](../evidence/nrrd-import.md) · [VOX](../evidence/vox-import.md) |
 | SVG path import | `SVGLoader` | `SVGLoader.load`, `SVGLoader.Element.fillGeometry`, `SVGLoader.Element.strokeGeometry`, `SVGLoader.Element.prepareGradientFill` | ✅ | Path commands, nested transforms, stylesheets, local references, solid and gradient fills, clipped joins and path-relative stroke UVs. The r187 tiger loads with its standard SVG 1.1 public header. External entities and custom DTDs are rejected. [SVG path evidence](../evidence/svg-path-import.md) · [Gradient evidence](../evidence/svg-gradient-import.md) · [Stroke evidence](../evidence/svg-stroke-import.md) |
-| Fonts | `FontLoader`, `TTFLoader` | — | ❌ |  |
+| Fonts | `FontLoader`, `TTFLoader` | `FontFile.fonts(data:size:)` | ✅ | Loads every face in a TrueType or OpenType file, including collections, at a chosen point size. `TextOutline` and `MeshGeometry.text` then shape the outlines. Typeface.js JSON is not a container. `FontFileTests`. [Font evidence](../evidence/fonts.md) |
 | BVH motion capture | `BVHLoader` | `BVHLoader.load`, `BVHLoader.parse`, `AnimationMixer` | ✅ | Reads a joint hierarchy, end sites, authored frame timing and ordered channels into a clip playable by stable scene node IDs. The loader preserves source coordinates and supports independent translation and rotation tracks. `BVHLoaderTests`. [Motion capture evidence](../evidence/bvh-motion-capture.md) |
 | MaterialX import | `MaterialXLoader` | — | ❌ |  |
 | Radiance HDR (RGBE) | `HDRLoader`, `HDRCubeTextureLoader` | `TextureLoader.loadHighDynamicRange(data:precision:mipmapped:)`, `EnvironmentLighting(queue:radianceHDR:settings:)`, `CubeTextureLoader.loadHighDynamicRange(data:precision:mipmapped:)` | ✅ | General RGBE images up to 8,192 per side and 16,777,216 pixels, decoded as half or float. Environment helpers take 2:1 panoramas. Six-file or six-image cubemaps keep half or full float. `HighDynamicRangeImageTests`, `CubeTextureLoaderTests`. [Format evidence](../evidence/formats.md) |
