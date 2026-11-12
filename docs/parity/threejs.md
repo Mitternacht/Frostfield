@@ -43,7 +43,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 2 | 1 | 0 |
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 2 | 3 | 1 |
 | [`materials-textures`](#materials-textures) | 38 | 14 | 0 | 4 | 1 | 0 | 1 | 2 | 1 |
-| [`shader-authoring`](#shader-authoring) | 25 | 17 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
+| [`shader-authoring`](#shader-authoring) | 26 | 17 | 5 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 22 | 3 | 0 | 7 | 0 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 1 | 2 | 1 |
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 8 | 3 | 1 | 2 | 1 | 5 | 2 | 3 | 2 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **196** | **60** | **13** | **120** | **22** | **26** | **32** | **33** | **22** |
+| **Total** | **197** | **60** | **12** | **120** | **22** | **26** | **32** | **33** | **22** |
 
-348 of 524 capabilities are complete, with 115 partial and 61 missing.
+349 of 524 capabilities are complete, with 115 partial and 60 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -384,7 +384,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Custom lighting models | `LightingModel`, `setupLightingModel`, BRDF nodes | — | ❌ | BRDF helpers are internal MSL |
 | Node labels and isolation | `label()`, `setName()`, `context()`, `isolate()` | `ShaderValue.named(_:)`, `SurfaceShaderGraph.labels` | 🟡 | Labels appear in generated MSL comments and diagnostics; no context or isolate |
 | Compute shaders | `compute()`, `Renderer.compute` | `TextureShaderGraph(building:)`, `BufferShaderGraph(fieldCount:building:)`, `ShaderTextureGenerator(graph:device:)`, `ShaderBufferKernel(graph:device:)`, `ShaderMaterialMaps(queue:width:height:heightScale:building:)` | ✅ | Per-texel texture generation (with mips) and per-element float4 buffer updates; pipelines cached, uniform edits reuse them; `ComputeShaderGraphTests`, `BufferShaderGraphTests`, `ShaderMaterialMapsTests`; [shader-graphs](../evidence/shader-graphs.md) |
-| Indirect compute dispatch | `IndirectStorageBufferAttribute` | — | ❌ |  |
+| Indirect compute dispatch | `IndirectStorageBufferAttribute` | `ShaderBufferKernel.encode(indirect:from:to:commandBuffer:)`, `ShaderBufferKernel.IndirectArguments` | ✅ | A buffer graph dispatches from a 16-byte record holding three threadgroup counts and an element count. An earlier encoder in the same command buffer can write that record. The kernel writes only elements that fit in the source and destination, and the direct element-count dispatch is unchanged. `IndirectDispatchTests`, `BufferShaderGraphTests`. [Shader graph evidence](../evidence/shader-graphs.md) |
 | Storage buffers and textures | `storage()`, `StorageBufferAttribute`, `StorageTexture`, `textureStore()` | `ShaderBufferKernel.encode(elementCount:from:to:commandBuffer:)`, `ShaderTextureGenerator.encode(into:commandBuffer:)` | 🟡 | Buffer graphs rewrite each element's own 1–4 float4 fields into a second buffer; texture graphs write one texel each; no reads of other elements, scatter writes or `textureStore`; `BufferShaderGraphTests`, `ComputeShaderGraphTests` |
 | Attribute and instanced arrays | `attributeArray()`, `instancedArray()` | `ShaderParticleSystem(device:capacity:simulation:initial:)` | 🟡 | Only `ShaderParticleSystem` draws one quad per graph-updated buffer element; mesh materials cannot read compute buffers; `ShaderParticleSystemTests` |
 | Compute built-ins, shared memory, atomics and subgroups | `globalId`, `workgroupArray`, `atomicAdd`, `subgroupAdd` | `MaterialGraph.Input.elementIndex`, `MaterialGraph.Input.gridUV` | 🟡 | Element index and count, texel UV and size only; no workgroup memory, barriers, atomics or subgroup operations |

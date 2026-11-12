@@ -43,6 +43,7 @@ draws them as soft additive quads that test against scene depth, and a
 | Post-processing graphs and a composable chain | `PostProcessGraph`, `PostProcessPass`, `PostProcessChain` | `PostProcessGraphTests`, `PostProcessChainTests` |
 | Graph-simulated GPU particles drawn as soft quads | `ShaderParticleSystem` | `ShaderParticleSystemTests` |
 | Compute graphs that generate textures, PBR maps, and buffer updates | `TextureShaderGraph`, `ShaderTextureGenerator`, `ShaderMaterialMaps`, `BufferShaderGraph`, `ShaderBufferKernel` | `ComputeShaderGraphTests`, `ShaderMaterialMapsTests`, `BufferShaderGraphTests` |
+| Indirect buffer-graph dispatch | `ShaderBufferKernel.encode(indirect:from:to:commandBuffer:)`, `ShaderBufferKernel.IndirectArguments` | `IndirectDispatchTests` |
 | Inspectable Metal and diagnostics | `metalFunction(named:)`, `metalVertexFunction(named:)`, `supportSource`, compiler errors that quote the generated line | `ShaderGraphLanguageTests`, `ComputeShaderGraphTests` |
 | One compile per generated source and device | `ShaderLibraryCache` (package) | Compile counts unchanged after uniform edits and scene re-preparation |
 | Branches, loops, oscillators, coordinate utilities, triplanar and parallax mapping, derivatives, matrices, bit operations, dithering, the graph clock, camera, model and screen inputs, and CPU noise | See [Shader graph language](graphlang.md) | `ShaderControlFlowTests`, `ShaderPatternTests`, `ShaderNoiseTests`, `ShaderGraphInputTests` |
@@ -50,6 +51,8 @@ draws them as soft additive quads that test against scene depth, and a
 Each generated statement ends with a `// node N` marker and optional label, so a
 Metal compiler error names the node it came from. The Lab's **Metal** button
 shows the generated surface and vertex functions for the selected object.
+
+`ShaderBufferKernel.encode(indirect:)` reads a 16-byte record: three threadgroup counts, then the element count. Metal uses the counts for the dispatch, and the kernel uses the element count, capped to the space in the source and destination. A compute encoder earlier in the same command buffer can write the record. The threadgroup is `indirectPipelineState.threadExecutionWidth` wide and one thread tall. The y and z counts should be 1, because the element index is the grid's x index. Passing an element count to `encode(elementCount:)` still dispatches that count directly.
 
 Uniform edits never rebuild a pipeline. Raster draws copy the current values
 into each draw. The path tracer copies them into each dispatch and rejects stale

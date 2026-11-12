@@ -252,9 +252,35 @@ public final class ShaderBufferKernel: Sendable {
     public let device: any MTLDevice
     /// The prepared pipeline. It stays the same for the kernel's lifetime.
     public let pipelineState: any MTLComputePipelineState
+    /// The pipeline used by an indirect dispatch. Its threadgroup width is the width the argument buffer must cover.
+    public let indirectPipelineState: any MTLComputePipelineState
     private let layout: ShaderComputeResources
 
     private static let kernelName = "frostfield_buffer_graph_kernel"
+    private static let indirectKernelName = "frostfield_buffer_graph_kernel_indirect"
+
+    /// Threadgroup counts followed by the element count, in that order. Metal reads the first three fields.
+    /// `threadgroupsY` and `threadgroupsZ` are 1 because the kernel uses the grid's x index as the element index.
+    /// `threadgroupsX` counts groups of `indirectPipelineState.threadExecutionWidth` threads.
+    public struct IndirectArguments: Sendable, Equatable {
+        public var threadgroupsX: UInt32
+        public var threadgroupsY: UInt32
+        public var threadgroupsZ: UInt32
+        public var elementCount: UInt32
+
+        /// Covers `elementCount` elements with groups of `threadgroupWidth` threads.
+        public init(elementCount: Int, threadgroupWidth: Int) throws {
+            guard (0...ShaderBufferKernel.maximumElementCount).contains(elementCount), threadgroupWidth > 0 else {
+                throw ShaderComputeFailure.indirectArguments
+            }
+            let width = UInt32(threadgroupWidth)
+            let count = UInt32(elementCount)
+            self.threadgroupsX = count == 0 ? 0 : (count + width - 1) / width
+            self.threadgroupsY = 1
+            self.threadgroupsZ = 1
+            self.elementCount = count
+        }
+    }
 
     /// Compiles the graph, or reuses the pipeline already compiled for the same
     /// generated source on this device. Compiler errors name the generated line.
@@ -296,9 +322,39 @@ public final class ShaderBufferKernel: Sendable {
                 destination[base + field] = fields[field];
             }
         }
+
+        // dispatch.xyz is the Metal threadgroup count. dispatch.w is the authored element count.
+        kernel void \(Self.indirectKernelName)(
+            device const float4* source [[buffer(0)]],
+            device float4* destination [[buffer(1)]],
+            constant uint4& dispatch [[buffer(2)]],
+            constant uint& capacity [[buffer(3)]]\(layout.kernelParameters(firstBuffer: 4, firstTexture: 0))
+            uint element [[thread_position_in_grid]]
+        ) {
+            uint count = min(dispatch.w, capacity);
+            if (element >= count) {
+                return;
+            }
+            FrostfieldComputeInput input = {};
+            input.elementIndex = float(element);
+            input.elementCount = float(count);
+            uint base = element * \(fields)u;
+            for (uint field = 0; field < \(fields)u; ++field) {
+                input.fields[field] = source[base + field];
+            }
+            \(layout.initializer)
+            float4 fields[4] = { input.fields[0], input.fields[1], input.fields[2], input.fields[3] };
+            frostfield_buffer_graph(input, resources, fields);
+            for (uint field = 0; field < \(fields)u; ++field) {
+                destination[base + field] = fields[field];
+            }
+        }
         """
         pipelineState = try ShaderComputeCache.pipeline(
             source: source, function: Self.kernelName, label: "Frostfield buffer graph", device: device
+        )
+        indirectPipelineState = try ShaderComputeCache.pipeline(
+            source: source, function: Self.indirectKernelName, label: "Frostfield indirect buffer graph", device: device
         )
         self.graph = graph
         self.device = device
@@ -351,6 +407,57 @@ public final class ShaderBufferKernel: Sendable {
             destinationOffset: destinationOffset, uniforms: uniforms, textures: textures, commandBuffer: commandBuffer, timing: timing
         )
         return timing
+    }
+
+    /// Dispatches the graph with threadgroup counts stored in `arguments`.
+    ///
+    /// The buffer holds one ``IndirectArguments`` value at `argumentsOffset`: three threadgroup
+    /// counts, then the element count. A previous encoder in this command buffer may write that
+    /// record. The kernel writes only elements that fit in both buffers, and reads the count from
+    /// the buffer rather than from the CPU. `threadgroupsY` and `threadgroupsZ` should be 1.
+    public func encode(
+        indirect arguments: any MTLBuffer, argumentsOffset: Int = 0,
+        from source: any MTLBuffer, sourceOffset: Int = 0,
+        to destination: any MTLBuffer, destinationOffset: Int = 0,
+        uniforms: ShaderUniforms? = nil, textures: [String: any MTLTexture] = [:],
+        commandBuffer: any MTLCommandBuffer
+    ) throws {
+        try ShaderComputeResources.validate(commandBuffer, device: device)
+        guard source.device === device, destination.device === device, arguments.device === device else {
+            throw Failure.wrongDevice
+        }
+        guard source !== destination, source !== arguments, destination !== arguments else { throw Failure.bufferAliasing }
+        guard arguments.storageMode != .memoryless else { throw Failure.indirectArguments }
+        guard argumentsOffset >= 0, argumentsOffset.isMultiple(of: 16),
+              argumentsOffset <= arguments.length - MemoryLayout<IndirectArguments>.stride else {
+            throw Failure.indirectArguments
+        }
+        for (role, buffer, offset) in [("source", source, sourceOffset), ("destination", destination, destinationOffset)] {
+            guard offset >= 0, offset.isMultiple(of: 16), offset <= buffer.length else {
+                throw offset >= 0 && offset.isMultiple(of: 16)
+                    ? Failure.bufferTooSmall(role, required: offset, available: buffer.length)
+                    : Failure.bufferOffset(offset)
+            }
+        }
+        let values = try ShaderComputeResources.uniformValues(for: graph.uniforms, from: uniforms)
+        let inputs = try ShaderComputeResources.textures(for: graph.textures, from: textures, device: device, output: nil)
+        let sourceRoom = (source.length - sourceOffset) / graph.elementStride
+        let destinationRoom = (destination.length - destinationOffset) / graph.elementStride
+        var capacity = UInt32(min(sourceRoom, destinationRoom, Self.maximumElementCount))
+        guard let encoder = commandBuffer.makeComputeCommandEncoder() else { throw Failure.encoder("compute") }
+        encoder.label = "Frostfield indirect buffer graph"
+        encoder.setComputePipelineState(indirectPipelineState)
+        encoder.setBuffer(source, offset: sourceOffset, index: 0)
+        encoder.setBuffer(destination, offset: destinationOffset, index: 1)
+        encoder.setBuffer(arguments, offset: argumentsOffset, index: 2)
+        encoder.setBytes(&capacity, length: MemoryLayout<UInt32>.stride, index: 3)
+        layout.bind(uniforms: values, textures: inputs, firstBuffer: 4, firstTexture: 0, encoder: encoder)
+        let width = indirectPipelineState.threadExecutionWidth
+        encoder.dispatchThreadgroups(
+            indirectBuffer: arguments, indirectBufferOffset: argumentsOffset,
+            threadsPerThreadgroup: MTLSize(width: width, height: 1, depth: 1)
+        )
+        encoder.endEncoding()
     }
 
     private func encode(
@@ -412,6 +519,7 @@ public enum ShaderComputeFailure: LocalizedError, Equatable {
     case bufferAliasing
     case bufferOffset(Int)
     case bufferTooSmall(String, required: Int, available: Int)
+    case indirectArguments
     case encoder(String)
     case resource(String)
     case execution(String)
@@ -447,6 +555,8 @@ public enum ShaderComputeFailure: LocalizedError, Equatable {
         case .bufferOffset(let offset): "Buffer offset \(offset) must be a nonnegative multiple of 16 bytes."
         case .bufferTooSmall(let role, let required, let available):
             "The \(role) buffer needs \(required) bytes from its offset but has \(available)."
+        case .indirectArguments:
+            "Indirect dispatch arguments need 16 bytes at a 16-byte offset in a tracked buffer from this device."
         case .encoder(let kind): "Metal could not create a compute graph \(kind) encoder."
         case .resource(let name): "Metal could not allocate \(name)."
         case .execution(let detail): "The GPU could not finish the compute graph. \(detail)"
@@ -748,6 +858,7 @@ enum ShaderComputeCache {
     private struct Key: Hashable {
         let device: UInt64
         let source: String
+        let function: String
     }
 
     private struct State {
@@ -761,7 +872,7 @@ enum ShaderComputeCache {
     static func pipeline(
         source: String, function name: String, label: String, device: any MTLDevice
     ) throws -> any MTLComputePipelineState {
-        let key = Key(device: device.registryID, source: source)
+        let key = Key(device: device.registryID, source: source, function: name)
         if let cached = state.withLock({ $0.pipelines[key] }), cached.device === device { return cached }
 
         let library: any MTLLibrary
