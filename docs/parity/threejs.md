@@ -52,11 +52,11 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`effects-misc`](#effects-misc) | 2 | 2 | 0 | 6 | 2 | 2 | 0 | 2 | 6 |
 | [`path-tracing`](#path-tracing) | 0 | 0 | 0 | 1 | 0 | 1 | 12 | 4 | 0 |
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
-| [`performance-scale`](#performance-scale) | 8 | 3 | 1 | 1 | 1 | 6 | 1 | 3 | 3 |
+| [`performance-scale`](#performance-scale) | 8 | 3 | 1 | 2 | 1 | 5 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **196** | **60** | **13** | **116** | **22** | **30** | **31** | **33** | **23** |
+| **Total** | **196** | **60** | **13** | **117** | **22** | **29** | **31** | **33** | **23** |
 
-343 of 524 capabilities are complete, with 115 partial and 66 missing.
+344 of 524 capabilities are complete, with 115 partial and 65 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -855,7 +855,7 @@ Three.js has no capability in this tier.
 | Automatic batching | `SceneOptimizer` | — | ❌ |  |
 | Meshlet pipeline | `MeshletDrawingPipeline` | — | ❌ | Metal mesh shaders are unused |
 | Visibility buffer | `VisibilityBufferDrawingPipeline` | — | ❌ |  |
-| CPU and GPU sorting | `BitonicSort`, `SortUtils.radixSort` | — | ❌ |  |
+| CPU and GPU sorting | `BitonicSort`, `SortUtils.radixSort` | `RadixSort.indices(of:ascending:)`, `BitonicSort.encode(keys:into:ascending:commandBuffer:)` | ✅ | The CPU sort is a stable four-pass radix order of finite float keys. Negative zero sorts before positive zero. The GPU bitonic sort matches that order for distinct keys and can run descending; equal keys are not kept in their original GPU order. Both accept at most 2²⁰ keys. `SortTests`. [Scale evidence](../evidence/scale-and-dynamics.md) |
 | GPGPU texture simulation | `GPUComputationRenderer` | `ShaderTextureGenerator(graph:device:)`, `ShaderTextureGenerator.encode(into:commandBuffer:uniforms:textures:)`, `ShaderBufferKernel(graph:device:)` | 🟡 | Graph kernels read declared textures or a source buffer and write another, so callers ping-pong state; buffer ping-pong is tested, texture feedback is not; no variable manager with dependencies and automatic swaps; `ComputeShaderGraphTests`, `BufferShaderGraphTests`; [shader-graphs](../evidence/shader-graphs.md) |
 | 3D Tiles creased normals | `TileCreasedNormalsPlugin` | — | ❌ |  |
 
