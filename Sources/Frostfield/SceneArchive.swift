@@ -28,7 +28,7 @@ import simd
 public struct SceneArchive: Sendable, Equatable {
     /// The newest manifest version this build reads and writes. Captures use the
     /// earliest version that can store the scene.
-    public static let formatVersion = 37
+    public static let formatVersion = 38
     /// Maximum root-to-leaf node count. Keeps nested scene values safe to release
     /// on a Swift task stack even though archive traversal itself is iterative.
     public static let maximumHierarchyDepth = 1_024
@@ -248,6 +248,11 @@ public struct SceneArchive: Sendable, Equatable {
         }
         if document.version < 37, document.meshes.contains(where: { $0.renderState?.shadowSide != nil }) {
             throw Failure.decoding("a shadow face side requires archive version 37")
+        }
+        if document.version < 38, document.materials.contains(where: {
+            $0.classic?.dithering == true || $0.physicallyBased?.dithering == true
+        }) {
+            throw Failure.decoding("a dithered material requires archive version 38")
         }
         let rotation = (document.scene.environmentEulerRotation ?? .zero) + SIMD3(0, document.scene.environmentRotation, 0)
         guard rotation.isFiniteVector else { throw Failure.decoding("scene environment rotation angles must be finite") }
@@ -650,6 +655,8 @@ struct ArchivePBR: Codable {
     var isVisible: Bool? = nil
     /// Nil means the material accepts fog. False is stored from archive version 36.
     var fog: Bool? = nil
+    /// Nil means no material dither. True is stored from archive version 38.
+    var dithering: Bool? = nil
 }
 
 struct ArchiveEnvironment: Codable {
@@ -815,7 +822,10 @@ private struct ArchiveCapture {
         let needsVersion2 = clips.contains { $0.propertyTracks != nil } || materials.contains { $0.liveFactors != nil }
         let rig = photometry.rig(lightRig, writer: &writer)
         let lighting = photometry.record
-        let version = if meshes.contains(where: { $0.renderState?.shadowSide != nil }) { 37 }
+        let version = if materials.contains(where: {
+            $0.classic?.dithering == true || $0.physicallyBased?.dithering == true
+        }) { 38 }
+        else if meshes.contains(where: { $0.renderState?.shadowSide != nil }) { 37 }
         else if materials.contains(where: {
             $0.classic?.isVisible == false || $0.classic?.fog == false
                 || $0.physicallyBased?.isVisible == false || $0.physicallyBased?.fog == false
@@ -1122,6 +1132,7 @@ private struct ArchiveCapture {
             wireframe: material.wireframe ? true : nil,
             isVisible: material.isVisible ? nil : false,
             fog: material.fog ? nil : false,
+            dithering: material.dithering ? true : nil,
             depthPacking: material.depthPacking, distanceOutput: material.distanceOutput == .red ? .red : nil,
             bumpMap: try material.bumpMap.map { .init(texture: try archiveBinding($0.texture, "classic bump"), scale: $0.scale) },
             normalMap: try binding(material.normalMap, "classic normal"),
@@ -1255,7 +1266,8 @@ private struct ArchiveCapture {
             wireframe: material.wireframe ? true : nil,
             flatShading: material.flatShading ? true : nil,
             isVisible: material.isVisible ? nil : false,
-            fog: material.fog ? nil : false
+            fog: material.fog ? nil : false,
+            dithering: material.dithering ? true : nil
         )
     }
 
@@ -1701,7 +1713,8 @@ private struct ArchiveLoader {
             surfaceTextures: try record.surfaceTextures?.mapValues { try texture($0) } ?? [:],
             wireframe: record.wireframe ?? false,
             isVisible: record.isVisible ?? true,
-            fog: record.fog ?? true
+            fog: record.fog ?? true,
+            dithering: record.dithering ?? false
         )
     }
 
@@ -1808,7 +1821,8 @@ private struct ArchiveLoader {
             wireframe: record.wireframe ?? false,
             flatShading: record.flatShading ?? false,
             isVisible: record.isVisible ?? true,
-            fog: record.fog ?? true
+            fog: record.fog ?? true,
+            dithering: record.dithering ?? false
         )
     }
 

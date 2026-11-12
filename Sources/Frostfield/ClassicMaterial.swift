@@ -180,6 +180,9 @@ public struct ClassicMaterial {
     /// When false, a fog pass that samples this material's exclusion mask leaves the pixel unchanged.
     /// Defaults to true, like Three.js `Material.fog`.
     public let fog: Bool
+    /// Adds the r187 material dither when this mesh is drawn into an 8-bit color target.
+    /// A float target leaves the color unchanged. Defaults to false.
+    public let dithering: Bool
     /// Shades with the triangle's face normal, like Three.js `flatShading`.
     public let flatShading: Bool
     /// Optional depth packing for the depth model. Nil uses near-white grayscale.
@@ -245,7 +248,8 @@ public struct ClassicMaterial {
         toneMapped: Bool = true,
         wireframe: Bool = false,
         isVisible: Bool = true,
-        fog: Bool = true
+        fog: Bool = true,
+        dithering: Bool = false
     ) throws {
         func nonnegative(_ value: SIMD3<Float>) -> Bool { (0..<3).allSatisfy { value[$0].isFinite && value[$0] >= 0 } }
         guard nonnegative(color) else { throw Failure.invalidValue("color") }
@@ -336,6 +340,7 @@ public struct ClassicMaterial {
         self.wireframe = wireframe
         self.isVisible = isVisible
         self.fog = fog
+        self.dithering = dithering
         self.flatShading = flatShading
         self.depthPacking = depthPacking
         self.distanceOutput = distanceOutput

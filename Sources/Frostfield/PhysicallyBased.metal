@@ -3,4 +3,5 @@
 #include "FrostfieldScreenSpace.h"
 using namespace metal;
 
+#include "FrostfieldDithering.h"
 #include "PhysicallyBasedShading.h"

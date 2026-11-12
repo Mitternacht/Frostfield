@@ -79,6 +79,8 @@ public final class MeshRenderer {
     public let device: any MTLDevice
     /// The format at color attachment zero.
     public let colorPixelFormat: MTLPixelFormat
+    /// 0 keeps the fragment color. 1 dithers a linear 8-bit target. 2 dithers an sRGB target.
+    private let materialDitherMode: UInt32
     /// Pipeline color formats in Metal attachment index order.
     public let colorPixelFormats: [MTLPixelFormat]
     /// The named PBR layout, when this renderer was prepared with one.
@@ -814,6 +816,12 @@ public final class MeshRenderer {
         self.depthMode = depthMode
         self.device = device
         self.colorPixelFormat = colorPixelFormat
+        let dithering = switch preparedMaterial {
+        case .classic(let material): material.dithering
+        case .physicallyBased(let material): material.dithering
+        default: false
+        }
+        materialDitherMode = Self.materialDitherMode(format: colorPixelFormat, enabled: dithering)
         self.colorPixelFormats = colorPixelFormats
         self.surfaceRenderTargets = surfaceRenderTargets
         self.sourceGeometry = geometry
@@ -3021,6 +3029,10 @@ public final class MeshRenderer {
         encoder.setFrontFacing(draw.frontFacing)
         encoder.setCullMode(renderState.cullMode)
         setDepthBias(on: encoder)
+        if classic != nil || physicallyBased != nil {
+            var dither = SIMD2<Float>(graphView.targetSize.y, Float(materialDitherMode))
+            encoder.setFragmentBytes(&dither, length: MemoryLayout<SIMD2<Float>>.stride, index: 29)
+        }
         if case .custom(let function) = renderState.blending {
             let constant = function.constantColor
             encoder.setBlendColor(red: constant.x, green: constant.y, blue: constant.z, alpha: constant.w)
@@ -3827,6 +3839,10 @@ public final class MeshRenderer {
         let screenSpace = try String(contentsOf: screenURL, encoding: .utf8)
         let lightProbe = try String(contentsOf: probeURL, encoding: .utf8)
         let shading = try MaterialExtensionsSource.splice(into: String(contentsOf: pbrURL, encoding: .utf8))
+        guard let ditherURL = Bundle.module.url(forResource: "FrostfieldDithering", withExtension: "h") else {
+            throw Failure.library("The package is missing FrostfieldDithering.h.")
+        }
+        let dithering = try String(contentsOf: ditherURL, encoding: .utf8)
         let graphSource: String
         if let graph {
             let function = try graph.metalFunction(named: "frostfield_generated_surface")
@@ -3878,6 +3894,7 @@ public final class MeshRenderer {
         \(lightProbe)
         \(graphSource)
         \(targets?.metalSource ?? "")
+        \(dithering)
         \(shading)
         """
         do {
@@ -3899,6 +3916,10 @@ public final class MeshRenderer {
         }
         let function = try graph.metalFunction(named: "frostfield_generated_surface")
         let shading = try MaterialExtensionsSource.splice(into: String(contentsOf: pbrURL, encoding: .utf8))
+        guard let ditherURL = Bundle.module.url(forResource: "FrostfieldDithering", withExtension: "h") else {
+            throw Failure.library("The package is missing FrostfieldDithering.h.")
+        }
+        let dithering = try String(contentsOf: ditherURL, encoding: .utf8)
         let source = """
         #include <metal_stdlib>
         using namespace metal;
@@ -3910,6 +3931,7 @@ public final class MeshRenderer {
         \(try String(contentsOf: shadowURL, encoding: .utf8))
         \(try String(contentsOf: screenURL, encoding: .utf8))
         \(try String(contentsOf: probeURL, encoding: .utf8))
+        \(dithering)
         \(shading)
         \(try String(contentsOf: classicURL, encoding: .utf8))
         """
@@ -4132,6 +4154,15 @@ public final class MeshRenderer {
         }
         texture.label = "Frostfield unused punctual shadow array"
         return texture
+    }
+
+    private static func materialDitherMode(format: MTLPixelFormat, enabled: Bool) -> UInt32 {
+        guard enabled else { return 0 }
+        switch format {
+        case .rgba8Unorm, .bgra8Unorm: return 1
+        case .rgba8Unorm_srgb, .bgra8Unorm_srgb: return 2
+        default: return 0
+        }
     }
 
     private static func makeBuffer<T>(_ values: [T], on device: any MTLDevice, label: String) throws -> any MTLBuffer {

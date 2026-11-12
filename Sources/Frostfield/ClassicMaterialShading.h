@@ -200,6 +200,7 @@ fragment float4 frostfield_mesh_classic(
     device const float4* probeGrids [[buffer(5)]],
     constant float4x4& relativeLightModel [[buffer(27)]],
     constant float4* relativeLightPositions [[buffer(28)]],
+    constant float2& ditherTarget [[buffer(29)]],
     texture2d<float> colorMap [[texture(0)]], sampler colorSampler [[sampler(0)]],
     depth2d_array<float> shadowMap [[texture(1)]],
     texture2d<float> alphaMap [[texture(2)]], sampler alphaSampler [[sampler(2)]],
@@ -416,11 +417,19 @@ fragment float4 frostfield_mesh_classic(
         }
     }
     color = min(max(color, 0.0f), float3(maxHalf));
+    float4 result;
     if (frostfield_alpha_to_coverage) {
-        return float4(color, alpha);
+        result = float4(color, alpha);
+    } else if (frostfield_classic_blends) {
+        result = float4(color * alpha, alpha);
+    } else {
+        result = float4(color, 1.0f);
     }
-    if (frostfield_classic_blends) {
-        return float4(color * alpha, alpha);
+    if (ditherTarget.y != 0.0f && result.a > 0.0f) {
+        float2 fragmentCoordinate = float2(input.position.x, ditherTarget.x - input.position.y);
+        result.rgb = ditherTarget.y == 2.0f
+            ? frostfieldR187DitherOutput(result.rgb, fragmentCoordinate, 2u)
+            : frostfieldR187Dithering(result.rgb, fragmentCoordinate);
     }
-    return float4(color, 1.0f);
+    return result;
 }

@@ -1680,18 +1680,28 @@ static float4 pbrUnlit(PBRSurface surface, bool useGraphEmission) {
     return float4(color * opacity, opacity);
 }
 
+static float4 frostfieldMaterialDither(float4 color, float4 position, float2 target) {
+    uint mode = uint(target.y);
+    if (mode == 0u || !(color.a > 0.0f)) { return color; }
+    float2 fragmentCoordinate = float2(position.x, target.x - position.y);
+    float3 shifted = mode == 2u
+        ? frostfieldR187DitherOutput(color.rgb, fragmentCoordinate, 2u)
+        : frostfieldR187Dithering(color.rgb, fragmentCoordinate);
+    return float4(shifted, color.a);
+}
+
 #ifndef FROSTFIELD_PBR_HELPERS_ONLY
 
 #if defined(FROSTFIELD_PBR_LOG_DEPTH)
 #define FROSTFIELD_PBR_COLOR_OUTPUT FrostfieldLogColor
-#define FROSTFIELD_PBR_COLOR_RESULT(color, surface) FrostfieldLogColor{(color), frostfieldLogDepth(input.position, logDepthRange)}
+#define FROSTFIELD_PBR_COLOR_RESULT(color, surface) FrostfieldLogColor{frostfieldMaterialDither(color, input.position, ditherTarget), frostfieldLogDepth(input.position, logDepthRange)}
 #define FROSTFIELD_PBR_ATTRIBUTE_OUTPUT FrostfieldLogAttributes
 #define FROSTFIELD_PBR_ATTRIBUTE_RESULT(attributes) FrostfieldLogAttributes{(attributes), frostfieldLogDepth(input.position, logDepthRange)}
 #define FROSTFIELD_PBR_DEPTH_INPUT FROSTFIELD_LOG_DEPTH_INPUT
 #else
 #ifndef FROSTFIELD_PBR_COLOR_OUTPUT
 #define FROSTFIELD_PBR_COLOR_OUTPUT float4
-#define FROSTFIELD_PBR_COLOR_RESULT(color, surface) (color)
+#define FROSTFIELD_PBR_COLOR_RESULT(color, surface) frostfieldMaterialDither(color, input.position, ditherTarget)
 #endif
 #define FROSTFIELD_PBR_ATTRIBUTE_OUTPUT uint2
 #define FROSTFIELD_PBR_ATTRIBUTE_RESULT(attributes) (attributes)
@@ -1738,6 +1748,7 @@ static void frostfieldApplyFlatShading(
 fragment FROSTFIELD_PBR_COLOR_OUTPUT frostfield_mesh_pbr(
     FrostfieldPBRVaryings input [[stage_in]],
     bool front [[front_facing]],
+    constant float2& ditherTarget [[buffer(29)]],
     constant float4& parameters [[buffer(0)]],
     constant float4& light [[buffer(1)]],
     constant float4& settings [[buffer(2)]],
@@ -1857,6 +1868,7 @@ static inline float pbrDirectionalVisibility(
 fragment FROSTFIELD_PBR_COLOR_OUTPUT frostfield_mesh_pbr_shadowed(
     FrostfieldPBRVaryings input [[stage_in]],
     bool front [[front_facing]],
+    constant float2& ditherTarget [[buffer(29)]],
     constant float4& parameters [[buffer(0)]],
     constant float4& light [[buffer(1)]],
     constant float4& settings [[buffer(2)]],

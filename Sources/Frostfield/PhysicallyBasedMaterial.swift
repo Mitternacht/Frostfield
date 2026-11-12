@@ -541,6 +541,9 @@ public struct PhysicallyBasedMaterial {
     /// When false, a fog pass that samples this material's exclusion mask leaves the pixel unchanged.
     /// Defaults to true, like Three.js `Material.fog`.
     public let fog: Bool
+    /// Adds the r187 material dither when this mesh is drawn into an 8-bit color target.
+    /// A float target leaves the color unchanged. Defaults to false.
+    public let dithering: Bool
     /// Replaces the constant ambient fill with prefiltered diffuse and specular light.
     public let environment: Environment?
     public let clearcoat: Clearcoat?
@@ -774,7 +777,8 @@ public struct PhysicallyBasedMaterial {
         wireframe: Bool = false,
         flatShading: Bool = false,
         isVisible: Bool = true,
-        fog: Bool = true
+        fog: Bool = true,
+        dithering: Bool = false
     ) throws {
         guard !unlitUsesGraphEmission || (shadingModel == .unlit && surfaceGraph?.outputs.emission != nil) else {
             throw Failure.unlitGraphEmission
@@ -845,6 +849,7 @@ public struct PhysicallyBasedMaterial {
         self.flatShading = flatShading
         self.isVisible = isVisible
         self.fog = fog
+        self.dithering = dithering
         self.environment = environment
         self.clearcoat = clearcoat
         self.transmission = transmission

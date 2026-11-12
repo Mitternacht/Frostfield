@@ -64,6 +64,8 @@ struct ArchiveClassicMaterial: Codable {
     var isVisible: Bool? = nil
     /// Nil means the material accepts fog. False is stored from archive version 36.
     var fog: Bool? = nil
+    /// Nil means no material dither. True is stored from archive version 38.
+    var dithering: Bool? = nil
     var depthPacking: ClassicMaterial.DepthPacking?
     var distanceOutput: ClassicMaterial.DistanceOutput?
     var bumpMap: ArchivePBR.BumpMap?

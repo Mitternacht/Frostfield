@@ -6,5 +6,6 @@ using namespace metal;
 // threshold without compiling a second copy of the PBR fragment functions.
 #define FROSTFIELD_PBR_HELPERS_ONLY 1
 #include "FrostfieldScreenSpace.h"
+#include "FrostfieldDithering.h"
 #include "PhysicallyBasedShading.h"
 #include "ClassicMaterialShading.h"
