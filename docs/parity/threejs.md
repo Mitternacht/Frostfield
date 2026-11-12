@@ -42,7 +42,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`scene-graph`](#scene-graph) | 13 | 4 | 0 | 2 | 0 | 0 | 1 | 2 | 0 |
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 2 | 1 | 0 |
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 2 | 3 | 1 |
-| [`materials-textures`](#materials-textures) | 38 | 14 | 0 | 3 | 1 | 1 | 1 | 2 | 1 |
+| [`materials-textures`](#materials-textures) | 38 | 14 | 0 | 4 | 1 | 0 | 1 | 2 | 1 |
 | [`shader-authoring`](#shader-authoring) | 25 | 17 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 22 | 3 | 0 | 7 | 0 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 1 | 2 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 8 | 3 | 1 | 2 | 1 | 5 | 2 | 3 | 2 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **196** | **60** | **13** | **117** | **22** | **29** | **32** | **33** | **22** |
+| **Total** | **196** | **60** | **13** | **118** | **22** | **28** | **32** | **33** | **22** |
 
-345 of 524 capabilities are complete, with 115 partial and 64 missing.
+346 of 524 capabilities are complete, with 115 partial and 63 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -323,7 +323,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Procedural wood material | `WoodNodeMaterial` | `ProceduralSurface.Style.wood`, `ProceduralSurface.shade(_:u:v:seed:baseColor:)`, `ShaderGraphBuilder.woodLatewood(_:)` | ✅ | `shade` evaluates wood color, height, roughness and occlusion at any UV, and the texture bake uses that pattern. `woodLatewood` is the cubed ring term in a surface graph. `ProceduralSurfaceTests`, `ShaderPatternTests`. |
 | Car-paint flakes texture | `FlakesTexture` | `FlakesTexture(device:seed:settings:)` | ✅ | Seeded flake maps reproduce the r187 distribution and legacy normal encoding, with optional unit RGB encoding, wrapped edges and mips. Verified raster base and coat glints and path-traced first-hit normals. `FlakesTextureTests`. [Flake evidence](../evidence/flake-normal-textures.md) |
 | Fast subsurface scattering | `SubsurfaceScatteringShader` | `PhysicallyBasedMaterial.Subsurface`, `PhysicallyBasedMaterial.DiffuseTransmission` | 🟡 | Raster wrap and backlight approximations. The add-on’s Phong thickness shader and texture controls remain open. `TranslucencyTests`. |
-| Toon and cel shaders | `ToonShader1`, `ToonShaderHatching`, `ToonShaderDotted` | — | ❌ |  |
+| Toon and cel shaders | `ToonShader1`, `ToonShaderHatching`, `ToonShaderDotted` | `ToonShaders.directional(normal:refraction:base:lighting:)`, `ToonShaders.hatching(normal:fragment:base:lines:lighting:)`, `ToonShaders.dotted(normal:fragment:base:line:lighting:)`, `ToonShaders.evaluateOnGPU(_:device:)` | ✅ | The r187 fragment formulas, before `colorspace_fragment`. The light vector is used as stored. Hatching tests run in order and later lines overwrite earlier ones. Dots use the caller's fragment coordinate. The GPU evaluation matches the CPU formulas. `ToonShaderTests`. [Primitive evidence](../evidence/primitives.md) |
 
 ### Third-party ecosystem
 

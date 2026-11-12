@@ -182,6 +182,7 @@ point and spot lights) is byte-identical to the base commit 157bb26.
 | `.lambert` with scene lights, ambient, emissive and shadows | `MeshLambertMaterial` | `ClassicMaterialTests.lambertAndPhong`, `.shadowMaterial` |
 | `.phong(specular:shininess:)`, default specular `0x111111` decoded from sRGB | `MeshPhongMaterial` | `ClassicMaterialTests.lambertAndPhong`, `.phongDefaults` |
 | `.toon(gradient:)` | `MeshToonMaterial` | `ClassicMaterialTests.toonBands` |
+| `ToonShaders.directional`, `.hatching`, `.dotted`, `evaluateOnGPU` | `ToonShader1`, `ToonShaderHatching`, `ToonShaderDotted` before output color encoding | `ToonShaderTests` |
 | `.matcap(_:)` | `MeshMatcapMaterial` | `ClassicMaterialTests.matcap`, `.matcapViewDirection` |
 | `.normal` | `MeshNormalMaterial` | `ClassicMaterialTests.normalDepthDistance` |
 | `.depth` | `MeshDepthMaterial` (`BasicDepthPacking`) | `ClassicMaterialTests.normalDepthDistance` |
