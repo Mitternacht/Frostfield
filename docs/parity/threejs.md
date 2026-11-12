@@ -49,14 +49,14 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
 | [`loaders-assets`](#loaders-assets) | 5 | 1 | 1 | 31 | 10 | 5 | 1 | 2 | 4 |
 | [`post-processing`](#post-processing) | 7 | 4 | 1 | 29 | 5 | 0 | 5 | 7 | 2 |
-| [`effects-misc`](#effects-misc) | 1 | 3 | 0 | 6 | 2 | 2 | 0 | 2 | 6 |
+| [`effects-misc`](#effects-misc) | 2 | 2 | 0 | 6 | 2 | 2 | 0 | 2 | 6 |
 | [`path-tracing`](#path-tracing) | 0 | 0 | 0 | 1 | 0 | 1 | 12 | 4 | 0 |
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **186** | **69** | **14** | **112** | **26** | **30** | **25** | **38** | **24** |
+| **Total** | **187** | **68** | **14** | **112** | **26** | **30** | **25** | **38** | **24** |
 
-323 of 524 capabilities are complete, with 133 partial and 68 missing.
+324 of 524 capabilities are complete, with 132 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -719,7 +719,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 
 | Capability | Three.js API | Frostfield API | Status | Evidence / gaps |
 | --- | --- | --- | :---: | --- |
-| Fog (linear, exponential, height) | `Fog`, `FogExp2`, `fog()`, `exponentialHeightFogFactor` | `PostProcessGraph.depthFog`, `PostProcessGraph.exponentialDepthFog`, `PostProcessGraph.exponentialHeightFog`, `PathTracer.Fog` | 🟡 | Raster smooth range, squared exponential depth and analytic height fog. The path tracer also traces a homogeneous world box. A classic or physically based material can opt out when the fog pass sets `respectsMaterialFog`. Depth on blended surfaces remains open. `PostProcessGraphTests`, `PathMediaTests`. [Media evidence](../evidence/path-media.md) |
+| Fog (linear, exponential, height) | `Fog`, `FogExp2`, `fog()`, `exponentialHeightFogFactor` | `PostProcessGraph.depthFog`, `PostProcessGraph.exponentialDepthFog`, `PostProcessGraph.exponentialHeightFog`, `FogDepthCapture`, `PathTracer.Fog` | ✅ | Raster smooth range, squared exponential depth and analytic height fog. The path tracer also traces a homogeneous world box. A classic or physically based material can opt out when the fog pass sets `respectsMaterialFog`. `FogDepthCapture` stores the nearest depth of opaque and blended meshes, so a blended surface that did not write the color-pass depth fogs at its own distance. The pass fogs the composite pixel at that front surface. `FogDepthCaptureTests`, `PostProcessGraphTests`, `PathMediaTests`. [Media evidence](../evidence/path-media.md) |
 | Planar reflections | `reflector()` | `PlanarReflectorSet`, `PlanarReflection.encode`, `.encodeBounces`, `.MultisampleTargets`, `ShaderTexture.samplePlanarReflection()` | ✅ | Authored mirror nodes are discovered and bound per view, with oblique clipping and bounded bounces. Explicit captures also support multisample resolve, stored depth, mips, shadows and opaque transmission. [Reflection evidence](../evidence/planar-reflection.md) |
 | Volumetric raymarching | `VolumeNodeMaterial` | `PathTracer.Fog`, `PathTracer.Fog.MeshBoundary`, `PhysicallyBasedMaterial.VolumeScatter` | 🟡 | Path-traced participating fog in boxes and closed mesh regions, plus material volumes. Raster volume raymarching and programmable density fields remain open. `PathMediaTests`, `PathFogDensityTests`. |
 | Spatial audio | `AudioListener`, `PositionalAudio` | `SceneAudio`, `AudioDistanceModel`, `AudioCone`, `AudioAnalyser` | 🟡 | Scene-node sources, camera listener, HRTF and equal-power panning, playback rate, distance, cones and FFT. Stock per-source filter chains and complete playback controls remain open. `SpatialAudioTests`. [Scene evidence](../evidence/scenekit.md) |
