@@ -1505,8 +1505,19 @@ public final class MeshRenderer {
             )
             draw.suppressesShadows = !node.receivesShadow
             draw.indirectSource = indirectDraws[node.id]
-            let castsShadow = node.castsShadow && renderer.rawProgram == nil
-                && !renderer.isBlended && !renderer.requiresTransmissionBackdrop
+            let shadowSource = node.depthMesh ?? renderer
+            guard shadowSource.device === device else { throw Failure.wrongDevice }
+            let castsShadow = node.castsShadow && shadowSource.rawProgram == nil
+                && !shadowSource.isBlended && !shadowSource.requiresTransmissionBackdrop
+            let shadowPrepared: PreparedDraw? = if node.depthMesh == nil {
+                nil
+            } else {
+                try shadowSource.prepare(
+                    world: node.worldTransform, clipFromWorld: clipFromWorld, shadingCamera: shadingCamera,
+                    parameters: node.materialParameters, jointPalette: node.jointPalette,
+                    morphWeights: node.morphWeights, instances: node.instances, precise: precise
+                )
+            }
             let transmittedCaster: DirectionalTransmissionPass.Caster?
             if node.castsShadow, let shadowMap, shadowMap.transmissionLayers > 0,
                renderer.requiresTransmissionBackdrop || renderer.physicallyBased?.surfaceGraph?.hasCastShadowOutput == true {
@@ -1615,7 +1626,10 @@ public final class MeshRenderer {
             let environmentPipeline = try visible && sceneEnvironment.lighting != nil
                 ? colorRenderer.environmentPipeline(surfaceAttributes: surfaceAttributes) : nil
             draws.append(GraphDraw(
-                renderer: renderer, replacement: replacement, draw: draw, environmentPipeline: environmentPipeline,
+                renderer: renderer, replacement: replacement, draw: draw,
+                shadowRenderer: node.depthMesh == nil ? nil : shadowSource,
+                shadowDraw: shadowPrepared,
+                environmentPipeline: environmentPipeline,
                 shadowClips: shadowClips, transmittedCaster: transmittedCaster, punctualClips: punctualClips,
                 relativePunctualCaster: relativeWorld != nil, localBounds: localBounds, worldBounds: worldBounds,
                 visible: visible, order: order, batch: batch
@@ -1767,6 +1781,10 @@ public final class MeshRenderer {
             }
             let needsColors = draws[index].replacement?.renderer.readsVertexColors == true
             try renderer.acquireDrawInputs(&draws[index].draw, for: commandBuffer, requiringColors: needsColors)
+            if var shadow = draws[index].shadowDraw, let shadowRenderer = draws[index].shadowRenderer {
+                try shadowRenderer.acquireDrawInputs(&shadow, for: commandBuffer, requiringColors: false)
+                draws[index].shadowDraw = shadow
+            }
         }
         let motion = try motionVectors?.prepare(
             draws: scissorIsEmpty ? [] : draws.compactMap { $0.motionDraw(nodeID: nodes[$0.order.nodeIndex].id) },
@@ -1791,7 +1809,8 @@ public final class MeshRenderer {
                 }
                 let lightView = try? ViewFrustum(clipFromWorld: view)
                 for caster in draws where !caster.shadowClips.isEmpty && caster.transmittedCaster == nil {
-                    var draw = caster.draw
+                    var draw = caster.activeShadowDraw
+                    let shadowRenderer = caster.activeShadowRenderer
                     if caster.batch != nil {
                         guard let batch = caster.directionalBatches[slice] else { continue }
                         draw.batch = batch
@@ -1799,14 +1818,14 @@ public final class MeshRenderer {
                         statistics.culledShadowCount += 1
                         continue
                     }
-                    depthEncoder.setCullMode(caster.renderer.renderState.shadowCullMode)
-                    caster.renderer.encodeShadowCaster(
+                    depthEncoder.setCullMode(shadowRenderer.renderState.shadowCullMode)
+                    shadowRenderer.encodeShadowCaster(
                         draw, clip: caster.shadowClips[slice], into: depthEncoder, coverageView: coverageView
                     ) { skinned, masked in
                         shadowMap.setPipeline(on: depthEncoder, skinned: skinned, masked: masked)
                     }
                     statistics.shadowDrawCount += draw.drawCallCount
-                    statistics.shadowTriangleCount += caster.renderer.submittedTriangleCount(draw)
+                    statistics.shadowTriangleCount += shadowRenderer.submittedTriangleCount(draw)
                     statistics.indirectBatchExecutionCount += draw.batch?.bundle?.executionCount ?? 0
                     statistics.indirectArgumentDrawCount += draw.indirect?.count ?? 0
                 }
@@ -1853,7 +1872,8 @@ public final class MeshRenderer {
                 }
                 let lightView = try? ViewFrustum(clipFromWorld: shadowSlots.views[slot])
                 for caster in draws where !caster.punctualClips.isEmpty {
-                    var draw = caster.draw
+                    var draw = caster.activeShadowDraw
+                    let shadowRenderer = caster.activeShadowRenderer
                     if caster.batch != nil {
                         guard let batch = caster.punctualBatches[slot] else { continue }
                         draw.batch = batch
@@ -1872,14 +1892,14 @@ public final class MeshRenderer {
                             continue
                         }
                     }
-                    depthEncoder.setCullMode(caster.renderer.renderState.shadowCullMode)
-                    caster.renderer.encodeShadowCaster(
+                    depthEncoder.setCullMode(shadowRenderer.renderState.shadowCullMode)
+                    shadowRenderer.encodeShadowCaster(
                         draw, clip: caster.punctualClips[slot], into: depthEncoder, coverageView: coverageView
                     ) { skinned, masked in
                         punctualShadowMaps.setPipeline(on: depthEncoder, skinned: skinned, masked: masked)
                     }
                     statistics.shadowDrawCount += draw.drawCallCount
-                    statistics.shadowTriangleCount += caster.renderer.submittedTriangleCount(draw)
+                    statistics.shadowTriangleCount += shadowRenderer.submittedTriangleCount(draw)
                     statistics.indirectBatchExecutionCount += draw.batch?.bundle?.executionCount ?? 0
                     statistics.indirectArgumentDrawCount += draw.indirect?.count ?? 0
                 }
@@ -2174,6 +2194,10 @@ public final class MeshRenderer {
         let renderer: MeshRenderer
         let replacement: (renderer: MeshRenderer, parameters: SIMD4<Float>)?
         var draw: PreparedDraw
+        var shadowRenderer: MeshRenderer? = nil
+        var shadowDraw: PreparedDraw? = nil
+        var activeShadowRenderer: MeshRenderer { shadowRenderer ?? renderer }
+        var activeShadowDraw: PreparedDraw { shadowDraw ?? draw }
         let environmentPipeline: (any MTLRenderPipelineState)?
         var toonOutline: (pipeline: ToonOutlinePipeline, style: ToonOutlinePass.DrawStyle)? = nil
         var colorRenderer: MeshRenderer { replacement?.renderer ?? renderer }

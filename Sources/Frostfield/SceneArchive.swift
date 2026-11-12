@@ -28,7 +28,7 @@ import simd
 public struct SceneArchive: Sendable, Equatable {
     /// The newest manifest version this build reads and writes. Captures use the
     /// earliest version that can store the scene.
-    public static let formatVersion = 38
+    public static let formatVersion = 39
     /// Maximum root-to-leaf node count. Keeps nested scene values safe to release
     /// on a Swift task stack even though archive traversal itself is iterative.
     public static let maximumHierarchyDepth = 1_024
@@ -254,6 +254,9 @@ public struct SceneArchive: Sendable, Equatable {
         }) {
             throw Failure.decoding("a dithered material requires archive version 38")
         }
+        if document.version < 39, document.scene.nodes.contains(where: { $0.depthMesh != nil }) {
+            throw Failure.decoding("a custom depth mesh requires archive version 39")
+        }
         let rotation = (document.scene.environmentEulerRotation ?? .zero) + SIMD3(0, document.scene.environmentRotation, 0)
         guard rotation.isFiniteVector else { throw Failure.decoding("scene environment rotation angles must be finite") }
         return document
@@ -389,6 +392,8 @@ struct ArchiveNode: Codable {
     var pivot: SIMD3<Float>?
     var orientationMode: SceneNode.OrientationMode?
     var mesh: Int?
+    /// Nil means the color mesh also casts the shadow. Stored from archive version 39.
+    var depthMesh: Int? = nil
     var primitive: Int?
     var materialParameters: SIMD4<Float>
     var castsShadow: Bool
@@ -822,7 +827,8 @@ private struct ArchiveCapture {
         let needsVersion2 = clips.contains { $0.propertyTracks != nil } || materials.contains { $0.liveFactors != nil }
         let rig = photometry.rig(lightRig, writer: &writer)
         let lighting = photometry.record
-        let version = if materials.contains(where: {
+        let version = if nodes.contains(where: { $0.depthMesh != nil }) { 39 }
+        else if materials.contains(where: {
             $0.classic?.dithering == true || $0.physicallyBased?.dithering == true
         }) { 38 }
         else if meshes.contains(where: { $0.renderState?.shadowSide != nil }) { 37 }
@@ -888,6 +894,7 @@ private struct ArchiveCapture {
             parent: parent, id: node.id, name: node.name, transform: node.transform, pivot: node.pivot,
             orientationMode: node.orientationMode == .inherited ? nil : node.orientationMode,
             mesh: try node.mesh.map { try mesh($0) },
+            depthMesh: try node.depthMesh.map { try mesh($0) },
             primitive: try node.primitive.map { try primitive($0) },
             materialParameters: node.materialParameters, castsShadow: node.castsShadow,
             receivesShadow: node.receivesShadow ? nil : false,
@@ -1471,6 +1478,7 @@ private struct ArchiveLoader {
             orientationMode: record.orientationMode ?? .inherited
         )
         node.primitive = try record.primitive.map { try primitive($0) }
+        node.depthMesh = try record.depthMesh.map { try mesh($0) }
         return node
     }
 

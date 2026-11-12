@@ -44,7 +44,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 1 | 4 | 1 |
 | [`materials-textures`](#materials-textures) | 38 | 14 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
 | [`shader-authoring`](#shader-authoring) | 22 | 20 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
-| [`lights-shadows`](#lights-shadows) | 21 | 4 | 0 | 5 | 2 | 2 | 1 | 1 | 1 |
+| [`lights-shadows`](#lights-shadows) | 22 | 3 | 0 | 5 | 2 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 0 | 3 | 1 |
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
 | [`loaders-assets`](#loaders-assets) | 5 | 1 | 1 | 32 | 9 | 5 | 1 | 2 | 4 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **190** | **65** | **14** | **113** | **25** | **30** | **25** | **38** | **24** |
+| **Total** | **191** | **64** | **14** | **113** | **25** | **30** | **25** | **38** | **24** |
 
-328 of 524 capabilities are complete, with 128 partial and 68 missing.
+329 of 524 capabilities are complete, with 127 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -441,7 +441,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Shadow bias | `bias`, `normalBias` | `DirectionalShadowMap(...bias:normalBias:)`, `PunctualLight.Shadow(depthBias:normalBias:)` | ✅ | Directional and punctual receivers have independent depth and geometric normal bias. Directional bias applies across basic, filtered, soft and variance sampling, including cascades. [Raster lighting evidence](../evidence/rasterlight.md) |
 | Shadow resolution and strength | `mapSize`, `LightShadow.intensity` | `DirectionalShadowMap(...resolution:shadowStrength:)`, `PunctualShadowMaps(queue:resolution:)`, `PunctualLight.Shadow(shadowStrength:)` | ✅ | Depth32Float at 1–4,096 px (directional) or 16–4,096 px (punctual). Directional, spot, point and rectangle-proxy strengths are independent of illuminance and the stored depth. Native archive v26 preserves nondefault punctual strength. [Raster lighting evidence](../evidence/rasterlight.md) |
 | Static and on-demand shadow updates | `shadowMap.autoUpdate`, `needsUpdate` | `ShadowMapUpdateMode.onDemand`, `DirectionalShadowMap.requestUpdate()`, `PunctualShadowMaps.setUpdateMode(_:for:)`, `requestUpdate(for:)` | ✅ | Cache a directional map or mix independent automatic and on-demand punctual policies. Refresh the whole set or one light while keeping physical slots stable. [On-demand shadow evidence](../evidence/on-demand-shadow-updates.md) |
-| Custom shadow casters | `customDepthMaterial`, `shadowSide`, alpha-tested shadows | `PhysicallyBasedMaterial.AlphaMode.mask(cutoff:)`, `SceneNode.castsShadow`, `MeshRenderState.shadowSide` | 🟡 | Masked, skinned, morphed, instanced and graph-deformed casters write depth in directional and punctual passes. Blended and transmissive objects never cast. Raster shadow maps honor `shadowSide`. No custom depth material. `ShadowSideTests`, `PunctualShadowTests`, `SurfaceShaderRenderingTests`, `MorphTargetRenderingTests`, `InstancingTests`, `MeshDeformationTests` |
+| Custom shadow casters | `customDepthMaterial`, `shadowSide`, alpha-tested shadows | `SceneNode.depthMesh`, `PhysicallyBasedMaterial.AlphaMode.mask(cutoff:)`, `SceneNode.castsShadow`, `MeshRenderState.shadowSide` | ✅ | Masked, skinned, morphed, instanced and graph-deformed casters write depth in directional and punctual passes. `depthMesh` casts instead of the color mesh, and archive version 39 stores it. Raster shadow maps honor `shadowSide`. Blended and transmissive materials do not cast. `CustomDepthMeshTests`, `ShadowSideTests`, `PunctualShadowTests`, `SurfaceShaderRenderingTests`, `MorphTargetRenderingTests`, `InstancingTests`, `MeshDeformationTests` |
 | Transmitted (colored) shadows | `shadowMap.transmitted` | `DirectionalShadowMap.transmissionLayers`, `SunLight.transmissionLayers` | 🟡 | Directional and cascaded maps peel one to four glass layers per cascade and keep RGB transmittance with glass depth. Stock PBR glass on plain and skinned meshes tints PBR receivers, and thickness with attenuation applies Beer–Lambert absorption. Authored base color, metallic, transmission, thickness and alpha maps keep their own UV sets, transforms and samplers. A PBR `SurfaceShaderGraph` can author a caster with `castShadowColor` and `castShadowMask`, and scene archive version 29 stores them. A light color change reuses the cached layers. Spot and point maps, colored transmission for classic receivers, instanced, morphed or vertex-colored stock glass, and skinned, morphed, batched or indirect graph casters remain open. `DirectionalTransmittedShadowTests`, `GraphCastShadowTests`. [Glass shadow evidence](../evidence/directional-transmitted-shadows.md) |
 | Shadow catcher material | `ShadowMaterial` | `ClassicMaterial.shadowCatcher(color:opacity:receivesDirectionalShadows:)` | ✅ | Transparent tinted raster catchers composite directional, spot and point shadows with basic or filtered sampling. Depth writes are configurable. `ClassicMaterialTests`. [Shadow catcher evidence](../evidence/shadow-catcher.md) |
 

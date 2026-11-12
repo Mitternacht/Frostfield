@@ -14,6 +14,9 @@ public struct SceneNode: Identifiable {
     /// The node's matrix in its parent's space, including its authored pivot.
     public var localTransformMatrix: simd_float4x4 { transform.matrix(around: pivot) }
     public var mesh: MeshRenderer?
+    /// Drawn into shadow maps instead of `mesh`, like Three.js `customDepthMaterial`.
+    /// The color pass still uses `mesh`. Nil uses `mesh` for both.
+    public var depthMesh: MeshRenderer? = nil
     /// Several independently placed meshes using one prepared material.
     /// Use either this, `mesh`, or `levelsOfDetail`.
     public var batch: BatchedMesh?
@@ -155,6 +158,8 @@ public struct ResolvedSceneNode: Identifiable {
     public let worldTransform: simd_float4x4
     /// The node's mesh, or the selected level's mesh for a level-of-detail node.
     public let mesh: MeshRenderer?
+    /// The mesh that casts this node's shadow. Nil means `mesh`.
+    public let depthMesh: MeshRenderer?
     public let batch: BatchedMesh?
     public let materialParameters: SIMD4<Float>
     public let castsShadow: Bool
@@ -381,6 +386,7 @@ public struct SceneGraph {
                 id: node.id,
                 worldTransform: world,
                 mesh: mesh,
+                depthMesh: node.depthMesh,
                 batch: node.batch,
                 materialParameters: node.materialParameters,
                 castsShadow: node.castsShadow,
