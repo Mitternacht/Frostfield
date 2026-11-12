@@ -28,7 +28,7 @@ import simd
 public struct SceneArchive: Sendable, Equatable {
     /// The newest manifest version this build reads and writes. Captures use the
     /// earliest version that can store the scene.
-    public static let formatVersion = 41
+    public static let formatVersion = 42
     /// Maximum root-to-leaf node count. Keeps nested scene values safe to release
     /// on a Swift task stack even though archive traversal itself is iterative.
     public static let maximumHierarchyDepth = 1_024
@@ -216,6 +216,9 @@ public struct SceneArchive: Sendable, Equatable {
         }
         if document.version < 28, document.surfaceGraphs.contains(where: \.hasViewportSafeUVNode) {
             throw Failure.decoding("depth-safe viewport coordinates require archive version 28")
+        }
+        if document.version < 42, document.scene.nodes.contains(where: { $0.staticWorldMatrix != nil }) {
+            throw Failure.decoding("a static node requires archive version 42")
         }
         if document.version < 29, document.surfaceGraphs.contains(where: \.hasCastShadowOutput) {
             throw Failure.decoding("surface graph colored shadow outputs require archive version 29")
@@ -411,6 +414,8 @@ struct ArchiveNode: Codable {
     var isVisible: Bool
     var layers: SceneLayers
     var renderOrder: Int
+    /// Four columns of a frozen world matrix. Present only for a static node, from archive version 42.
+    var staticWorldMatrix: [SIMD4<Float>]?
     var metadata: [String: SceneMetadataValue]?
     var photometry: ArchivePhotometry.References?
 }
@@ -827,7 +832,8 @@ private struct ArchiveCapture {
         let needsVersion2 = clips.contains { $0.propertyTracks != nil } || materials.contains { $0.liveFactors != nil }
         let rig = photometry.rig(lightRig, writer: &writer)
         let lighting = photometry.record
-        let version = if graphs.contains(where: \.readsScalarBump) { 41 }
+        let version = if nodes.contains(where: { $0.staticWorldMatrix != nil }) { 42 }
+        else if graphs.contains(where: \.readsScalarBump) { 41 }
         else if graphs.contains(where: \.readsMaterialScalar) { 40 }
         else if nodes.contains(where: { $0.depthMesh != nil }) { 39 }
         else if materials.contains(where: {
@@ -905,6 +911,9 @@ private struct ArchiveCapture {
             instances: node.instances.map { instanceSet($0) }, morphWeights: node.morphWeights,
             frustumCulled: node.frustumCulled, cullingBounds: node.cullingBounds, levelsOfDetail: levels,
             isVisible: node.isVisible, layers: node.layers, renderOrder: node.renderOrder,
+            staticWorldMatrix: node.isStatic ? node.staticWorldMatrix.map {
+                [$0.columns.0, $0.columns.1, $0.columns.2, $0.columns.3]
+            } : nil,
             metadata: node.metadata.isEmpty ? nil : node.metadata, photometry: lighting.resources
         )
     }
@@ -1481,6 +1490,11 @@ private struct ArchiveLoader {
         )
         node.primitive = try record.primitive.map { try primitive($0) }
         node.depthMesh = try record.depthMesh.map { try mesh($0) }
+        if let columns = record.staticWorldMatrix {
+            guard columns.count == 4 else { throw SceneArchive.Failure.decoding("a static world matrix needs four columns") }
+            node.isStatic = true
+            node.staticWorldMatrix = simd_float4x4(columns: (columns[0], columns[1], columns[2], columns[3]))
+        }
         return node
     }
 

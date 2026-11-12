@@ -52,11 +52,11 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`effects-misc`](#effects-misc) | 2 | 2 | 0 | 6 | 2 | 2 | 0 | 2 | 6 |
 | [`path-tracing`](#path-tracing) | 0 | 0 | 0 | 1 | 0 | 1 | 12 | 4 | 0 |
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
-| [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
+| [`performance-scale`](#performance-scale) | 8 | 3 | 1 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **195** | **60** | **14** | **116** | **22** | **30** | **31** | **33** | **23** |
+| **Total** | **196** | **60** | **13** | **116** | **22** | **30** | **31** | **33** | **23** |
 
-342 of 524 capabilities are complete, with 115 partial and 67 missing.
+343 of 524 capabilities are complete, with 115 partial and 66 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -842,7 +842,7 @@ Three.js has no capability in this tier.
 | GPU timestamp queries | `trackTimestamp`, `resolveTimestampsAsync` | `GPUTimingBatch`, `SceneGraph.encodeTimed`, `ComputeGPUTiming`, `RenderGPUTiming`, `PostProcessPass.encodeTimed`, `PostProcessChain.renderTimed` | ✅ | Native per-pass queries and async frame totals for render and compute captures across submitted command buffers. Scene shadows and graph stages share the counters. A separate timed chain covers its full GPU execution, and `PathTracer.Timing` covers path passes. Requires hardware support for stage counters. `GPUTimingBatchTests`, `RenderGPUTimingTests`. [Timing evidence](../evidence/scene-gpu-timing.md) |
 | Renderer statistics | `renderer.info` | `SceneDrawStatistics`, `SceneGraph.resourceStatistics()`, `SceneGraph.deviceAllocationTotals(device:attachments:)`, `PathTracingScene.statistics` | ✅ | Per-view submitted mesh and sprite triangles, logical points and segments, and shadow triangles. GPU-authored indirect records count separately. Prepared scene snapshots deduplicate buffers, texture storage and pipelines. Device totals report `currentAllocatedSize`, the shader-library cache, caller attachment bytes and transient instance-buffer bytes. `SceneResourceStatisticsTests`, `CullingAndLODTests`. [Statistics evidence](../evidence/scene-render-statistics.md) |
 | Pipeline precompilation | `compileAsync`, `initTextureAsync` | `MeshRenderer(device:colorPixelFormat:geometry:material:depthMode:skin:)` | 🟡 | Pipelines compile synchronously when a renderer is prepared; identical generated graph sources share an internal library cache; no asynchronous compile or binary archives; `ShaderGraphRenderingTests` |
-| Static object hint | `Object3D.static` | — | ❌ |  |
+| Static object hint | `Object3D.static` | `SceneNode.isStatic`, `SceneNode.staticWorldMatrix`, `SceneGraph.freezeStaticNodes()` | ✅ | A static node keeps the world matrix captured by `freezeStaticNodes()`. Later parent and local edits do not move it. A second freeze keeps the stored matrix. Children still compose under it. An archive that stores one is version 42. `StaticNodeTests`. [Scale evidence](../evidence/scale-and-dynamics.md) |
 | Pluggable drawing pipeline | `drawingPipeline` | — | ❌ |  |
 | Partial texture updates | `addUpdateRange`, `addLayerUpdate` | `TextureTransfer.encodeUpload`, `TextureTransfer.encodeCopy` | ✅ | Explicit CPU or GPU updates select a region, mip, array layer, cube face or volume region and preserve neighboring storage. `TextureTransferTests`. [Upload evidence](../evidence/texture-transfers.md#partial-cpu-uploads) |
 

@@ -39,8 +39,20 @@ struct HighPrecisionModelView {
         var lights: [UUID: LightPosition] = [:]
         while let (node, parent, root) = pending.popLast() {
             guard !excluding.contains(node.id), worlds[node.id] == nil else { continue }
-            let local = node.transform.doubleMatrix(around: node.pivot, relativeTo: parent == nil ? root : .zero)
-            let rootRelative = node.resolvedDoubleWorldTransform(relativeTo: parent, local: local)
+            let rootRelative: simd_double4x4
+            if node.isStatic, let frozen = node.staticWorldMatrix {
+                // Keep the frozen world rotation and express its translation relative to this root.
+                let columns = frozen.columns
+                var relative = simd_double4x4(
+                    SIMD4<Double>(columns.0), SIMD4<Double>(columns.1),
+                    SIMD4<Double>(columns.2), SIMD4<Double>(columns.3)
+                )
+                relative[3] -= SIMD4(root, 0)
+                rootRelative = relative
+            } else {
+                let local = node.transform.doubleMatrix(around: node.pivot, relativeTo: parent == nil ? root : .zero)
+                rootRelative = node.resolvedDoubleWorldTransform(relativeTo: parent, local: local)
+            }
             var frameRelative = rootRelative
             frameRelative[3] += SIMD4(root - origin, 0)
             worlds[node.id] = frameRelative

@@ -7,6 +7,13 @@ public struct SceneNode: Identifiable {
     public var transform: SceneTransform
     /// How a child inherits rotation. Root nodes always use their local matrix.
     public var orientationMode: OrientationMode
+    /// When true, ``staticWorldMatrix`` replaces parent composition, like Three.js
+    /// `Object3D.static`. ``freezeStaticNodes()`` stores the matrix. Until it is stored,
+    /// the node still composes. Children compose under the frozen matrix. Local edits
+    /// do not move the node while the matrix is stored.
+    public var isStatic: Bool = false
+    /// The world matrix used while ``isStatic`` is true.
+    public var staticWorldMatrix: simd_float4x4?
     /// The object-space point around which scale and rotation act. Nil uses
     /// the local origin. The pivot maps to `transform.translation + pivot`
     /// in the parent's space.
@@ -318,6 +325,30 @@ public struct SceneGraph {
     /// it and its ancestors are visible and its layers intersect `cameraLayers`.
     public func renders(_ node: ResolvedSceneNode) -> Bool {
         node.isVisible && node.layers.intersects(cameraLayers)
+    }
+
+    /// Stores a world matrix for every static node that does not have one yet.
+    /// Later parent and local edits leave that matrix in place. A stored matrix is kept.
+    /// Throws when a captured matrix is not invertible.
+    public mutating func freezeStaticNodes() throws {
+        try freezeStaticNodes(in: &roots, parent: nil)
+    }
+
+    private func freezeStaticNodes(in nodes: inout [SceneNode], parent: simd_float4x4?) throws {
+        for index in nodes.indices {
+            let composed = nodes[index].resolvedWorldTransform(relativeTo: parent)
+            let world: simd_float4x4
+            if nodes[index].isStatic {
+                if nodes[index].staticWorldMatrix == nil {
+                    guard Self.isInvertible(composed) else { throw ValidationError.invalidWorldTransform(nodes[index].id) }
+                    nodes[index].staticWorldMatrix = composed
+                }
+                world = nodes[index].staticWorldMatrix ?? composed
+            } else {
+                world = composed
+            }
+            try freezeStaticNodes(in: &nodes[index].children, parent: world)
+        }
     }
 
     /// Resolves parents before their children and preserves the supplied sibling order.

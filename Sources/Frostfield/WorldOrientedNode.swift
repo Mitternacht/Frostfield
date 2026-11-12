@@ -13,6 +13,7 @@ extension SceneNode {
     func resolvedWorldTransform(
         relativeTo parent: simd_float4x4?, local preparedLocal: simd_float4x4? = nil
     ) -> simd_float4x4 {
+        if isStatic, let staticWorldMatrix { return staticWorldMatrix }
         let local = preparedLocal ?? localTransformMatrix
         guard let parent else { return local }
         let composed = parent * local
