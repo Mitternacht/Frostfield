@@ -196,4 +196,56 @@ struct TextureLoaderTests {
             try TextureLoader(device: device).load(data: data)
         }
     }
+
+    @Test("A tagged image can be converted into linear Display P3 or Rec. 2020")
+    func workingPrimaries() throws {
+        let space = try #require(CGColorSpace(name: CGColorSpace.displayP3))
+        let bytes = Data([0, 128, 64, 255] as [UInt8])
+        let provider = try #require(CGDataProvider(data: bytes as CFData))
+        let image = try #require(CGImage(
+            width: 1, height: 1, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: 4, space: space,
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue), provider: provider,
+            decode: nil, shouldInterpolate: false, intent: .defaultIntent
+        ))
+        let encoded = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(encoded, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        try #require(CGImageDestinationFinalize(destination))
+
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let loader = TextureLoader(device: device)
+        let data = encoded as Data
+        let srgb = try loader.load(data: data)
+        let p3 = try loader.load(data: data, workingPrimaries: .displayP3)
+        let rec2020 = try loader.load(data: data, workingPrimaries: .rec2020)
+        #expect(srgb.pixelFormat == .rgba8Unorm_srgb)
+        #expect(p3.pixelFormat == .rgba16Float && rec2020.pixelFormat == .rgba16Float)
+
+        var srgbPixel = [UInt8](repeating: 0, count: 4)
+        srgbPixel.withUnsafeMutableBytes {
+            srgb.getBytes($0.baseAddress!, bytesPerRow: 4, from: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0)
+        }
+        #expect(srgbPixel != [0, 128, 64, 255])
+
+        func linearCode(_ code: Float) -> Float {
+            let unit = code / 255
+            return unit <= 0.04045 ? unit / 12.92 : pow((unit + 0.055) / 1.055, 2.4)
+        }
+        var half = [UInt16](repeating: 0, count: 4)
+        half.withUnsafeMutableBytes {
+            p3.getBytes($0.baseAddress!, bytesPerRow: 8, from: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0)
+        }
+        let decoded = half.map { Float(Float16(bitPattern: $0)) }
+        #expect(abs(decoded[0]) < 0.002)
+        #expect(abs(decoded[1] - linearCode(128)) < 0.002)
+        #expect(abs(decoded[2] - linearCode(64)) < 0.002)
+        #expect(abs(decoded[3] - 1) < 0.002)
+
+        var wide = [UInt16](repeating: 0, count: 4)
+        wide.withUnsafeMutableBytes {
+            rec2020.getBytes($0.baseAddress!, bytesPerRow: 8, from: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0)
+        }
+        let rec = wide.map { Float(Float16(bitPattern: $0)) }
+        #expect(zip(decoded, rec).contains { abs($0 - $1) > 0.01 })
+    }
 }

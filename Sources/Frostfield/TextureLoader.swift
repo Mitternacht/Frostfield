@@ -32,6 +32,21 @@ import Metal
 /// Gain-map JPEG and HEIC images load their SDR base here; decode their HDR rendition
 /// with `loadHighDynamicRange`.
 public struct TextureLoader {
+    /// The linear primaries a color-managed image is converted into. Stored containers keep their own encoding.
+    public enum WorkingPrimaries: Equatable, Sendable {
+        case sRGB
+        case displayP3
+        case rec2020
+
+        var linearSpaceName: CFString {
+            switch self {
+            case .sRGB: CGColorSpace.extendedLinearSRGB
+            case .displayP3: CGColorSpace.extendedLinearDisplayP3
+            case .rec2020: CGColorSpace.extendedLinearITUR_2020
+            }
+        }
+    }
+
     public enum Interpretation: Equatable, Sendable {
         /// Applies image orientation and converts tagged color to sRGB.
         case color
@@ -93,9 +108,13 @@ public struct TextureLoader {
     /// as they are. `mipmapped` generates levels for single-level KTX2 textures
     /// when their pixel format supports mipmap generation.
     public func load(
-        data: Data, interpretation: Interpretation = .color, mipmapped: Bool = false
+        data: Data, interpretation: Interpretation = .color, mipmapped: Bool = false,
+        workingPrimaries: WorkingPrimaries = .sRGB
     ) throws -> any MTLTexture {
-        try load(data: data, interpretation: interpretation, mipmapped: mipmapped, uploadOptions: .init())
+        try load(
+            data: data, interpretation: interpretation, mipmapped: mipmapped, uploadOptions: .init(),
+            workingPrimaries: workingPrimaries
+        )
     }
 
     /// Loads an ordinary raster image with optional row reversal and alpha association.
@@ -103,26 +122,34 @@ public struct TextureLoader {
     /// HDR and DDS, KTX, or PVR containers require default upload options.
     public func load(
         data: Data, interpretation: Interpretation = .color, mipmapped: Bool = false,
-        uploadOptions: UploadOptions
+        uploadOptions: UploadOptions, workingPrimaries: WorkingPrimaries = .sRGB
     ) throws -> any MTLTexture {
         guard data.count <= Self.maxEncodedBytes else { throw Failure.inputTooLarge }
+        if workingPrimaries != .sRGB, interpretation != .color {
+            throw Failure.workingPrimaries
+        }
         if HighDynamicRangeImage.Container(data) != nil {
+            if workingPrimaries != .sRGB { throw Failure.workingPrimaries }
             try uploadOptions.validateStoredContainer("HDR")
             return try loadHighDynamicRange(data: data, precision: .half, mipmapped: mipmapped).texture
         }
         if KTX2Container.hasIdentifier(data) {
+            if workingPrimaries != .sRGB { throw Failure.workingPrimaries }
             try uploadOptions.validateStoredContainer("KTX2")
             return try loadKTX2Data(data, interpretation: interpretation, mipmapped: mipmapped, allowingSpatialTextures: false)
         }
         if KTX1Container.hasIdentifier(data) {
+            if workingPrimaries != .sRGB { throw Failure.workingPrimaries }
             try uploadOptions.validateStoredContainer("KTX 1.0")
             return try loadKTX1Data(data, interpretation: interpretation, loadMipmaps: true, allowingCube: false)
         }
         if PVRContainer.hasIdentifier(data) {
+            if workingPrimaries != .sRGB { throw Failure.workingPrimaries }
             try uploadOptions.validateStoredContainer("PVR")
             return try loadPVRData(data, interpretation: interpretation, loadMipmaps: true, allowingCube: false)
         }
         if DDSContainer.hasIdentifier(data) {
+            if workingPrimaries != .sRGB { throw Failure.workingPrimaries }
             try uploadOptions.validateStoredContainer("DDS")
             return try loadDDSData(data, interpretation: interpretation, loadMipmaps: true, mipmapped: mipmapped,
                                    allowingCube: false)
@@ -136,6 +163,7 @@ public struct TextureLoader {
         let sourceType = imageSource.flatMap(CGImageSourceGetType).map { $0 as String }
         let targa = format == nil && (sourceType == nil || sourceType == TargaImage.imageIOType) ? TargaImage(data) : nil
         if let targa, sourceType == nil || targa.requiresNativeDecode(interpretation: interpretation) {
+            if workingPrimaries != .sRGB { throw Failure.workingPrimaries }
             return try loadTarga(targa, data: data, interpretation: interpretation, mipmapped: mipmapped,
                                  uploadOptions: uploadOptions, recognizedByImageIO: sourceType == TargaImage.imageIOType)
         }
@@ -162,6 +190,7 @@ public struct TextureLoader {
                 try Self.validate(width: image.width, height: image.height)
                 return try makeTexture(
                     from: image, png: format == .png ? data : nil, interpretation: interpretation,
+                    workingPrimaries: workingPrimaries,
                     mipmapped: mipmapped, uploadOptions: uploadOptions
                 )
             }
@@ -226,9 +255,14 @@ public struct TextureLoader {
     }
 
     private func makeTexture(
-        from image: CGImage, png: Data?, interpretation: Interpretation, mipmapped: Bool,
-        uploadOptions: UploadOptions
+        from image: CGImage, png: Data?, interpretation: Interpretation, workingPrimaries: WorkingPrimaries,
+        mipmapped: Bool, uploadOptions: UploadOptions
     ) throws -> any MTLTexture {
+        if workingPrimaries != .sRGB {
+            return try uploadLinearPrimaries(
+                image, workingPrimaries: workingPrimaries, mipmapped: mipmapped, uploadOptions: uploadOptions
+            )
+        }
         let width = image.width
         let height = image.height
         let rowBytes = width * 4
@@ -333,6 +367,55 @@ public struct TextureLoader {
                 raw[index + 3] = 255
             }
         }
+    }
+
+    private func uploadLinearPrimaries(
+        _ image: CGImage, workingPrimaries: WorkingPrimaries, mipmapped: Bool, uploadOptions: UploadOptions
+    ) throws -> any MTLTexture {
+        guard uploadOptions == .init() else { throw Failure.unsupportedUploadTransform("a non-sRGB working space") }
+        guard let space = CGColorSpace(name: workingPrimaries.linearSpaceName) else { throw Failure.colorConversion }
+        let width = image.width
+        let height = image.height
+        var samples = [Float](repeating: 0, count: width * height * 4)
+        try samples.withUnsafeMutableBytes { raw in
+            guard let context = CGContext(
+                data: raw.baseAddress, width: width, height: height, bitsPerComponent: 32,
+                bytesPerRow: width * 16, space: space,
+                bitmapInfo: CGBitmapInfo.floatComponents.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+                    | CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { throw Failure.colorConversion }
+            context.setBlendMode(.copy)
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        for index in stride(from: 0, to: samples.count, by: 4) {
+            let alpha = samples[index + 3]
+            if alpha == 0 {
+                samples[index] = 0
+                samples[index + 1] = 0
+                samples[index + 2] = 0
+            } else if alpha < 1 {
+                samples[index] /= alpha
+                samples[index + 1] /= alpha
+                samples[index + 2] /= alpha
+            }
+        }
+        let stored = samples.map { Float16($0) }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba16Float, width: width, height: height, mipmapped: mipmapped
+        )
+        descriptor.storageMode = .shared
+        descriptor.usage = .shaderRead
+        guard let texture = device.makeTexture(descriptor: descriptor) else {
+            throw Failure.textureAllocation(width: width, height: height)
+        }
+        stored.withUnsafeBytes { bytes in
+            texture.replace(
+                region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0,
+                withBytes: bytes.baseAddress!, bytesPerRow: width * 8
+            )
+        }
+        if texture.mipmapLevelCount > 1 { try generateMipmaps(for: texture) }
+        return texture
     }
 
     private static func copyColor(
@@ -527,6 +610,7 @@ public struct TextureLoader {
         case invalidImage
         case imageDimensions(width: Int, height: Int)
         case colorConversion
+        case workingPrimaries
         case mipmapGeneration
         case textureAllocation(width: Int, height: Int)
         /// ImageIO on this system cannot decode the named format.
@@ -556,6 +640,8 @@ public struct TextureLoader {
             case .imageDimensions(let width, let height):
                 "Texture dimensions \(width) × \(height) exceed the supported limits."
             case .colorConversion: "Could not prepare the image's RGBA channels."
+            case .workingPrimaries:
+                "Working primaries apply to a tagged color image. Stored containers and data interpretations keep their encoding."
             case .mipmapGeneration: "Metal could not generate the texture's mip levels."
             case .textureAllocation(let width, let height):
                 "Metal could not allocate a \(width) × \(height) texture."

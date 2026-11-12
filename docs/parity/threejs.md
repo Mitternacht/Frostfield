@@ -38,7 +38,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 
 | Area | Core ✅ | Core 🟡 | Core ❌ | Addons ✅ | Addons 🟡 | Addons ❌ | Third-party ✅ | Third-party 🟡 | Third-party ❌ |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| [`renderer`](#renderer) | 19 | 4 | 3 | 1 | 0 | 2 | 0 | 1 | 1 |
+| [`renderer`](#renderer) | 20 | 3 | 3 | 1 | 0 | 2 | 0 | 1 | 1 |
 | [`scene-graph`](#scene-graph) | 13 | 4 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 2 | 1 | 0 |
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 1 | 4 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **191** | **64** | **14** | **115** | **23** | **30** | **27** | **36** | **24** |
+| **Total** | **192** | **63** | **14** | **115** | **23** | **30** | **27** | **36** | **24** |
 
-333 of 524 capabilities are complete, with 123 partial and 68 missing.
+334 of 524 capabilities are complete, with 122 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -78,7 +78,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Depth textures | `DepthTexture`, `RenderTarget.depthTexture` | `MeshRenderer.depthPixelFormat` | ✅ | Stored Depth32Float feeds AO, DoF and post-process graphs' `sceneDepth`; no stencil formats; `AmbientOcclusionTests`, `DepthOfFieldTests`, `PostProcessGraphTests` |
 | 3D and array (layered) render targets | `RenderTarget3D`, `WebGLArrayRenderTarget` | `SceneGraph.encode`, `MeshRenderer.encode`, Metal `level`, `slice`, `depthPlane` | ✅ | Render to a selected array layer or volume plane and mip. Custom MRTs select a subresource per attachment. Transmission snapshots the selected plane. [Layered target evidence](../evidence/layered-render-targets.md) |
 | Cube render targets | `CubeRenderTarget`, `fromEquirectangularTexture` | `SceneGraph.encode`, `MeshRenderer.encode`, `CubeCamera.encode`, `EnvironmentLighting.skyCube` | ✅ | Ordinary mesh pipelines draw to selected cube faces and mips in native renderable formats. Cube camera capture and equirectangular conversion produce HDR cubes. [Layered target evidence](../evidence/layered-render-targets.md) · [Probe evidence](../evidence/rasterlight.md#hdr-scene-cube-capture) |
-| Color management (linear workflow) | `ColorManagement`, `Texture.colorSpace` | `TextureLoader.Interpretation` | 🟡 | Tagged images convert to the linear sRGB working space, and KTX2 keeps its stored encoding. Display transforms support wider output gamuts. Choosing the scene's working primaries remains open; `TextureLoaderTests`, `KTX2LoaderTests` |
+| Color management (linear workflow) | `ColorManagement`, `Texture.colorSpace` | `TextureLoader.WorkingPrimaries`, `TextureLoader.load(data:interpretation:mipmapped:workingPrimaries:)` | ✅ | A tagged color image converts into linear sRGB, Display P3, or Rec. 2020. The default stays an sRGB texture. KTX2 and other stored containers keep their encoding. Display transforms support the wider output gamuts. `TextureLoaderTests`, `KTX2LoaderTests` |
 | Output color space | `outputColorSpace` | `HDRDisplay(device:destinationPixelFormat:outputColorSpace:)`, `HDRDisplay.presentationColorSpace` | ✅ | Select sRGB, Display P3, or extended linear Rec. 2020 output and use the matching Core Graphics profile. Metal applies the transfer in sRGB storage formats. [Wide-gamut evidence](../evidence/wide-gamut-output.md) |
 | Tone mapping operators | `toneMapping`, `toneMappingExposure`, `Material.toneMapped` | `HDRDisplay.Settings.toneMapping`, `HDRDisplay.encode(...untonemappedMask:)`, `SceneGraph.encodeToneMapMask(depth:into:commandBuffer:)`, `PhysicallyBasedMaterial.toneMapped`, `ClassicMaterial.toneMapped`, `PostProcessGraph.toneMapping(exposureStops:curve:)` | ✅ | Built-in Linear, Reinhard, extended Reinhard, Cineon, ACES filmic and Narkowicz, AgX, Neutral and no-curve output. Custom curves run in a graph pass. A material with `toneMapped` false is drawn into an R8 mask; the display pass copies those pixels without exposure or a curve. The flag defaults to true. Archive version 33 stores a physically based opt-out. `ToneMappingTests`. [Raster evidence](../evidence/rasterlook.md) |
 | HDR intermediate buffer | `outputBufferType: HalfFloatType` | `HDRDisplay.encode(source:destination:settings:commandBuffer:)` | ✅ | Scene renders to RGBA16Float, then a display pass; `HDRDisplayTests`; [pbr-studio](../evidence/pbr-studio.md) |
