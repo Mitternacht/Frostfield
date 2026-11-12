@@ -48,15 +48,15 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 1 | 2 | 1 |
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
 | [`loaders-assets`](#loaders-assets) | 5 | 1 | 1 | 32 | 9 | 5 | 1 | 2 | 4 |
-| [`post-processing`](#post-processing) | 7 | 4 | 1 | 29 | 5 | 0 | 5 | 7 | 2 |
+| [`post-processing`](#post-processing) | 7 | 4 | 1 | 29 | 5 | 0 | 6 | 7 | 1 |
 | [`effects-misc`](#effects-misc) | 2 | 2 | 0 | 6 | 2 | 2 | 0 | 2 | 6 |
 | [`path-tracing`](#path-tracing) | 0 | 0 | 0 | 1 | 0 | 1 | 12 | 4 | 0 |
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **195** | **60** | **14** | **116** | **22** | **30** | **30** | **33** | **24** |
+| **Total** | **195** | **60** | **14** | **116** | **22** | **30** | **31** | **33** | **23** |
 
-341 of 524 capabilities are complete, with 115 partial and 68 missing.
+342 of 524 capabilities are complete, with 115 partial and 67 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -704,7 +704,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Tone mapping and grading | `ToneMappingEffect` (AgX, ACES…), `LUT3DEffect`, `HueSaturationEffect` | `HDRDisplay.Settings.toneMapping`, `ColorLookupPass`, `PostProcessGraph.hueSaturation` | ✅ | Selectable tone mapping including AgX and ACES, 3D LUT grading and hue-saturation adjustment. `ToneMappingTests`, `ColorLookupPassTests`, `PostProcessGraphPresetTests`. [Post-processing evidence](../evidence/postsuite.md) |
 | Lens, film and stylized effects | `ChromaticAberrationEffect`, `NoiseEffect`, `VignetteEffect`, `GlitchEffect` | `ScreenEffects.Settings.chromaticAberration`, `ScreenEffects.Settings.grainStrength`, `PostProcessGraph.vignette`, `PostProcessGraph.glitch` | ✅ | Chromatic aberration, film grain, vignette and glitch presets. `ScreenEffectsTests`, `PostProcessGraphPresetTests`. [Post-processing evidence](../evidence/postsuite.md) |
 | Selection outlines and god rays | `OutlineEffect`, `GodRaysEffect` | `SelectionOutline`, `GodRays` | 🟡 | Depth-aware selection edges and screen-space shafts. No volumetric ray marching or patterned outline. `SelectionOutlineTests`, `GodRaysTests`. [Post-processing evidence](../evidence/postsuite.md) |
-| Declarative effect chains | @react-three/postprocessing `<EffectComposer>` | — | ❌ | `FrostfieldSceneView` has no post chain; `PostProcessChain` is configured in code |
+| Declarative effect chains | @react-three/postprocessing `<EffectComposer>` | `FrostfieldSceneView.postChain(_:)` | ✅ | The raster scene view draws an RGBA16Float scene, then runs a `PostProcessChain` into the drawable. With an HDR display, the chain's destination is RGBA16Float and the display pass follows. The path-tracing view does not run the chain. `DrawableResolutionTests`. [Post-processing evidence](../evidence/postsuite.md) |
 | Temporally stable SSAO with denoise | n8ao `N8AOPass` | — | ❌ |  |
 | SSGI, HBAO and SSR | realism-effects `SSGIEffect`, `HBAOEffect` | `ScreenSpaceGlobalIllumination`, `AmbientOcclusion`, `ScreenSpaceReflections` | 🟡 | Diffuse gathering uses motion-guided history, specular tracing reprojects prior radiance across camera moves, and horizon AO is a separate pass. Integrated diffuse and specular denoising, independently moving specular hits and environment-miss recovery remain open. [SSGI evidence](../evidence/screen-space-gi.md) · [SSR evidence](../evidence/screen-space-reflections.md) |
 | Temporal reprojection AA | realism-effects `TRAAEffect` | `TemporalAntiAliasing`, `RasterMotionVectors`, `RasterTemporalUpscaler` | 🟡 | Rigid, posed, shader-displaced and live indexed geometry guide depth-tested reprojection and native upscaling. Surface-identity rejection beyond depth and additional primitive motion remain open. [TRAA evidence](../evidence/reference-traa.md) · [Motion evidence](../evidence/raster-motion-vectors.md) |

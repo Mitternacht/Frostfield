@@ -28,6 +28,7 @@ public struct FrostfieldSceneView: View {
     private var presentation: ScenePresentation?
     private var onDrawableResize: (@MainActor (CGSize) -> Void)?
     private var renderLoop: RenderLoop = .onChange
+    private var postChain: PostProcessChain?
 
     /// When the Metal host draws.
     public enum RenderLoop: Equatable, Sendable {
@@ -67,13 +68,24 @@ public struct FrostfieldSceneView: View {
     public var body: some View {
         SceneHost(
             content: content, clearColor: drawableClearColor, resolution: resolution, presentation: presentation,
-            active: scenePhase == .active, renderLoop: renderLoop, onError: onError, onDrawableResize: onDrawableResize
+            active: scenePhase == .active, renderLoop: renderLoop, postChain: postChain, onError: onError,
+            onDrawableResize: onDrawableResize
         )
         .id(SceneHost.Identity(
             content: content.identity, usesHDRDisplay: presentation != nil,
             drawableFormat: presentation?.display.destinationPixelFormat ?? content.colorPixelFormat
         ))
         .allowsHitTesting(false)
+    }
+
+    /// Draws the raster scene into a linear RGBA16Float image, then runs `chain`
+    /// into the drawable. The scene format must be RGBA16Float. The chain's destination
+    /// format matches the drawable, or RGBA16Float when ``hdrDisplay(_:_:)`` follows it.
+    /// The path-tracing view does not use this chain.
+    public func postChain(_ chain: PostProcessChain?) -> Self {
+        var view = self
+        view.postChain = chain
+        return view
     }
 
     /// `.onChange` redraws when the scene inputs change. `.continuous` keeps drawing
@@ -316,19 +328,23 @@ private struct SceneHost {
     let presentation: ScenePresentation?
     let active: Bool
     let renderLoop: FrostfieldSceneView.RenderLoop
+    var postChain: PostProcessChain?
     let onError: (@MainActor (any Error) -> Void)?
     let onDrawableResize: (@MainActor (CGSize) -> Void)?
     var onPathProgress: (@MainActor (Int) -> Void)? = nil
 
     func makeCoordinator() -> SceneCoordinator {
-        SceneCoordinator(content: content, clearColor: clearColor, resolution: resolution, presentation: presentation)
+        SceneCoordinator(
+            content: content, clearColor: clearColor, resolution: resolution, presentation: presentation,
+            postChain: postChain
+        )
     }
 
     func update(_ coordinator: SceneCoordinator) {
         coordinator.update(
             content: content, clearColor: clearColor, resolution: resolution, presentation: presentation,
-            active: active, renderLoop: renderLoop, onError: onError, onDrawableResize: onDrawableResize,
-            onPathProgress: onPathProgress
+            active: active, renderLoop: renderLoop, postChain: postChain, onError: onError,
+            onDrawableResize: onDrawableResize, onPathProgress: onPathProgress
         )
     }
 }
@@ -450,6 +466,7 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
     private var clearColor: SIMD4<Double>
     private var resolution: FrostfieldSceneView.DrawableResolution
     private var presentation: ScenePresentation?
+    private var postChain: PostProcessChain?
     private var sceneIsActive = false
     private var onError: (@MainActor (any Error) -> Void)?
     private var onDrawableResize: (@MainActor (CGSize) -> Void)?
@@ -463,6 +480,7 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
     private var reportedDrawableSize: CGSize?
     private var depthTexture: (any MTLTexture)?
     private var hdrTexture: (any MTLTexture)?
+    private var postTexture: (any MTLTexture)?
     private weak var view: SceneMetalView?
     private weak var observedWindow: SceneWindow?
     #if !os(macOS)
@@ -472,11 +490,12 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
 
     init(
         content: SceneContent, clearColor: SIMD4<Double>, resolution: FrostfieldSceneView.DrawableResolution,
-        presentation: ScenePresentation?
+        presentation: ScenePresentation?, postChain: PostProcessChain? = nil
     ) {
         self.content = content
         self.clearColor = clearColor
         self.resolution = resolution
+        self.postChain = postChain
         self.presentation = presentation
         queue = content.makeQueue()
         let format = presentation?.display.destinationPixelFormat ?? content.defaultDrawableFormat
@@ -510,10 +529,14 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
     func update(
         content: SceneContent, clearColor: SIMD4<Double>, resolution: FrostfieldSceneView.DrawableResolution,
         presentation: ScenePresentation?, active: Bool, renderLoop: FrostfieldSceneView.RenderLoop,
-        onError: (@MainActor (any Error) -> Void)?,
+        postChain: PostProcessChain?, onError: (@MainActor (any Error) -> Void)?,
         onDrawableResize: (@MainActor (CGSize) -> Void)?, onPathProgress: (@MainActor (Int) -> Void)?
     ) {
         schedule.setContinuous(renderLoop == .continuous)
+        if self.postChain !== postChain {
+            self.postChain = postChain
+            schedule.invalidate()
+        }
         self.onError = onError
         self.onPathProgress = onPathProgress
         if (self.onDrawableResize == nil) != (onDrawableResize == nil) {
@@ -567,6 +590,7 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
         reportedDrawableSize = nil
         depthTexture = nil
         hdrTexture = nil
+        postTexture = nil
         view.activityChanged = nil
         self.view = nil
         observedWindow = nil
@@ -677,6 +701,14 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
             guard content.colorPixelFormat == .rgba16Float else { return rejectFrame(HostError.hdrSceneFormat) }
             guard presentation.display.device === content.device else { return rejectFrame(HostError.hdrDevice) }
         }
+        if let postChain {
+            guard content.colorPixelFormat == .rgba16Float else { return rejectFrame(SceneFrameEncoder.Failure.sceneColorFormat) }
+            guard postChain.queue.device === content.device else { return rejectFrame(SceneFrameEncoder.Failure.chainDevice) }
+            let expectedFormat: MTLPixelFormat = presentation == nil ? drawableFormat : .rgba16Float
+            guard postChain.destinationPixelFormat == expectedFormat else {
+                return rejectFrame(SceneFrameEncoder.Failure.chainDestinationFormat)
+            }
+        }
         guard queue != nil else { return rejectFrame(HostError.queue) }
         guard let layer = view.metalLayer else { return rejectFrame(HostError.layer) }
         if case .failure(let error) = drawableSizeResult { return rejectFrame(error) }
@@ -718,16 +750,13 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
                     destination: color, commandBuffer: buffer
                 )
                 pathSubmission = (pathGeneration, refined)
-            } else if let presentation {
-                pathSubmission = nil
-                let source = try hdrSource(matching: color)
-                try content.encode(pass: makePass(color: source), commandBuffer: buffer)
-                try presentation.display.encode(
-                    source: source, destination: color, settings: presentation.settings, commandBuffer: buffer
-                )
             } else {
                 pathSubmission = nil
-                try content.encode(pass: makePass(color: color), commandBuffer: buffer)
+                try SceneFrameEncoder.encode(
+                    content: content, chain: postChain, presentation: presentation, clearColor: clearColor,
+                    destination: color, sceneColor: &hdrTexture, chainColor: &postTexture, depth: &depthTexture,
+                    commandBuffer: buffer
+                )
             }
             buffer.addCompletedHandler { [weak self] buffer in
                 let error = buffer.status == .completed
@@ -743,41 +772,6 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
         }
     }
 
-    private func hdrSource(matching drawable: any MTLTexture) throws -> any MTLTexture {
-        if let hdrTexture, hdrTexture.width == drawable.width, hdrTexture.height == drawable.height { return hdrTexture }
-        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .rgba16Float, width: drawable.width, height: drawable.height, mipmapped: false
-        )
-        descriptor.storageMode = .private
-        descriptor.usage = [.renderTarget, .shaderRead]
-        guard let source = content.device.makeTexture(descriptor: descriptor) else { throw HostError.hdrTexture }
-        source.label = "Frostfield SwiftUI HDR scene"
-        hdrTexture = source
-        return source
-    }
-
-    private func makePass(color: any MTLTexture) throws -> MTLRenderPassDescriptor {
-        if depthTexture?.width != color.width || depthTexture?.height != color.height {
-            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-                pixelFormat: MeshRenderer.depthPixelFormat, width: color.width, height: color.height, mipmapped: false
-            )
-            descriptor.storageMode = .private
-            descriptor.usage = .renderTarget
-            guard let depth = content.device.makeTexture(descriptor: descriptor) else {
-                throw HostError.depthTexture
-            }
-            depth.label = "Frostfield SwiftUI depth"
-            depthTexture = depth
-        }
-
-        let pass = MTLRenderPassDescriptor()
-        pass.colorAttachments[0].texture = color
-        pass.colorAttachments[0].storeAction = .store
-        pass.depthAttachment.texture = depthTexture
-        pass.depthAttachment.storeAction = .dontCare
-        try FramebufferClear(color: clearColor, depth: content.depthClearValue).apply(to: pass)
-        return pass
-    }
 
     private func rejectFrame(_ error: any Error) {
         if schedule.beginFrame() { finishFrame(error) }
@@ -805,6 +799,138 @@ private final class SceneCoordinator: NSObject, @preconcurrency CAMetalDisplayLi
             if pathRenderer.shouldRefine { schedule.invalidate() }
         }
         requestDisplay()
+    }
+}
+
+/// Encodes one raster frame the way ``FrostfieldSceneView`` presents it.
+enum SceneFrameEncoder {
+    enum Failure: Error, Equatable {
+        case sceneColorFormat
+        case chainDevice
+        case chainDestinationFormat
+        case texture
+    }
+
+    static func encode(
+        queue: any MTLCommandQueue, graph: SceneGraph, colorPixelFormat: MTLPixelFormat,
+        depthMode: MeshDepthMode = .forward, chain: PostProcessChain?, clearColor: SIMD4<Double>,
+        destination: any MTLTexture, sceneColor: inout (any MTLTexture)?, depth: inout (any MTLTexture)?,
+        commandBuffer: any MTLCommandBuffer
+    ) throws {
+        var chainColor: (any MTLTexture)?
+        try encode(
+            content: .graph(queue, colorPixelFormat, graph, nil, depthMode), chain: chain, presentation: nil,
+            clearColor: clearColor, destination: destination, sceneColor: &sceneColor, chainColor: &chainColor,
+            depth: &depth, commandBuffer: commandBuffer
+        )
+    }
+
+    fileprivate static func encode(
+        content: SceneContent, chain: PostProcessChain?, presentation: ScenePresentation?,
+        clearColor: SIMD4<Double>, destination: any MTLTexture,
+        sceneColor: inout (any MTLTexture)?, chainColor: inout (any MTLTexture)?, depth: inout (any MTLTexture)?,
+        commandBuffer: any MTLCommandBuffer
+    ) throws {
+        if let chain {
+            guard content.colorPixelFormat == .rgba16Float else { throw Failure.sceneColorFormat }
+            guard chain.queue.device === content.device else { throw Failure.chainDevice }
+            if presentation != nil {
+                guard chain.destinationPixelFormat == .rgba16Float else { throw Failure.chainDestinationFormat }
+            } else {
+                guard chain.destinationPixelFormat == destination.pixelFormat else { throw Failure.chainDestinationFormat }
+            }
+            let source = try reusableTexture(
+                matching: destination, existing: &sceneColor, format: .rgba16Float,
+                usage: [.renderTarget, .shaderRead], device: content.device, label: "Frostfield SwiftUI scene color"
+            )
+            let storedDepth = try reusableDepth(matching: source, existing: &depth, device: content.device, shaderRead: true)
+            try content.encode(
+                pass: makePass(color: source, depth: storedDepth, clearColor: clearColor, content: content, storeDepth: true),
+                commandBuffer: commandBuffer
+            )
+            let chainDestination: any MTLTexture
+            if presentation != nil {
+                chainDestination = try reusableTexture(
+                    matching: destination, existing: &chainColor, format: .rgba16Float,
+                    usage: [.renderTarget, .shaderRead], device: content.device, label: "Frostfield SwiftUI post chain"
+                )
+            } else {
+                chainDestination = destination
+            }
+            try chain.encode(source: source, depth: storedDepth, destination: chainDestination, commandBuffer: commandBuffer)
+            if let presentation {
+                try presentation.display.encode(
+                    source: chainDestination, destination: destination, settings: presentation.settings, commandBuffer: commandBuffer
+                )
+            }
+        } else if let presentation {
+            let source = try reusableTexture(
+                matching: destination, existing: &sceneColor, format: .rgba16Float,
+                usage: [.renderTarget, .shaderRead], device: content.device, label: "Frostfield SwiftUI HDR scene"
+            )
+            let storedDepth = try reusableDepth(matching: source, existing: &depth, device: content.device, shaderRead: false)
+            try content.encode(
+                pass: makePass(color: source, depth: storedDepth, clearColor: clearColor, content: content, storeDepth: false),
+                commandBuffer: commandBuffer
+            )
+            try presentation.display.encode(
+                source: source, destination: destination, settings: presentation.settings, commandBuffer: commandBuffer
+            )
+        } else {
+            let storedDepth = try reusableDepth(matching: destination, existing: &depth, device: content.device, shaderRead: false)
+            try content.encode(
+                pass: makePass(color: destination, depth: storedDepth, clearColor: clearColor, content: content, storeDepth: false),
+                commandBuffer: commandBuffer
+            )
+        }
+    }
+
+    private static func reusableTexture(
+        matching size: any MTLTexture, existing: inout (any MTLTexture)?, format: MTLPixelFormat,
+        usage: MTLTextureUsage, device: any MTLDevice, label: String
+    ) throws -> any MTLTexture {
+        if let existing, existing.width == size.width, existing.height == size.height, existing.pixelFormat == format {
+            return existing
+        }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: format, width: size.width, height: size.height, mipmapped: false
+        )
+        descriptor.storageMode = .private
+        descriptor.usage = usage
+        guard let texture = device.makeTexture(descriptor: descriptor) else { throw Failure.texture }
+        texture.label = label
+        existing = texture
+        return texture
+    }
+
+    private static func reusableDepth(
+        matching color: any MTLTexture, existing: inout (any MTLTexture)?, device: any MTLDevice, shaderRead: Bool
+    ) throws -> any MTLTexture {
+        let usage: MTLTextureUsage = shaderRead ? [.renderTarget, .shaderRead] : .renderTarget
+        if let existing, existing.width == color.width, existing.height == color.height, existing.usage.contains(usage) {
+            return existing
+        }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: MeshRenderer.depthPixelFormat, width: color.width, height: color.height, mipmapped: false
+        )
+        descriptor.storageMode = .private
+        descriptor.usage = usage
+        guard let texture = device.makeTexture(descriptor: descriptor) else { throw Failure.texture }
+        texture.label = "Frostfield SwiftUI depth"
+        existing = texture
+        return texture
+    }
+
+    private static func makePass(
+        color: any MTLTexture, depth: any MTLTexture, clearColor: SIMD4<Double>, content: SceneContent, storeDepth: Bool
+    ) throws -> MTLRenderPassDescriptor {
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = color
+        pass.colorAttachments[0].storeAction = .store
+        pass.depthAttachment.texture = depth
+        pass.depthAttachment.storeAction = storeDepth ? .store : .dontCare
+        try FramebufferClear(color: clearColor, depth: content.depthClearValue).apply(to: pass)
+        return pass
     }
 }
 

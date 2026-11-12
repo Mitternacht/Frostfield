@@ -11,7 +11,10 @@ second chain applies a warm 33³ `ColorLookupPass` and the Three.js vignette.
 The [unprocessed frame](scene/postsuite-showcase-plain.jpg) shows the same scene
 after tone mapping only. Every effect runs on the raster frame; the path tracer's
 output can be fed through the same chain because it is also premultiplied linear
-RGBA16Float.
+RGBA16Float. `FrostfieldSceneView.postChain(_:)` runs that chain after the raster
+scene and before an optional HDR display. The scene target is RGBA16Float. The
+chain's destination matches the drawable, or stays RGBA16Float when the display
+pass follows. The path-tracing view does not run the chain.
 
 ```sh
 TEST_RUNNER_FROSTFIELD_POSTSUITE_IMAGES=/tmp/out xcodebuild test -scheme Frostfield-Package \
