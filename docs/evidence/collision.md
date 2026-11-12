@@ -19,7 +19,11 @@ box or oriented box contact, then query again from the displaced position.
 Callers choose the tolerance and a budget of 1 to 64 iterations. The result
 includes the net translation and whether it reached tolerance within that
 budget. `MeshBVH.moved(_:by:)` applies a capsule displacement first, then that
-push-out, so sideways travel stays while the capsule rests on a floor.
+push-out, so sideways travel stays while the capsule rests on a floor. There
+is no swept test. A displacement that no longer overlaps the mesh is kept,
+and a spine that crosses a triangle can finish on the side that needs the
+smaller push. The function returns the capsule. Whether the push reached
+tolerance stays on `depenetration`.
 
 The Three.js comparison is pinned to r187. Frostfield uses its existing BVH
 for static scene queries. Its public queries return ray hits, individual
@@ -43,6 +47,9 @@ their geometry or transforms change.
   iteration settings, and a capsule move that rests on a floor while keeping
   its sideways travel.
 
-Xcode 27.2 passed 26 macOS tests across these suites and the existing BVH and
-scene bounds suites. The iPad Pro 13-inch (M5) iOS 27.2 simulator passed the
-13 collision tests. Both runs enabled Metal API Validation.
+An earlier Xcode 27.2 run passed 26 macOS tests across these suites and the
+existing BVH and scene bounds suites, and 13 collision tests on the iPad Pro
+13-inch (M5) simulator. After the capsule move, `MeshDepenetrationTests`
+passed again under Metal API Validation with `xcodebuild`: macOS `Test run
+with 6 tests in 1 suite passed after 0.004 seconds`, iPad Pro (M5) simulator
+`Test run with 6 tests in 1 suite passed after 0.010 seconds`.
