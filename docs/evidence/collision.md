@@ -18,7 +18,8 @@ hierarchy's coordinate space.
 box or oriented box contact, then query again from the displaced position.
 Callers choose the tolerance and a budget of 1 to 64 iterations. The result
 includes the net translation and whether it reached tolerance within that
-budget.
+budget. `MeshBVH.moved(_:by:)` applies a capsule displacement first, then that
+push-out, so sideways travel stays while the capsule rests on a floor.
 
 The Three.js comparison is pinned to r187. Frostfield uses its existing BVH
 for static scene queries. Its public queries return ray hits, individual
@@ -38,8 +39,9 @@ their geometry or transforms change.
 - `SceneCollisionTests` checks collision layers, hidden meshes, mirrored
   instances and snapshot independence.
 - `MeshDepenetrationTests` checks two-plane corners for all four collider types,
-  opposing walls, tangent contacts, Float position precision and invalid
-  iteration settings.
+  opposing walls, tangent contacts, Float position precision, invalid
+  iteration settings, and a capsule move that rests on a floor while keeping
+  its sideways travel.
 
 Xcode 27.2 passed 26 macOS tests across these suites and the existing BVH and
 scene bounds suites. The iPad Pro 13-inch (M5) iOS 27.2 simulator passed the

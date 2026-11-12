@@ -81,6 +81,25 @@ struct MeshDepenetrationTests {
         #expect(boxResponse.translation == SIMD3(0.125, 0, 0))
     }
 
+    @Test("A capsule move rests on the floor and keeps its slide")
+    func characterMove() throws {
+        let bvh = try MeshBVH(geometry: try MeshGeometry.plane(width: 20, height: 20))
+        let standing = try Capsule(start: SIMD3(0, 0, 1), end: SIMD3(0, 0, 2), radius: 0.5)
+        let dropped = try bvh.moved(standing, by: SIMD3(0.4, 0, -0.7))
+        #expect(abs(dropped.start.x - 0.4) < 1e-3)
+        #expect(abs(dropped.start.y) < 1e-4)
+        #expect(abs(dropped.start.z - 0.5) < 1e-3)
+        #expect(abs(dropped.end.z - 1.5) < 1e-3)
+
+        let clear = try Capsule(start: SIMD3(0, 0, 3), end: SIMD3(0, 0, 4), radius: 0.5)
+        let walked = try bvh.moved(clear, by: SIMD3(0.25, 0, 0))
+        let free = try clear.translated(by: SIMD3(0.25, 0, 0))
+        #expect(walked == free)
+        #expect(throws: MeshCollisionResolution.Failure.invalidDisplacement) {
+            try bvh.moved(clear, by: SIMD3(.nan, 0, 0))
+        }
+    }
+
     @Test("Invalid resolution settings fail before querying the mesh")
     func settings() throws {
         let bvh = try MeshBVH(geometry: .plane())

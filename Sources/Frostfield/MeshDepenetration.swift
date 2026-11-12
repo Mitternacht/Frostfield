@@ -13,11 +13,13 @@ public struct MeshCollisionResolution: Equatable, Sendable {
 
     public enum Failure: LocalizedError, Equatable {
         case invalidSettings
+        case invalidDisplacement
         case unrepresentableTranslation
 
         public var errorDescription: String? {
             switch self {
             case .invalidSettings: "Use 1...64 collision iterations and a finite, nonnegative tolerance."
+            case .invalidDisplacement: "A character move needs a finite displacement."
             case .unrepresentableTranslation: "The collision translation exceeds the Float range."
             }
         }
@@ -25,6 +27,20 @@ public struct MeshCollisionResolution: Equatable, Sendable {
 }
 
 public extension MeshBVH {
+    /// Applies `displacement`, then pushes the capsule out of the mesh.
+    /// Travel along a surface stays. An unresolved push still returns the
+    /// capsule at the last representable position.
+    func moved(
+        _ capsule: Capsule, by displacement: SIMD3<Float>, maximumIterations: Int = 8, tolerance: Float = 1e-5
+    ) throws -> Capsule {
+        guard boundsFinite(displacement) else { throw MeshCollisionResolution.Failure.invalidDisplacement }
+        let shifted = try capsule.translated(by: displacement)
+        guard let resolution = try depenetration(
+            for: shifted, maximumIterations: maximumIterations, tolerance: tolerance
+        ) else { return shifted }
+        return try shifted.translated(by: resolution.translation)
+    }
+
     /// Resolves penetration in geometry coordinates by applying the deepest
     /// contact and querying again after each translation. Ties prefer the lower
     /// triangle index. Returns nil if every original penetration is within the

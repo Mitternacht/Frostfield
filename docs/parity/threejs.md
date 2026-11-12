@@ -51,12 +51,12 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`post-processing`](#post-processing) | 7 | 4 | 1 | 29 | 5 | 0 | 5 | 7 | 2 |
 | [`effects-misc`](#effects-misc) | 2 | 2 | 0 | 6 | 2 | 2 | 0 | 2 | 6 |
 | [`path-tracing`](#path-tracing) | 0 | 0 | 0 | 1 | 0 | 1 | 12 | 4 | 0 |
-| [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
+| [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **191** | **64** | **14** | **113** | **25** | **30** | **26** | **37** | **24** |
+| **Total** | **191** | **64** | **14** | **113** | **25** | **30** | **27** | **36** | **24** |
 
-330 of 524 capabilities are complete, with 126 partial and 68 missing.
+331 of 524 capabilities are complete, with 125 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -820,7 +820,7 @@ Three.js has no capability in this tier.
 
 | Capability | Three.js API | Frostfield API | Status | Evidence / gaps |
 | --- | --- | --- | :---: | --- |
-| BVH collision and character movement | three-mesh-bvh shapecast | `MeshBVH.triangles(intersecting:)` | 🟡 | Box-versus-triangle queries in mesh space only; no sphere or capsule shapecast, closest point, refit or character controller; `MeshBVHTests` |
+| BVH collision and character movement | three-mesh-bvh shapecast | `MeshBVH.shapecast(orderBounds:classifyBounds:visitRange:visitTriangle:)`, `MeshBVH.contacts(intersecting:)`, `MeshBVH.closestPoint(to:)`, `MeshBVH.refitted(to:)`, `MeshBVH.moved(_:by:)` | ✅ | Generic bounds shapecast, sphere and capsule contacts, closest point, and refit. `moved(_:by:)` applies a displacement and pushes the capsule out, keeping travel along the surface. `MeshBVHShapeCastTests`, `MeshBVHClosestPointTests`, `MeshDepenetrationTests`. [Collision evidence](../evidence/collision.md) |
 | Editor gizmos, grids and helpers | drei `<PivotControls>`, `<GizmoHelper>`, `<Grid>` | — | ❌ |  |
 | Pointer events on 3D objects | R3F `onClick`, `onPointerOver`, `onPointerMissed` | `SceneInteractionGroup.dispatch`, `SceneInteractionGroup.setDrawableHandler`, `SceneGraph.pick` | 🟡 | Native handlers receive pointer phases and typed mesh, batch or primitive hits. Hover transitions, missed events, propagation and capture remain open. `SceneSelectionTests`, `PrimitivePickingTests`. |
 | Flexbox UI rendered in 3D | @pmndrs/uikit | — | 🌐 | SwiftUI overlays provide native controls; no in-scene UI |
