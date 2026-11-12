@@ -40,7 +40,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | [`renderer`](#renderer) | 19 | 4 | 3 | 1 | 0 | 2 | 0 | 1 | 1 |
 | [`scene-graph`](#scene-graph) | 13 | 4 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
-| [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 1 | 2 | 0 |
+| [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 2 | 1 | 0 |
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 1 | 4 | 1 |
 | [`materials-textures`](#materials-textures) | 38 | 14 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
 | [`shader-authoring`](#shader-authoring) | 22 | 20 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **191** | **64** | **14** | **113** | **25** | **30** | **25** | **38** | **24** |
+| **Total** | **191** | **64** | **14** | **113** | **25** | **30** | **26** | **37** | **24** |
 
-329 of 524 capabilities are complete, with 127 partial and 68 missing.
+330 of 524 capabilities are complete, with 126 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -188,7 +188,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | --- | --- | --- | :---: | --- |
 | Extended controls collection | drei `<CameraControls>`, `<ScrollControls>`, `<PresentationControls>` | `OrbitCameraController` | 🟡 | Covers the orbit, dolly, pan, damping and fit parts of `<CameraControls>`; no scroll-driven or presentation controls; `CameraControllerTests` |
 | Smooth camera transitions and framing | camera-controls `setLookAt`, `fitToBox`, `smoothTime` | `OrbitCameraController.look(at:from:)`, `OrbitCameraController.transitionDuration`, `OrbitCameraController.frame(_:aspectRatio:padding:)`, `OrbitCameraController.update(deltaTime:)`, `OrbitCameraController.settle()` | ✅ | `look(at:from:)` sets the goal from an eye and a target. `transitionDuration` reaches that goal in a fixed time and restarts when the goal changes; nil keeps exponential damping. `frame` takes a view padding fraction. `CameraControllerTests`. [animation-and-tools](../evidence/animation-and-tools.md) |
-| Camera constraints, collision and input mapping | camera-controls `setBoundary`, `colliderMeshes` | `OrbitCameraController.Limits(distance:orthographicHalfHeight:pitch:yaw:)`, `FlyCameraController.pitchLimits` | 🟡 | Distance, pitch, yaw and orthographic-height ranges; no target boundary, mesh collision or input mapping; `CameraControllerTests` |
+| Camera constraints, collision and input mapping | camera-controls `setBoundary`, `colliderMeshes` | `OrbitCameraController.targetBoundary`, `OrbitCameraController.colliders`, `OrbitCameraController.collisionRadius`, `CameraControls.handle(_:)` | ✅ | Pan, dolly, zoom, look, frame, rotate, orient, and update keep the target inside the box and, when the radius is positive, push the camera to the nearest point plus that radius before clamping distance, pitch, and yaw to `Limits`. Assigning the box, `settle()`, and a disabled update do not apply the limits. One closer-than-radius pass; a later limit clamp can leave the camera off that clearance point. `handle` maps pointer, scroll, and movement; the app supplies the sample. Fly cameras still only clamp pitch. Equality compares how many colliders there are, not the meshes. `CameraControllerTests`. [animation-and-tools](../evidence/animation-and-tools.md) |
 
 <a id="geometry"></a>
 
@@ -1020,10 +1020,10 @@ Lights, emissive surfaces and exposure stay separate: `LightRig` carries power o
 - **Clip blending (AnimationMixer)** (7 of 9 ✅)
   - 🟡 Property binding paths (`animation`, core)
   - 🟡 KHR_animation_pointer (`loaders-assets`, third-party)
-- **Camera controls** (1 of 4 ✅)
+- **Camera controls** (2 of 4 ✅)
   - ✅ Controls base class (`cameras-controls`, core)
   - ✅ Smooth camera transitions and framing (`cameras-controls`, third-party)
-  - 🟡 Camera constraints, collision and input mapping (`cameras-controls`, third-party)
+  - ✅ Camera constraints, collision and input mapping (`cameras-controls`, third-party)
 - **Picking** (2 of 4 ✅)
   - 🟡 Pointer events on 3D objects (`interaction-tools`, third-party)
   - 🟡 BVH-accelerated raycasting (`performance-scale`, third-party)

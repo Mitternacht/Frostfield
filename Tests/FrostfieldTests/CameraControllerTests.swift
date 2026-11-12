@@ -465,4 +465,23 @@ struct CameraControllerTests {
             try tight.frame(box, aspectRatio: 1, padding: 1)
         }
     }
+
+    @Test
+    func `A target box and a mesh keep the orbit outside them`() throws {
+        var bounded = try orbit(target: .zero, distance: 4, yaw: 0, pitch: 0)
+        bounded.targetBoundary = try AxisAlignedBox(minimum: SIMD3(repeating: -1), maximum: SIMD3(repeating: 1))
+        try bounded.pan(by: SIMD2(200, 0), viewportHeight: 100)
+        try bounded.update(deltaTime: 0)
+        #expect(abs(bounded.goal.target.x + 1) < 1e-4)
+        #expect(abs(bounded.pose.target.x + 1) < 1e-4)
+
+        var blocked = try orbit(target: .zero, distance: 2, yaw: 0, pitch: 0)
+        blocked.colliders = [try MeshBVH(geometry: try MeshGeometry.plane(width: 4, height: 4))]
+        blocked.collisionRadius = 0.5
+        try blocked.dolly(by: 20)
+        try blocked.update(deltaTime: 0)
+        #expect(abs(blocked.goal.cameraPosition.z - 0.5) < 1e-3)
+        #expect(abs(blocked.pose.cameraPosition.z - 0.5) < 1e-3)
+        #expect(abs(blocked.goal.distance - 0.5) < 1e-3)
+    }
 }

@@ -133,6 +133,22 @@ public struct OrbitCameraController: Equatable, Sendable {
     /// or a snap when ``dampingRate`` is also nil. Zero snaps on the next update.
     /// A new goal restarts the interval from the presented pose. This wins over damping.
     public var transitionDuration: Float? = nil
+    /// The orbit target stays inside this box. Nil leaves the target free.
+    public var targetBoundary: AxisAlignedBox? = nil
+    /// Surfaces the camera cannot enter. ``collisionRadius`` is the clearance.
+    public var colliders: [MeshBVH] = []
+    /// How far the camera stays from ``colliders``. Zero disables the push.
+    public var collisionRadius: Float = 0
+
+    /// Pose, limits and collider count. Two meshes with the same count compare equal.
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.goal == rhs.goal && lhs.pose == rhs.pose && lhs.projection == rhs.projection
+            && lhs.limits == rhs.limits && lhs.panMode == rhs.panMode && lhs.dampingRate == rhs.dampingRate
+            && lhs.isEnabled == rhs.isEnabled && lhs.transitionDuration == rhs.transitionDuration
+            && lhs.axisTurn == rhs.axisTurn && lhs.timedMove == rhs.timedMove && lhs.timedGoal == rhs.timedGoal
+            && lhs.targetBoundary == rhs.targetBoundary && lhs.collisionRadius == rhs.collisionRadius
+            && lhs.colliders.count == rhs.colliders.count
+    }
 
     private struct AxisTurn: Equatable, Sendable {
         let start: SIMD2<Double>
@@ -207,6 +223,7 @@ public struct OrbitCameraController: Equatable, Sendable {
             goal.yaw = Float(yaw - turns * 2 * .pi)
             pose.yaw = Float(Double(pose.yaw) - turns * 2 * .pi)
         }
+        try constrain()
     }
 
     /// Aligns the camera with a signed world axis, preserving the presented
@@ -273,6 +290,7 @@ public struct OrbitCameraController: Equatable, Sendable {
         goal = destination
         pose = startsInMotion ? startingPose : destination
         axisTurn = turn
+        try constrain()
     }
 
     /// Moves the target so the scene follows a drag, with +x right and +y down in
@@ -296,6 +314,7 @@ public struct OrbitCameraController: Equatable, Sendable {
         let offset = (vertical * Double(delta.y) - basis.right * Double(delta.x)) * worldPerUnit
         goal.target = try orbitFloat(orbitDouble(goal.target) + offset)
         axisTurn = nil
+        try constrain()
     }
 
     /// Divides the distance, or the orthographic half height, by a positive finite
@@ -312,6 +331,7 @@ public struct OrbitCameraController: Equatable, Sendable {
             )
         }
         axisTurn = nil
+        try constrain()
     }
 
     /// Dollies like ``dolly(by:)`` while keeping whatever lies under a normalized
@@ -342,6 +362,7 @@ public struct OrbitCameraController: Equatable, Sendable {
         let offset = (basis.right * screen.x + basis.up * screen.y) * reach * shrink
         do {
             goal.target = try orbitFloat(orbitDouble(before.target) + offset)
+            try constrain()
         } catch {
             goal = before
             axisTurn = pendingTurn
@@ -368,6 +389,7 @@ public struct OrbitCameraController: Equatable, Sendable {
         goal.distance = Float(distance)
         goal.yaw = yaw
         goal.pitch = pitch
+        try constrain()
     }
 
     /// Centers the target on a box and fits its bounding sphere in the view, keeping
@@ -397,6 +419,7 @@ public struct OrbitCameraController: Equatable, Sendable {
             goal.orthographicHalfHeight = clamp(Float(halfHeight), to: limits.orthographicHalfHeight)
             goal.distance = clamp(max(goal.distance, Float(2 * radius)), to: limits.distance)
         }
+        try constrain()
     }
 
     /// Advances the presented pose by a nonnegative, finite number of seconds.
@@ -411,6 +434,7 @@ public struct OrbitCameraController: Equatable, Sendable {
                 pose = goal
                 timedMove = nil
                 timedGoal = nil
+                try constrain()
                 return
             }
             if timedMove == nil || timedGoal != goal {
@@ -428,6 +452,7 @@ public struct OrbitCameraController: Equatable, Sendable {
                 pose = goal
                 timedMove = nil
             }
+            try constrain()
             return
         }
         timedMove = nil
@@ -442,10 +467,12 @@ public struct OrbitCameraController: Equatable, Sendable {
                 pose.pitch = Float(angles.y)
                 axisTurn = turn
             }
+            try constrain()
             return
         }
         guard let dampingRate else {
             pose = goal
+            try constrain()
             return
         }
         let remaining = exp(-Double(dampingRate) * Double(deltaTime))
@@ -468,6 +495,7 @@ public struct OrbitCameraController: Equatable, Sendable {
             && abs(Double(pose.yaw) - Double(goal.yaw)) <= tolerance
             && abs(Double(pose.pitch) - Double(goal.pitch)) <= tolerance
         if near { pose = goal }
+        try constrain()
     }
 
     /// Presents the goal immediately, skipping any remaining transition.
@@ -502,6 +530,36 @@ public struct OrbitCameraController: Equatable, Sendable {
         }
     }
 
+    private mutating func constrain() throws {
+        if let boundary = targetBoundary {
+            goal.target = simd_min(boundary.maximum, simd_max(boundary.minimum, goal.target))
+            pose.target = simd_min(boundary.maximum, simd_max(boundary.minimum, pose.target))
+        }
+        guard collisionRadius.isFinite, collisionRadius >= 0 else { throw Failure.invalidCollisionRadius }
+        guard collisionRadius > 0, !colliders.isEmpty else { return }
+        try push(outOf: colliders, pose: &goal)
+        try push(outOf: colliders, pose: &pose)
+    }
+
+    private func push(outOf colliders: [MeshBVH], pose: inout Pose) throws {
+        var position = pose.cameraPosition
+        for collider in colliders {
+            guard let hit = try collider.closestPoint(to: position), hit.distance < Double(collisionRadius) else { continue }
+            let away = SIMD3<Double>(position) - SIMD3<Double>(hit.position)
+            let length = simd_length(away)
+            let direction = length > 1e-8 ? away / length : SIMD3<Double>(0, 0, 1)
+            let pushed = SIMD3<Double>(hit.position) + direction * Double(collisionRadius)
+            position = SIMD3(Float(pushed.x), Float(pushed.y), Float(pushed.z))
+        }
+        let offset = orbitDouble(position) - orbitDouble(pose.target)
+        let separation = simd_length(offset)
+        guard separation > 1e-8 else { return }
+        pose.distance = clamp(Float(separation), to: limits.distance)
+        pose.pitch = clamp(Float(asin(min(max(offset.y / separation, -1), 1))), to: limits.pitch)
+        let yaw = Float(atan2(offset.x, offset.z))
+        pose.yaw = limits.yaw.map { clamp(yaw, to: $0) } ?? yaw
+    }
+
     public enum Failure: LocalizedError, Equatable {
         case invalidTarget
         case invalidAngle
@@ -518,6 +576,7 @@ public struct OrbitCameraController: Equatable, Sendable {
         case invalidDeltaTime
         case invalidTransitionDuration
         case invalidPadding
+        case invalidCollisionRadius
         case unrepresentablePose
 
         public var errorDescription: String? {
@@ -538,6 +597,7 @@ public struct OrbitCameraController: Equatable, Sendable {
             case .invalidDeltaTime: "An update's elapsed time must be finite and nonnegative."
             case .invalidTransitionDuration: "A transition duration must be nonnegative and finite."
             case .invalidPadding: "Frame padding must be finite and in 0 up to, but not including, 1."
+            case .invalidCollisionRadius: "The camera collision radius must be finite and nonnegative."
             case .unrepresentablePose: "The camera input moves the target outside the Float range."
             }
         }

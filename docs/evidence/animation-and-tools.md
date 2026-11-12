@@ -13,11 +13,13 @@ recomputes joint palettes from the mixed graph. A damped
 | --- | --- | --- |
 | Weighted clip blending, cross-fades with warp, loop modes, time scale, additive layers, events | `AnimationMixer`, `AnimationAction`, `AnimationClip` | `AnimationMixerTests` |
 | glTF morph targets (positions, normals, tangents, sparse accessors, weights channels) and CPU application | `GLTFMeshLoader.loadScene(..., includeMorphTargets: true)`, `MeshMorphTargets` | `GLTFMorphTargetTests` |
-| Orbit, map-style pan, zoom to cursor, look-at, timed moves, padded framing, and fly controls | `OrbitCameraController`, `FlyCameraController` | `CameraControllerTests` |
+| Orbit, map-style pan, zoom to cursor, look-at, timed moves, padded framing, a target box, mesh collision, and fly controls | `OrbitCameraController`, `FlyCameraController` | `CameraControllerTests` |
 | BVH ray queries matching the linear scan; cached for undeformed meshes in scene picking | `MeshBVH`, `MeshGeometry.intersection(..., bvh:)` | `MeshBVHTests` |
 | Bounds and view frustum tests for forward and reversed depth | `AxisAlignedBox`, `BoundingSphere`, `ViewFrustum` | `ViewFrustumTests` |
 | Box selection, mixed viewport raycasts and grouped input | `SceneGraph.select`, `SceneGraph.raycast`, `SceneInteractionGroup` | `SceneSelectionTests`, `PrimitivePickingTests`, `BatchedMeshTests` |
 | glTF 2.0 and GLB export of imported scenes and scene graphs | `GLTFExporter` | `GLTFExporterTests` |
+
+`targetBoundary` clamps the orbit target to a box on pan, dolly, zoom, look, frame, rotate, orient, and update. `colliders` are `MeshBVH` values. When `collisionRadius` is above zero, a camera closer than that radius is pushed to the nearest point plus the radius along the separation, and distance, pitch, and yaw are clamped to the existing limits again. Assigning the box, calling `settle()`, or updating while the controller is disabled does not apply either limit. The push is one closer-than-radius pass, so a later limit clamp can leave the camera off that clearance point. A nil box together with no colliders and a zero radius leaves the old motion unchanged. `CameraControls.handle` maps the sample the app provides. A fly camera still only clamps pitch.
 
 The exporter round-trips a procedural scene through GLB with bit-identical
 vertices and indices, texture pixels within one code value, and matching light,
