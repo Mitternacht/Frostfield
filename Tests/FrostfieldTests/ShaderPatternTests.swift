@@ -109,6 +109,21 @@ struct ShaderPatternTests {
         #expect(masks.map(\.x) == [1, 1, 0, 0])
     }
 
+    @Test("Wood latewood is the cubed sine of fifteen rings")
+    func woodLatewood() throws {
+        let samples = [SIMD4<Float>(0, 0, 0, 0), SIMD4(0, 1.0 / 60, 0, 0)]
+        let values = try probe.map(samples) { builder, field in
+            let late = builder.woodLatewood(field.y)
+            return builder.vector(late, late, late, late)
+        }
+        func expected(_ v: Float) -> Float {
+            let ring = 0.5 + 0.5 * sin(15 * 2 * .pi * v)
+            return ring * ring * ring
+        }
+        #expect(abs(values[0].x - expected(0)) < 1e-4)
+        #expect(abs(values[1].x - expected(1.0 / 60)) < 1e-4)
+    }
+
     @Test("Triplanar weights sum to 1, follow |n|^k, and blend the yz, zx and xy projections")
     func triplanar() throws {
         var random = SeededGenerator(seed: 11)

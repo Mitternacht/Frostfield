@@ -96,6 +96,22 @@ struct ProceduralSurfaceTests {
         }
     }
 
+    @Test("Wood shading changes across the rings and with the seed")
+    func woodShade() {
+        let early = ProceduralSurface.shade(.wood, u: 0, v: 0, seed: 1)
+        let late = ProceduralSurface.shade(.wood, u: 0.37, v: 0.42, seed: 1)
+        let again = ProceduralSurface.shade(.wood, u: 0, v: 0, seed: 1)
+        let reseeded = ProceduralSurface.shade(.wood, u: 0.37, v: 0.42, seed: 99)
+        #expect(early.metallic == 0 && late.metallic == 0)
+        #expect(early.baseColor == again.baseColor && early.roughness == again.roughness)
+        #expect(early.roughness != late.roughness || early.baseColor != late.baseColor)
+        #expect(reseeded.baseColor != late.baseColor)
+        for sample in [early, late, reseeded] {
+            #expect((0...1).contains(sample.height) && (0...1).contains(sample.roughness))
+            #expect((0...1).contains(sample.baseColor.x) && (0...1).contains(sample.occlusion))
+        }
+    }
+
     private func pixels(_ texture: any MTLTexture, level: Int = 0) -> [UInt8] {
         let width = max(1, texture.width >> level)
         let height = max(1, texture.height >> level)

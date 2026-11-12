@@ -42,7 +42,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`scene-graph`](#scene-graph) | 13 | 4 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 2 | 1 | 0 |
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 2 | 3 | 1 |
-| [`materials-textures`](#materials-textures) | 38 | 14 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
+| [`materials-textures`](#materials-textures) | 38 | 14 | 0 | 3 | 1 | 1 | 1 | 2 | 1 |
 | [`shader-authoring`](#shader-authoring) | 23 | 19 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 22 | 3 | 0 | 7 | 0 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 1 | 2 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **193** | **62** | **14** | **115** | **23** | **30** | **29** | **34** | **24** |
+| **Total** | **193** | **62** | **14** | **116** | **22** | **30** | **29** | **34** | **24** |
 
-337 of 524 capabilities are complete, with 119 partial and 68 missing.
+338 of 524 capabilities are complete, with 118 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -320,7 +320,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Capability | Three.js API | Frostfield API | Status | Evidence / gaps |
 | --- | --- | --- | :---: | --- |
 | Compressed texture decompression | `WebGPUTextureUtils.decompress` | `TextureDecompressor.decompress`, `TextureDecompressor.encode` | ✅ | Expands native compressed 2D textures through Metal sampling with optional per-axis resize and stored mip selection. Preserves sRGB, alpha and swizzles, and keeps signed or HDR data in RGBA16Float. `TextureDecompressorTests`. [Decompression evidence](../evidence/texture-decompression.md) |
-| Procedural wood material | `WoodNodeMaterial` | `ProceduralSurface.Style.wood` | 🟡 | Baked tileable texture set, not a per-pixel material; surface graphs could shade wood per pixel but no preset ships; `ProceduralSurfaceTests` |
+| Procedural wood material | `WoodNodeMaterial` | `ProceduralSurface.Style.wood`, `ProceduralSurface.shade(_:u:v:seed:baseColor:)`, `ShaderGraphBuilder.woodLatewood(_:)` | ✅ | `shade` evaluates wood color, height, roughness and occlusion at any UV, and the texture bake uses that pattern. `woodLatewood` is the cubed ring term in a surface graph. `ProceduralSurfaceTests`, `ShaderPatternTests`. |
 | Car-paint flakes texture | `FlakesTexture` | `FlakesTexture(device:seed:settings:)` | ✅ | Seeded flake maps reproduce the r187 distribution and legacy normal encoding, with optional unit RGB encoding, wrapped edges and mips. Verified raster base and coat glints and path-traced first-hit normals. `FlakesTextureTests`. [Flake evidence](../evidence/flake-normal-textures.md) |
 | Fast subsurface scattering | `SubsurfaceScatteringShader` | `PhysicallyBasedMaterial.Subsurface`, `PhysicallyBasedMaterial.DiffuseTransmission` | 🟡 | Raster wrap and backlight approximations. The add-on’s Phong thickness shader and texture controls remain open. `TranslucencyTests`. |
 | Toon and cel shaders | `ToonShader1`, `ToonShaderHatching`, `ToonShaderDotted` | — | ❌ |  |

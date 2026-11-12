@@ -51,6 +51,20 @@ public struct ProceduralSurface {
     /// Linear occlusion, roughness, and metallic in the red, green, and blue channels.
     public let metallicRoughnessTexture: any MTLTexture
 
+    /// Evaluates one texel of a preset. The texture initializer bakes this function.
+    public static func shade(
+        _ style: Style, u: Float, v: Float, seed: UInt64 = 1, baseColor: SIMD3<Float>? = nil
+    ) -> Sample {
+        let tint = baseColor ?? style.defaultColor
+        let sample = Pattern(style: style, seed: seed).sample(u, v)
+        func unit(_ value: Float) -> Float { min(max(value, 0), 1) }
+        return Sample(
+            baseColor: SIMD3(unit(tint.x * sample.brightness), unit(tint.y * sample.brightness), unit(tint.z * sample.brightness)),
+            height: unit(sample.height), roughness: unit(sample.roughness),
+            metallic: unit(sample.metallic), occlusion: unit(sample.occlusion)
+        )
+    }
+
     /// Generates square, mipmapped textures. The optional color is linear RGB in zero to one.
     /// Preparation waits for the mip chain once so the returned textures can be used on any queue.
     public init(

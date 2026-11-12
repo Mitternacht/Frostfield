@@ -233,6 +233,13 @@ extension ShaderGraphBuilder {
         add(.checker(coordinates.id), operands: [coordinates])
     }
 
+    /// Cubed sine rings along V, the latewood term of `ProceduralSurface.shade`.
+    public func woodLatewood(_ v: ShaderValue<Float>) -> ShaderValue<Float> {
+        let phase = v * constant(15 * 2 * Float.pi)
+        let ring = phase.sin() * constant(Float(0.5)) + constant(Float(0.5))
+        return ring * ring * ring
+    }
+
     /// 1 inside the circle and 0 outside. `center` defaults to the middle of a unit square.
     public func circle(
         _ uv: ShaderValue<SIMD2<Float>>, radius: ShaderValue<Float>, center: SIMD2<Float> = SIMD2(repeating: 0.5)
