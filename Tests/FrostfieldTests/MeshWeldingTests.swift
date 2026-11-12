@@ -270,4 +270,28 @@ struct MeshWeldingTests {
         }
     }
 
+    @Test("Separate vertex channels interleave in order and read back")
+    func interleaveAttributes() throws {
+        let mesh = try MeshGeometry(vertices: [
+            MeshVertex(position: SIMD3(1, 2, 3), normal: SIMD3(0, 0, 1), textureCoordinate: SIMD2(0.25, 0.5)),
+            MeshVertex(position: SIMD3(4, 5, 6), normal: SIMD3(0, 1, 0), textureCoordinate: SIMD2(1, 0)),
+        ], indices: [0, 1, 0])
+        let packed = try mesh.interleavedAttributes()
+        #expect(packed.vertexCount == 2)
+        #expect(packed.stride == 8)
+        #expect(packed.values == [1, 2, 3, 0, 0, 1, 0.25, 0.5, 4, 5, 6, 0, 1, 0, 1, 0])
+        #expect(try packed.values(named: "uv") == [0.25, 0.5, 1, 0])
+        #expect(throws: InterleavedVertexAttributes.Failure.count("uv")) {
+            try InterleavedVertexAttributes([
+                .init(name: "position", components: 3, values: [1, 2, 3]),
+                .init(name: "uv", components: 2, values: [0, 0, 1, 0]),
+            ])
+        }
+        #expect(throws: InterleavedVertexAttributes.Failure.nonfinite("position")) {
+            try InterleavedVertexAttributes([
+                .init(name: "position", components: 3, values: [1, .nan, 3]),
+            ])
+        }
+    }
+
 }

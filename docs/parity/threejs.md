@@ -41,7 +41,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`renderer`](#renderer) | 19 | 4 | 3 | 1 | 0 | 2 | 0 | 1 | 1 |
 | [`scene-graph`](#scene-graph) | 13 | 4 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 1 | 2 | 0 |
-| [`geometry`](#geometry) | 21 | 2 | 0 | 14 | 2 | 0 | 0 | 5 | 1 |
+| [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 0 | 5 | 1 |
 | [`materials-textures`](#materials-textures) | 34 | 18 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
 | [`shader-authoring`](#shader-authoring) | 21 | 21 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 21 | 4 | 0 | 5 | 2 | 2 | 1 | 1 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **184** | **71** | **14** | **111** | **27** | **30** | **24** | **39** | **24** |
+| **Total** | **184** | **71** | **14** | **112** | **26** | **30** | **24** | **39** | **24** |
 
-319 of 524 capabilities are complete, with 137 partial and 68 missing.
+320 of 524 capabilities are complete, with 136 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -241,7 +241,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Deform along a curve | `Flow`, `InstancedFlow` | `CurveDeformer`, `CurveDeformer.transform(atDistance:)`, `CurveFlow`, `MeshRenderer.init(curveFlow:...)` | ✅ | Independently move copies and assign spines in a fixed-topology one-draw batch with matching bounds and picking. Metal compute bends along the prepared spines. CPU execution also supports new spines and geometry outside the Metal domain. `CurveDeformerTests`, `CurveFlowTests`. [Curve deformation evidence](../evidence/curve-deformation.md) |
 | Vertex welding and creased normals | `mergeVertices`, `toCreasedNormals` | `MeshGeometry.weldedWithRemap`, `MeshGeometry.creasedNormalsWithRemap` | ✅ | Weld by position and chosen attribute tolerances with an optional external-channel matcher. Corner-angle normals smooth across UV seams and split hard edges. `MeshWeldingTests`. [Geometry evidence](../evidence/mesh-topology.md) |
 | MikkTSpace tangents | `computeMikkTSpaceTangents` | `MeshGeometry.generatingTangents(textureCoordinateSet:convention:)`, `MeshGeometry.generatingTangentsWithRemap(textureCoordinateSet:convention:)` | ✅ | Blender reference tangent frames on mirrored and curved meshes, both UV sets, and a source-vertex remap for split seams. `MeshTangentGenerationTests`. [Tangent evidence](../evidence/tangent-generation.md) |
-| Buffer layout utilities | `interleaveAttributes`, `estimateBytesUsed`, `computeMorphedAttributes` | `MeshGeometry.estimatedGPUByteCount`, `MeshMorphTargets.apply(weights:to:)`, `MeshRenderer.deformedGeometry(queue:)` | 🟡 | Base mesh byte estimate includes optional colors. Frostfield packs its own interleaved vertex layout. CPU morphing and readback of graph-deformed vertices cover deformed attributes. No general-purpose interleaver. `MeshWeldingTests`, `MorphTargetRenderingTests`, `MeshDeformationTests`. |
+| Buffer layout utilities | `interleaveAttributes`, `estimateBytesUsed`, `computeMorphedAttributes` | `InterleavedVertexAttributes`, `MeshGeometry.interleavedAttributes()`, `MeshGeometry.estimatedGPUByteCount`, `MeshMorphTargets.apply(weights:to:)`, `MeshRenderer.deformedGeometry(queue:)` | ✅ | Separate float channels pack into one vertex-major buffer and read back by name. The base-mesh byte estimate includes optional colors. CPU morphing and readback of graph-deformed vertices cover deformed attributes. `MeshWeldingTests`, `MorphTargetRenderingTests`, `MeshDeformationTests`. |
 
 ### Third-party ecosystem
 
