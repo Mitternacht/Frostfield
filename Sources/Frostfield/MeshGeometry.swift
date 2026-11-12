@@ -102,6 +102,12 @@ public struct MeshGeometry: Sendable {
         self.indices = indices
     }
 
+    func replacingVertices(_ vertices: [MeshVertex]) throws -> MeshGeometry {
+        var geometry = try MeshGeometry(vertices: vertices, indices: indices)
+        geometry.groups = groups
+        return geometry
+    }
+
     func replacingValidatedPositions(_ changes: [(index: Int, position: SIMD3<Float>)]) -> MeshGeometry {
         var updated = vertices
         for (index, position) in changes {

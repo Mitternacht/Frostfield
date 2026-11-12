@@ -18,9 +18,12 @@ their logical lengths. Metal-reported allocation sizes remain optional.
 This provides the raster update path for a regenerated `MarchingCubes.mesh`.
 Callers choose the capacity and rebuild the scalar field and indexed surface
 on the CPU. For an empty field, hide the node until a surface becomes available.
-Dynamic geometry is a full indexed-mesh replacement. Skinning, morphs,
-instancing, vertex graph deformation, GPU indirect arguments and attribute-range
-updates are outside this API. Static renderers retain their existing behavior.
+`updateVertices(_:startingAt:)` replaces a contiguous vertex span. When the
+previous revision's buffer is idle, the next encode writes only that span and
+leaves the other vertices in the buffer. A busy buffer gets a full copy of the
+new mesh instead. Skinning, morphs, instancing, vertex graph deformation and
+GPU indirect arguments stay outside this API. Static renderers retain their
+existing behavior.
 
 `DynamicGeometryTests` exercises a blocked GPU draw across an update, vertex
 color and triangle count changes, ring exhaustion and recovery, updated mesh

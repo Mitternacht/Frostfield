@@ -41,7 +41,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`renderer`](#renderer) | 18 | 5 | 3 | 1 | 0 | 2 | 0 | 1 | 1 |
 | [`scene-graph`](#scene-graph) | 11 | 6 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 1 | 2 | 0 |
-| [`geometry`](#geometry) | 20 | 3 | 0 | 14 | 2 | 0 | 0 | 5 | 1 |
+| [`geometry`](#geometry) | 21 | 2 | 0 | 14 | 2 | 0 | 0 | 5 | 1 |
 | [`materials-textures`](#materials-textures) | 34 | 18 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
 | [`shader-authoring`](#shader-authoring) | 21 | 21 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 21 | 4 | 0 | 5 | 2 | 2 | 1 | 1 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **180** | **75** | **14** | **111** | **27** | **30** | **24** | **39** | **24** |
+| **Total** | **181** | **74** | **14** | **111** | **27** | **30** | **24** | **39** | **24** |
 
-315 of 524 capabilities are complete, with 141 partial and 68 missing.
+316 of 524 capabilities are complete, with 140 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -200,7 +200,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | --- | --- | --- | :---: | --- |
 | Vertex attributes and layout | `BufferAttribute`, `InterleavedBuffer` | `MeshVertex(position:normal:textureCoordinate:secondaryTextureCoordinate:tangent:color:)`, `MeshGeometry(vertices:indices:)` | 🟡 | Fixed position, normal, two UV sets and tangent layout plus optional linear RGBA color. There are no custom attributes. `MeshGeometryTests`, `VertexColorTests`. [Primitive evidence](../evidence/primitives.md) |
 | Indexed geometry | `setIndex`, `toNonIndexed` | `MeshGeometry.indices` | ✅ | UInt32 triangle indices; no Uint16 or toNonIndexed; `MeshGeometryTests` |
-| Dynamic buffer updates | `setUsage`, `needsUpdate`, `addUpdateRange` | `MeshRenderer.updateGeometry`, `InstanceSet.setTransform(_:at:)`, `InstanceSet.replaceAll(transforms:tints:)`, `PathTracingScene.updateGeometry(for:in:replacements:)` | 🟡 | Bounded whole-mesh raster replacements preserve in-flight geometry and prepared pipelines. Instance edits use an upload ring and the path tracer rebuilds selected bottom levels. Partial attribute ranges remain open. `DynamicGeometryTests`, `InstancingTests`, `PathSceneUpdateTests`. [Dynamic geometry evidence](../evidence/dynamic-geometry.md) |
+| Dynamic buffer updates | `setUsage`, `needsUpdate`, `addUpdateRange` | `MeshRenderer.updateGeometry`, `MeshRenderer.updateVertices(_:startingAt:)`, `InstanceSet.setTransform(_:at:)`, `InstanceSet.replaceAll(transforms:tints:)`, `PathTracingScene.updateGeometry(for:in:replacements:)` | ✅ | Bounded whole-mesh raster replacements preserve in-flight geometry and prepared pipelines. `updateVertices` uploads only the changed vertex span when the previous buffer is idle, and leaves the other vertices in place. Instance edits use an upload ring and the path tracer rebuilds selected bottom levels. `DynamicGeometryTests`, `InstancingTests`, `PathSceneUpdateTests`. [Dynamic geometry evidence](../evidence/dynamic-geometry.md) |
 | Instanced attributes | `InstancedBufferAttribute` | `InstanceSet(device:transforms:tints:capacity:)`, `MeshRenderer(device:colorPixelFormat:geometry:material:supportsInstancing:)` | 🟡 | Per-instance transforms and linear RGBA tints only, in raster and the path tracer; no custom per-instance attributes; `InstancingTests`; [scale-and-dynamics](../evidence/scale-and-dynamics.md) |
 | Morph target attributes | `morphAttributes` | `MeshMorphTargets(vertexCount:targets:)`, `MeshMorphTargets.Target(positionOffsets:normalOffsets:tangentOffsets:)`, `MeshRenderer(device:colorPixelFormat:geometry:material:morphTargets:)` | ✅ | Relative position, normal and tangent offsets, up to 256 targets, blended per draw on the GPU; the path tracer morphs on the CPU; no color or UV morphs, none with surface-graph position offsets; `MorphTargetRenderingTests`, `GLTFMorphTargetTests`; [scale-and-dynamics](../evidence/scale-and-dynamics.md) |
 | Geometry groups (multi-material) | `addGroup` | `MeshGeometryGroup`, `MeshGeometry.withGroups(_:)`, `MeshGeometry.subset(_:)`, `SceneNode.grouped` | ✅ | Groups select index ranges and materials. The node creates one compacted renderer per group. Shared vertices are uploaded once per group. `PrimitiveGeometryTests`. [Primitive evidence](../evidence/primitives.md) |

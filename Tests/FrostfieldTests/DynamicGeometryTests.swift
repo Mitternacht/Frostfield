@@ -231,6 +231,36 @@ struct DynamicGeometryTests {
         #expect(graph.resourceStatistics().bufferCount == 4)
     }
 
+    @Test("A vertex span upload moves that corner and leaves the other vertices in the buffer")
+    func vertexSpan() throws {
+        let mesh = try patch(x: 0, quad: true)
+        let renderer = try dynamic(mesh)
+        let graph = try scene(renderer)
+        let before = try gpu.pixels(of: gpu.render(graph).color)
+        let covered = before.filter { $0.w > 0.5 }.count
+        #expect(covered > 20)
+        #expect(!renderer.lastVertexUploadWasPartial)
+        var corner = mesh.vertices[1]
+        corner = MeshVertex(position: SIMD3(8, corner.position.y, 0), normal: corner.normal, color: corner.color)
+        let kept = mesh.vertices[3].position
+        try renderer.updateVertices([corner], startingAt: 1)
+        #expect(renderer.geometry.vertices[3].position == kept)
+        #expect(renderer.geometry.vertices[1].position.x == 8)
+        let after = try gpu.pixels(of: gpu.render(graph).color)
+        let remaining = after.filter { $0.w > 0.5 }.count
+        #expect(remaining > covered)
+        #expect(renderer.lastVertexUploadWasPartial)
+        #expect(throws: MeshRenderer.Failure.dynamicGeometryRange) {
+            try renderer.updateVertices([corner], startingAt: 4)
+        }
+        let frozen = try MeshRenderer(
+            device: gpu.device, colorPixelFormat: .rgba16Float, geometry: mesh, material: .unlit
+        )
+        #expect(throws: MeshRenderer.Failure.dynamicGeometryNotPrepared) {
+            try frozen.updateVertices([corner], startingAt: 0)
+        }
+    }
+
     private func patch(x: Float, quad: Bool, color: SIMD4<Float>? = nil) throws -> MeshGeometry {
         let offsets: [SIMD2<Float>] = quad
             ? [SIMD2(-0.38, -0.52), SIMD2(0.38, -0.52), SIMD2(0.38, 0.52), SIMD2(-0.38, 0.52)]

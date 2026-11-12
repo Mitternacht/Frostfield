@@ -40,6 +40,9 @@ final class DynamicGeometryBuffers {
         let topologyRevision: UInt64
         let geometry: MeshGeometry
         let bounds: AxisAlignedBox
+        /// The uploaded revision these vertex spans modify. Nil replaces the whole mesh.
+        let patchBase: UInt64?
+        let vertexPatches: [Range<Int>]
     }
 
     private static let maximumSlots = 3
@@ -48,13 +51,16 @@ final class DynamicGeometryBuffers {
     private let colored: Bool
     private var slots: [Slot]
     var initial: Buffers { slots[0].buffers }
+    private(set) var lastUploadWasPartial = false
 
     init(device: any MTLDevice, capacity: MeshRenderer.DynamicGeometryCapacity, geometry: MeshGeometry, colored: Bool) throws {
         self.device = device
         self.capacity = capacity
         self.colored = colored
         let buffers = try Self.allocate(device: device, capacity: capacity, colored: colored)
-        slots = [Slot(buffers, revision: 0, readers: 0)]
+        let slot = Slot(buffers, revision: 0, readers: 0)
+        slot.uploadedRevision = 0
+        slots = [slot]
         write(geometry, into: buffers)
     }
 
@@ -77,7 +83,15 @@ final class DynamicGeometryBuffers {
                 slot = Slot(buffers, revision: revision.number, readers: 1)
                 slots.append(slot)
             }
-            write(revision.geometry, into: slot.buffers)
+            let canPatch = revision.patchBase == slot.uploadedRevision && !revision.vertexPatches.isEmpty
+            if canPatch {
+                write(revision.vertexPatches, of: revision.geometry, into: slot.buffers)
+                lastUploadWasPartial = true
+            } else {
+                write(revision.geometry, into: slot.buffers)
+                lastUploadWasPartial = false
+            }
+            slot.uploadedRevision = revision.number
         }
         let lease = Lease(slot)
         if requiringColors, slot.buffers.colors == nil {
@@ -132,6 +146,17 @@ final class DynamicGeometryBuffers {
         return buffer
     }
 
+    private func write(_ ranges: [Range<Int>], of geometry: MeshGeometry, into buffers: Buffers) {
+        let packed = buffers.vertices.contents().bindMemory(to: PackedMeshVertex.self, capacity: capacity.vertices)
+        let colors = buffers.colors?.contents().bindMemory(to: SIMD4<Float>.self, capacity: capacity.vertices)
+        for range in ranges {
+            for index in range {
+                packed[index] = PackedMeshVertex(geometry.vertices[index])
+                colors?[index] = geometry.vertices[index].color ?? SIMD4(repeating: 1)
+            }
+        }
+    }
+
     private func write(_ geometry: MeshGeometry, into buffers: Buffers) {
         let vertices = buffers.vertices.contents().bindMemory(to: PackedMeshVertex.self, capacity: capacity.vertices)
         for (index, vertex) in geometry.vertices.enumerated() {
@@ -154,6 +179,7 @@ final class DynamicGeometryBuffers {
         // Only the render owner reads or changes these bindings. Completion
         // handlers release the reader count in state.
         var buffers: Buffers
+        var uploadedRevision: UInt64 = .max
         private struct State {
             var revision: UInt64
             var readers: Int

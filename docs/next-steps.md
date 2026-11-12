@@ -5,7 +5,7 @@ Written on 2026-11-11 and updated on 2026-11-12, when shader work on `codex/matr
 
 ## Where things stand
 
-- The ledger [`docs/parity/threejs.md`](parity/threejs.md) tracks 524 capabilities against Three.js r187: **315 done, 141 partial, 68 missing**.
+- The ledger [`docs/parity/threejs.md`](parity/threejs.md) tracks 524 capabilities against Three.js r187: **316 done, 140 partial, 68 missing**.
   Its section "Priorities: done and remaining" is the ordered queue and is current. Do not trust a row until its evidence page and tests agree.
 - The last full run passed on macOS (2,183 tests in 426 suites), the iPad Pro (M5) simulator and the Vision Pro simulator (345 tests in 46 suites each).
   Frostfield Lab built for all three, and three Asset Studio captures were byte-identical to the previous ones. All of it ran under Metal API Validation.
@@ -96,13 +96,13 @@ Leave these alone unless the owner says otherwise: skeletons and bones, property
 
 ## Continued on 2026-11-12
 
-Still `codex/matrix-uniforms`, still `xcodebuild` with Metal API Validation. The Xcode bridge was not used. These rows moved to complete: orthographic scene camera, shared camera controls, raster dispersion, `EXT_materials_bump`, primitive indirect draws, and device allocation totals. The ledger is **315 complete, 141 partial, and 68 missing**.
+Still `codex/matrix-uniforms`, still `xcodebuild` with Metal API Validation. The Xcode bridge was not used. These rows moved to complete: orthographic scene camera, shared camera controls, raster dispersion, `EXT_materials_bump`, primitive indirect draws, and device allocation totals. The ledger is **316 complete, 140 partial, and 68 missing**.
 
-macOS, the focused suites: `Test run with 11 tests in 7 suites passed after 0.237 seconds`. iPad Pro (M5) simulator: `Test run with 11 tests in 7 suites passed after 0.771 seconds`. That simulator does not report support for primitive indirect draws, so `PrimitiveIndirectDrawTests` was skipped there. macOS ran those two tests. After picking and parallel shading were wired to the orthographic camera, `OrthographicSceneCameraTests` passed again: macOS `Test run with 2 tests in 1 suite passed after 0.034 seconds`, iPad simulator `Test run with 2 tests in 1 suite passed after 0.087 seconds`. `OrbitCameraController.look(at:from:)`, `transitionDuration`, and frame padding then closed the smooth-transition row. `CameraControllerTests`: macOS `Test run with 16 tests in 1 suite passed after 0.006 seconds`, iPad simulator `Test run with 16 tests in 1 suite passed after 0.013 seconds`.
+macOS, the focused suites: `Test run with 11 tests in 7 suites passed after 0.237 seconds`. iPad Pro (M5) simulator: `Test run with 11 tests in 7 suites passed after 0.771 seconds`. That simulator does not report support for primitive indirect draws, so `PrimitiveIndirectDrawTests` was skipped there. macOS ran those two tests. After picking and parallel shading were wired to the orthographic camera, `OrthographicSceneCameraTests` passed again: macOS `Test run with 2 tests in 1 suite passed after 0.034 seconds`, iPad simulator `Test run with 2 tests in 1 suite passed after 0.087 seconds`. `OrbitCameraController.look(at:from:)`, `transitionDuration`, and frame padding then closed the smooth-transition row. `CameraControllerTests`: macOS `Test run with 16 tests in 1 suite passed after 0.006 seconds`, iPad simulator `Test run with 16 tests in 1 suite passed after 0.013 seconds`. `MeshRenderer.updateVertices(_:startingAt:)` then closed dynamic buffer ranges. `DynamicGeometryTests`: macOS `Test run with 7 tests in 1 suite passed after 0.091 seconds`, iPad simulator `Test run with 7 tests in 1 suite passed after 2.075 seconds`.
 
 ## What is left
 
-The ledger is **315 complete, 141 partial, and 68 missing**. Its section "Priorities: done and remaining" is the ordered queue. The next open shader rows, top to bottom:
+The ledger is **316 complete, 140 partial, and 68 missing**. Its section "Priorities: done and remaining" is the ordered queue. The next open shader rows, top to bottom:
 
 - Typed values: struct uniforms. Integer, boolean, matrix, and struct uniforms are not animation tracks.
 - Node materials: sprite size and the remaining classic and primitive slots.

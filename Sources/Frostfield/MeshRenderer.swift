@@ -106,6 +106,10 @@ public final class MeshRenderer {
     }
     /// The latest accepted dynamic geometry revision. Static renderers return nil.
     public private(set) var geometryRevision: UInt64?
+    /// True when the latest dynamic upload wrote only recorded vertex spans into an existing buffer.
+    package private(set) var lastVertexUploadWasPartial = false
+    private var geometryPatches: [Range<Int>] = []
+    private var patchBaseRevision: UInt64 = 0
     private var motionTopologyRevision: UInt64 = 0
     /// The color pass's blending, depth, stencil, face and coverage state.
     public let renderState: MeshRenderState
@@ -311,7 +315,34 @@ public final class MeshRenderer {
         sourceGeometry = geometry
         sourceBounds = geometry.bounds
         geometryRevision = next
+        geometryPatches = []
+        patchBaseRevision = next
         if !preservingVertexIdentity { motionTopologyRevision = next }
+        pickingBVH = MeshBVHCache()
+    }
+
+    /// Replaces a contiguous span of the current dynamic mesh and uploads only that span
+    /// when the previous vertices are still in an idle buffer. Indices and the other
+    /// vertices stay. The next encode uses the new bounds. A renderer that is not dynamic
+    /// throws `Failure.dynamicGeometryNotPrepared`.
+    public func updateVertices(_ vertices: [MeshVertex], startingAt start: Int) throws {
+        guard dynamicGeometry != nil, let revision = geometryRevision else { throw Failure.dynamicGeometryNotPrepared }
+        guard start >= 0, !vertices.isEmpty, start <= sourceGeometry.vertices.count - vertices.count else {
+            throw Failure.dynamicGeometryRange
+        }
+        var replaced = sourceGeometry.vertices
+        for (offset, vertex) in vertices.enumerated() {
+            replaced[start + offset] = vertex
+        }
+        let geometry = try sourceGeometry.replacingVertices(replaced)
+        try dynamicGeometry?.capacity.validate(geometry)
+        let (next, overflow) = revision.addingReportingOverflow(1)
+        guard !overflow else { throw Failure.dynamicGeometryRevision }
+        if geometryPatches.isEmpty { patchBaseRevision = revision }
+        geometryPatches.append(start..<(start + vertices.count))
+        sourceGeometry = geometry
+        sourceBounds = geometry.bounds
+        geometryRevision = next
         pickingBVH = MeshBVHCache()
     }
 
@@ -2622,7 +2653,10 @@ public final class MeshRenderer {
             instanceRevision: instances?.revision,
             indexRange: drawRange.resolve(indexCount: sourceGeometry.indices.count),
             dynamicRevision: geometryRevision.map {
-                .init(number: $0, topologyRevision: motionTopologyRevision, geometry: sourceGeometry, bounds: sourceBounds)
+                .init(
+                    number: $0, topologyRevision: motionTopologyRevision, geometry: sourceGeometry, bounds: sourceBounds,
+                    patchBase: geometryPatches.isEmpty ? nil : patchBaseRevision, vertexPatches: geometryPatches
+                )
             }
         )
     }
@@ -2730,6 +2764,7 @@ public final class MeshRenderer {
         }
         if let dynamicGeometry, let revision = draw.dynamicRevision {
             draw.dynamicBuffers = try dynamicGeometry.acquire(revision, for: commandBuffer, requiringColors: requiringColors)
+            lastVertexUploadWasPartial = dynamicGeometry.lastUploadWasPartial
         }
         draw.curveVertices = try curveFlow?.acquireVertices(for: commandBuffer)
         draw.instanceBuffer = try draw.instances?.acquireBuffer(for: commandBuffer)
@@ -3966,6 +4001,7 @@ public final class MeshRenderer {
         case resource(String)
         case dynamicGeometryCapacity
         case dynamicGeometryNotPrepared
+        case dynamicGeometryRange
         case unsupportedDynamicGeometry
         case drawRangeWithIndirectArguments
         case dynamicGeometryCommandBuffer
@@ -4028,6 +4064,7 @@ public final class MeshRenderer {
             case .resource(let name): "Metal could not allocate \(name)."
             case .dynamicGeometryCapacity: "The dynamic geometry capacity is invalid or the replacement exceeds it."
             case .dynamicGeometryNotPrepared: "Prepare a dynamic geometry renderer before replacing its geometry."
+            case .dynamicGeometryRange: "A dynamic vertex update needs a non-empty span inside the current vertex list."
             case .unsupportedDynamicGeometry: "Use static geometry for vertex deformation, skinning, morphs, instances or GPU indirect draws."
             case .drawRangeWithIndirectArguments: "GPU indirect records supply their own range. Reset the renderer's draw range before using them."
             case .dynamicGeometryCommandBuffer: "Use an uncommitted command buffer for dynamic geometry."
