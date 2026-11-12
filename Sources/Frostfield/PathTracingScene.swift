@@ -827,6 +827,8 @@ public final class PathTracingScene {
 
     package static let mirroredInstance: UInt32 = 1
     package static let cullsBackFacesInstance: UInt32 = 2
+    package static let shadowFrontInstance: UInt32 = 8
+    package static let shadowBackInstance: UInt32 = 16
     package static let coloredInstance: UInt32 = 4
     /// `Material.emission.w` without an alpha test; a mask stores its cutoff of zero or more.
     static let opaqueCoverage: Float = -1
@@ -1026,6 +1028,12 @@ public final class PathTracingScene {
             let inverseRows = simd_transpose(world.inverse)
             var flags: UInt32 = simd_determinant(linear) < 0 ? mirroredInstance : 0
             if instance.cullsBackFaces != 0 { flags |= cullsBackFacesInstance }
+            switch instance.renderer.renderState.shadowSide {
+            case nil: break
+            case .front: flags |= shadowFrontInstance
+            case .back: flags |= shadowBackInstance
+            case .double: flags |= shadowFrontInstance | shadowBackInstance
+            }
             if instance.renderer.readsVertexColors && level.hasVertexColors { flags |= coloredInstance }
             records[index] = InstanceRecord(
                 objectToWorld0: rows.columns.0, objectToWorld1: rows.columns.1, objectToWorld2: rows.columns.2,

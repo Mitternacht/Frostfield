@@ -42,7 +42,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`scene-graph`](#scene-graph) | 13 | 4 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 1 | 2 | 0 |
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 1 | 4 | 1 |
-| [`materials-textures`](#materials-textures) | 36 | 16 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
+| [`materials-textures`](#materials-textures) | 37 | 15 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
 | [`shader-authoring`](#shader-authoring) | 22 | 20 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 21 | 4 | 0 | 5 | 2 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 0 | 3 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **188** | **67** | **14** | **113** | **25** | **30** | **25** | **38** | **24** |
+| **Total** | **189** | **66** | **14** | **113** | **25** | **30** | **25** | **38** | **24** |
 
-326 of 524 capabilities are complete, with 130 partial and 68 missing.
+327 of 524 capabilities are complete, with 129 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -263,7 +263,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Capability | Three.js API | Frostfield API | Status | Evidence / gaps |
 | --- | --- | --- | :---: | --- |
 | Material base state | `opacity`, `transparent`, `visible`, `toneMapped`, `fog` | `PhysicallyBasedMaterial.baseColorFactor`, `PhysicallyBasedMaterial.alphaMode`, `PhysicallyBasedMaterial.isVisible`, `PhysicallyBasedMaterial.toneMapped`, `PhysicallyBasedMaterial.fog`, `ClassicMaterial.isVisible`, `ClassicMaterial.toneMapped`, `ClassicMaterial.fog`, `MeshRenderState.transparent`, `SceneGraph.encodeFogExclusionMask` | ✅ | Opacity comes from the material and the transparent bucket is configurable in raster. A hidden material is not drawn and does not cast a shadow; picking still hits it. `toneMapped` skips the display curve. `fog` false keeps the pixel when a depth, exponential or height fog pass samples the exclusion mask. Archive version 36 stores either opt-out. `MaterialBaseStateTests`, `ToneMappingTests`, `RenderStateTests`. [Primitive evidence](../evidence/primitives.md) |
-| Face side and culling | `side`, `shadowSide` | `MeshRenderState.side`, `MeshRenderState.shadowSide` | 🟡 | Raster front, back or double sided. `shadowSide` chooses the faces that cast into directional, punctual and transmitted shadow maps; nil keeps both sides, and the color pass ignores it. Archive version 37 stores a set value. The path tracer still uses one side for camera and shadow rays. `ShadowSideTests`, `RenderStateTests`. [Primitive evidence](../evidence/primitives.md) |
+| Face side and culling | `side`, `shadowSide` | `MeshRenderState.side`, `MeshRenderState.shadowSide` | ✅ | Raster front, back or double sided. `shadowSide` chooses the faces that cast into directional, punctual and transmitted shadow maps and that block path-traced shadow rays. Nil keeps both raster shadow sides and, in the path tracer, inherits the camera side. The color pass ignores it. Archive version 37 stores a set value. `ShadowSideTests`, `PathEmissiveSamplingTests`, `RenderStateTests`. [Primitive evidence](../evidence/primitives.md) |
 | Blending modes | `blending`, `blendSrc`, `blendDst`, `blendEquation` | `MeshRenderState.blending`, `MeshRenderState.BlendFunction` | ✅ | Raster normal, additive, subtractive, multiply and custom color and alpha equations. The path tracer does not implement general framebuffer blending. `RenderStateTests`. [Primitive evidence](../evidence/primitives.md) |
 | Depth and color-write state | `depthTest`, `depthWrite`, `depthFunc`, `colorWrite` | `MeshRenderState.depthTest`, `MeshRenderState.depthWrite`, `MeshRenderState.depthCompare`, `MeshRenderState.colorWriteMask` | ✅ | Raster depth control and per-channel color write masks. The comparison follows the selected depth convention. `RenderStateTests`. [Primitive evidence](../evidence/primitives.md) |
 | Stencil state | `stencilWrite`, `stencilFunc`, `stencilZPass` | `MeshRenderState.Stencil`, `MeshRenderer.usesStencilAttachment` | 🟡 | Combined depth-stencil attachments support comparison, masks, reference and fail, depth-fail and pass operations. Verified with skin, morphs, instances, dynamic meshes, curve flow, typed displacement, archives and per-sample MSAA color resolve. GPU indirect and batched draws, mixed primitives and auxiliary passes remain open. [Stencil evidence](../evidence/material-stencil.md) |

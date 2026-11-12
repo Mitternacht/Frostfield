@@ -510,7 +510,9 @@ extension PathTracingScene {
                 column(world.columns.0), column(world.columns.1), column(world.columns.2), column(world.columns.3)
             ))
             var options: MTLAccelerationStructureInstanceOptions = instance.alphaTested ? .nonOpaque : .opaque
-            if instance.cullsBackFaces == 0 { options.insert(.disableTriangleCulling) }
+            if instance.cullsBackFaces == 0 || instance.renderer.renderState.shadowSide != nil {
+                options.insert(.disableTriangleCulling)
+            }
             descriptor.options = options
             descriptor.mask = 0xff
             descriptor.intersectionFunctionTableOffset = 0

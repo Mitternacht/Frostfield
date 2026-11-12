@@ -11,6 +11,40 @@ struct PathEmissiveSamplingTests {
         fixture = try PathTestFixture()
     }
 
+    @Test("A path-traced shadow side can leave a front-facing blocker transparent to the light")
+    func shadowSide() throws {
+        let light = try emitter(.init(
+            baseColorFactor: SIMD4(0, 0, 0, 1), emissiveFactor: SIMD3(1, 0.5, 0.25),
+            alphaMode: .opaque, emissiveStrength: 4
+        ))
+        let lamp = SceneNode(
+            transform: facingReceiver(position: SIMD3(0.59, 0, -2), size: SIMD2(0.96, 1.3)), mesh: light
+        )
+        func radiance(side: MeshRenderState.Side?, acceleration: PathTracingScene.Options.Acceleration) throws -> Float {
+            let blocker = try MeshRenderer(
+                device: fixture.device, colorPixelFormat: .rgba16Float, geometry: .plane(width: 1, height: 1),
+                material: .physicallyBased(try .init(roughness: 1, alphaMode: .opaque, specular: .init(factor: 0))),
+                renderState: MeshRenderState(shadowSide: side)
+            )
+            let scene = try prepared([
+                try receiver(), lamp,
+                SceneNode(
+                    transform: .init(
+                        translation: SIMD3(0.3, 0, -2.5), rotation: simd_quatf(angle: .pi, axis: SIMD3(0, 1, 0))
+                    ),
+                    mesh: blocker
+                ),
+            ], acceleration: acceleration)
+            return try trace(PathTracer(queue: fixture.queue, scene: scene), samples: 32).x
+        }
+        for acceleration in [PathTracingScene.Options.Acceleration.software, .automatic] {
+            let front = try radiance(side: nil, acceleration: acceleration)
+            let back = try radiance(side: .back, acceleration: acceleration)
+            #expect(back > 0.02, "\(acceleration) back \(back)")
+            #expect(front < back * 0.25, "\(acceleration) front \(front) back \(back)")
+        }
+    }
+
     @Test("Mirrored, nonuniform emissive instances match analytic panels and ordinary path hits",
           arguments: PathAccelerationTests.modes)
     func matchesIndependentEstimators(acceleration: PathTracingScene.Options.Acceleration) throws {

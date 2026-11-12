@@ -67,6 +67,8 @@ struct PTInstance {
 
 constant uint ptInstanceMirrored = 1u;
 constant uint ptInstanceCullsBackFaces = 2u;
+constant uint ptInstanceShadowFront = 8u;
+constant uint ptInstanceShadowBack = 16u;
 constant uint ptInstanceColored = 4u;
 
 constant float ptStochasticCoverage = -2.0f;
@@ -753,12 +755,21 @@ struct PTBoundsDiagnostic {
     bool intersects;
 };
 
+// Nil shadow side inherits the camera cull. A set side accepts only the named faces.
+static bool ptShadowAccepts(uint flags, bool frontFacing, bool cullsBackFaces) {
+    bool front = (flags & ptInstanceShadowFront) != 0u;
+    bool back = (flags & ptInstanceShadowBack) != 0u;
+    if (!front && !back) { return !cullsBackFaces || frontFacing; }
+    return frontFacing ? front : back;
+}
+
 // Traverses the top level in world space and each entered bottom level in object
 // space. Object rays keep the unnormalized transformed direction, so distances stay
 // in world units. Both builders bound depth at 32, and one stack holds both levels.
 template<bool diagnostic, bool countBounds>
 static PTHit ptGeometrySoftwareTraversal(
-    PTRay ray, bool anyHit, thread const PTScene& scene, bool dominantCoverage, thread PTBoundsDiagnostic& bounds
+    PTRay ray, bool anyHit, thread const PTScene& scene, bool dominantCoverage, thread PTBoundsDiagnostic& bounds,
+    bool shadowRay = false
 ) {
     PTHit hit = {ray.maximum, ptMissing, float2(0), ptMissing};
     if (scene.topLevelCount == 0u) { return hit; }
@@ -843,9 +854,10 @@ static PTHit ptGeometrySoftwareTraversal(
             bool frontFacing;
             if (!frostfieldRayTriangle<false>(
                 instance.vertices[corners[0]].position.xyz, instance.vertices[corners[1]].position.xyz,
-                instance.vertices[corners[2]].position.xyz, cullsBackFaces, sheared, ray.minimum, hit.distance,
-                distance, barycentric, frontFacing
+                instance.vertices[corners[2]].position.xyz, shadowRay ? false : cullsBackFaces, sheared, ray.minimum,
+                hit.distance, distance, barycentric, frontFacing
             )) { continue; }
+            if (shadowRay && !ptShadowAccepts(instance.meta.w, frontFacing, cullsBackFaces)) { continue; }
             if (!ptAccepts(
                 scene, ray, instanceIndex, candidate, instance.primitives[candidate], barycentric, distance, dominantCoverage
             )) { continue; }
@@ -856,9 +868,11 @@ static PTHit ptGeometrySoftwareTraversal(
     return hit;
 }
 
-static PTHit ptGeometrySoftware(PTRay ray, bool anyHit, thread const PTScene& scene, bool dominantCoverage) {
+static PTHit ptGeometrySoftware(
+    PTRay ray, bool anyHit, thread const PTScene& scene, bool dominantCoverage, bool shadowRay
+) {
     PTBoundsDiagnostic unused = {};
-    return ptGeometrySoftwareTraversal<false, false>(ray, anyHit, scene, dominantCoverage, unused);
+    return ptGeometrySoftwareTraversal<false, false>(ray, anyHit, scene, dominantCoverage, unused, shadowRay);
 }
 
 // Metal ray tracing over the instance acceleration structure. Instances whose material has an
@@ -867,7 +881,7 @@ static PTHit ptGeometrySoftware(PTRay ray, bool anyHit, thread const PTScene& sc
 // Metal's winding names the order as the ray sees the corners in its own left-handed frame,
 // so the triangles that face a ray with counterclockwise corners, as the software test and
 // raster define front faces, are the ones Metal calls clockwise.
-static PTHit ptGeometryMetal(PTRay ray, bool anyHit, thread const PTScene& scene, bool dominantCoverage) {
+static PTHit ptGeometryMetal(PTRay ray, bool anyHit, thread const PTScene& scene, bool dominantCoverage, bool shadowRay) {
     PTHit hit = {ray.maximum, ptMissing, float2(0), ptMissing};
     if (scene.instanceCount == 0u || !(ray.maximum > ray.minimum)) { return hit; }
     intersection_params parameters;
@@ -880,8 +894,29 @@ static PTHit ptGeometryMetal(PTRay ray, bool anyHit, thread const PTScene& scene
     while (query.next()) {
         if (query.get_candidate_intersection_type() != intersection_type::triangle) { continue; }
         uint primitive = query.get_candidate_primitive_id();
+        uint instanceID = query.get_candidate_instance_id();
+        device const PTInstance& instance = scene.instances[instanceID];
+        bool customShadow = (instance.meta.w & (ptInstanceShadowFront | ptInstanceShadowBack)) != 0u;
+        if (customShadow) {
+            device const uint* corners = instance.indices + 3u * primitive;
+            float3 origin = ptToObject(instance, float4(ray.origin, 1.0f));
+            float3 direction = ptToObject(instance, float4(ray.direction, 0.0f));
+            FrostfieldShearedRay sheared = frostfieldShearRay(origin, direction);
+            float distance;
+            float2 barycentric;
+            bool frontFacing = false;
+            if (!frostfieldRayTriangle<false>(
+                instance.vertices[corners[0]].position.xyz, instance.vertices[corners[1]].position.xyz,
+                instance.vertices[corners[2]].position.xyz, false, sheared, 0.0f, 1.0e20f,
+                distance, barycentric, frontFacing
+            )) { continue; }
+            bool cullsBackFaces = (instance.meta.w & ptInstanceCullsBackFaces) != 0u;
+            bool keep = shadowRay ? ptShadowAccepts(instance.meta.w, frontFacing, cullsBackFaces)
+                : (!cullsBackFaces || frontFacing);
+            if (!keep) { continue; }
+        }
         if (ptAccepts(
-            scene, ray, query.get_candidate_instance_id(), primitive, primitive,
+            scene, ray, instanceID, primitive, primitive,
             query.get_candidate_triangle_barycentric_coord(), query.get_candidate_triangle_distance(), dominantCoverage
         )) {
             query.commit_triangle_intersection();
@@ -896,9 +931,11 @@ static PTHit ptGeometryMetal(PTRay ray, bool anyHit, thread const PTScene& scene
     return hit;
 }
 
-static PTHit ptGeometry(PTRay ray, bool anyHit, thread const PTScene& scene, bool dominantCoverage = false) {
-    if (frostfield_path_metal_rt) { return ptGeometryMetal(ray, anyHit, scene, dominantCoverage); }
-    return ptGeometrySoftware(ray, anyHit, scene, dominantCoverage);
+static PTHit ptGeometry(
+    PTRay ray, bool anyHit, thread const PTScene& scene, bool dominantCoverage = false, bool shadowRay = false
+) {
+    if (frostfield_path_metal_rt) { return ptGeometryMetal(ray, anyHit, scene, dominantCoverage, shadowRay); }
+    return ptGeometrySoftware(ray, anyHit, scene, dominantCoverage, shadowRay);
 }
 
 static PTLightHit ptAreaLights(
@@ -1716,7 +1753,7 @@ static float ptMIS(float first, float second) {
 static bool ptOccluded(
     PTRay shadow, thread const PTScene& scene, device const PTAreaLight* lights, uint lightCount
 ) {
-    return ptGeometry(shadow, true, scene).index != ptMissing
+    return ptGeometry(shadow, true, scene, false, true).index != ptMissing
         || ptAreaLights(shadow, false, lights, lightCount).index != ptMissing;
 }
 
@@ -1988,7 +2025,7 @@ static float3 ptShadow(
     }
     float3 transmittance = float3(1);
     for (uint crossing = 0u; crossing <= 8u; ++crossing) {
-        PTHit hit = ptGeometry(shadow, false, scene);
+        PTHit hit = ptGeometry(shadow, false, scene, false, true);
         PTRay lightRay = shadow;
         lightRay.maximum = hit.distance;
         if (ptAreaLights(lightRay, false, lights, lightCount).index != ptMissing) { return float3(0); }
