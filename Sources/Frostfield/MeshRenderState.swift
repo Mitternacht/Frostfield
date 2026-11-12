@@ -175,6 +175,9 @@ public struct MeshRenderState: Equatable, Sendable {
     public var colorWriteMask: MTLColorWriteMask
     public var depthOffset: DepthOffset?
     public var side: Side
+    /// Which faces cast shadows. Nil keeps both sides, the shadow pass used before this
+    /// setting existed. Three.js `shadowSide` null instead follows `side`.
+    public var shadowSide: Side?
     /// Discards each fragment whose alpha is below a stable hashed threshold and
     /// writes the survivors opaque, like Three.js `alphaHash`. The threshold follows
     /// Wyman and McGuire's hashed alpha test on world position at pixel scale, so a
@@ -194,8 +197,8 @@ public struct MeshRenderState: Equatable, Sendable {
     public init(
         blending: Blending = .none, transparent: Bool = false, depthTest: Bool = true, depthWrite: Bool = true,
         depthCompare: MTLCompareFunction = .less, colorWriteMask: MTLColorWriteMask = .all,
-        depthOffset: DepthOffset? = nil, side: Side = .front, alphaHash: Bool = false, alphaToCoverage: Bool = false,
-        stencil: Stencil? = nil
+        depthOffset: DepthOffset? = nil, side: Side = .front, shadowSide: Side? = nil,
+        alphaHash: Bool = false, alphaToCoverage: Bool = false, stencil: Stencil? = nil
     ) {
         self.blending = blending
         self.transparent = transparent
@@ -205,6 +208,7 @@ public struct MeshRenderState: Equatable, Sendable {
         self.colorWriteMask = colorWriteMask
         self.depthOffset = depthOffset
         self.side = side
+        self.shadowSide = shadowSide
         self.alphaHash = alphaHash
         self.alphaToCoverage = alphaToCoverage
         self.stencil = stencil
@@ -310,6 +314,15 @@ public struct MeshRenderState: Equatable, Sendable {
         case .front: .back
         case .back: .front
         case .double: .none
+        }
+    }
+
+    /// Nil casts with both sides. A set value uses the same winding rule as `cullMode`.
+    var shadowCullMode: MTLCullMode {
+        switch shadowSide {
+        case nil, .double?: .none
+        case .front?: .back
+        case .back?: .front
         }
     }
 

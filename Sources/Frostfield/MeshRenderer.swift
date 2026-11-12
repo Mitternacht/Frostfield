@@ -1791,6 +1791,7 @@ public final class MeshRenderer {
                         statistics.culledShadowCount += 1
                         continue
                     }
+                    depthEncoder.setCullMode(caster.renderer.renderState.shadowCullMode)
                     caster.renderer.encodeShadowCaster(
                         draw, clip: caster.shadowClips[slice], into: depthEncoder, coverageView: coverageView
                     ) { skinned, masked in
@@ -1820,6 +1821,7 @@ public final class MeshRenderer {
                     for layer in 0..<transmitted.layerCount {
                         let encoder = try transmitted.makeEncoder(slice: slice, layer: layer, commandBuffer: commandBuffer)
                         for (caster, optics) in glass {
+                            encoder.setCullMode(caster.renderer.renderState.shadowCullMode)
                             caster.renderer.encodeTransmittedShadow(
                                 caster.draw, clip: caster.shadowClips[slice], optics: optics,
                                 pass: transmitted, view: peelView, into: encoder
@@ -1862,6 +1864,7 @@ public final class MeshRenderer {
                             continue
                         }
                     }
+                    depthEncoder.setCullMode(caster.renderer.renderState.shadowCullMode)
                     caster.renderer.encodeShadowCaster(
                         draw, clip: caster.punctualClips[slot], into: depthEncoder, coverageView: coverageView
                     ) { skinned, masked in

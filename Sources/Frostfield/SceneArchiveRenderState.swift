@@ -93,6 +93,8 @@ struct ArchiveMeshState: Codable {
     var colorWriteMask: UInt
     var depthOffset: Offset?
     var side: Side
+    /// Nil means both sides cast. Stored from archive version 37.
+    var shadowSide: Side? = nil
     var alphaHash: Bool
     var alphaToCoverage: Bool
     var stencil: Stencil?
@@ -118,6 +120,13 @@ struct ArchiveMeshState: Codable {
         case .front: .front
         case .back: .back
         case .double: .double
+        }
+        shadowSide = state.shadowSide.map { side in
+            switch side {
+            case .front: .front
+            case .back: .back
+            case .double: .double
+            }
         }
         alphaHash = state.alphaHash
         alphaToCoverage = state.alphaToCoverage
@@ -149,7 +158,13 @@ struct ArchiveMeshState: Codable {
             blending: blend, transparent: transparent, depthTest: depthTest, depthWrite: depthWrite,
             depthCompare: compare, colorWriteMask: .init(rawValue: colorWriteMask),
             depthOffset: depthOffset.map { .init(factor: $0.factor, units: $0.units, clamp: $0.clamp) },
-            side: faces, alphaHash: alphaHash, alphaToCoverage: alphaToCoverage, stencil: try stencil?.makeState()
+            side: faces, shadowSide: shadowSide.map { side in
+                switch side {
+                case .front: .front
+                case .back: .back
+                case .double: .double
+                }
+            }, alphaHash: alphaHash, alphaToCoverage: alphaToCoverage, stencil: try stencil?.makeState()
         )
     }
 }

@@ -28,7 +28,7 @@ import simd
 public struct SceneArchive: Sendable, Equatable {
     /// The newest manifest version this build reads and writes. Captures use the
     /// earliest version that can store the scene.
-    public static let formatVersion = 36
+    public static let formatVersion = 37
     /// Maximum root-to-leaf node count. Keeps nested scene values safe to release
     /// on a Swift task stack even though archive traversal itself is iterative.
     public static let maximumHierarchyDepth = 1_024
@@ -245,6 +245,9 @@ public struct SceneArchive: Sendable, Equatable {
                 || $0.physicallyBased?.isVisible == false || $0.physicallyBased?.fog == false
         }) {
             throw Failure.decoding("a hidden material or a material that skips fog requires archive version 36")
+        }
+        if document.version < 37, document.meshes.contains(where: { $0.renderState?.shadowSide != nil }) {
+            throw Failure.decoding("a shadow face side requires archive version 37")
         }
         let rotation = (document.scene.environmentEulerRotation ?? .zero) + SIMD3(0, document.scene.environmentRotation, 0)
         guard rotation.isFiniteVector else { throw Failure.decoding("scene environment rotation angles must be finite") }
@@ -812,7 +815,8 @@ private struct ArchiveCapture {
         let needsVersion2 = clips.contains { $0.propertyTracks != nil } || materials.contains { $0.liveFactors != nil }
         let rig = photometry.rig(lightRig, writer: &writer)
         let lighting = photometry.record
-        let version = if materials.contains(where: {
+        let version = if meshes.contains(where: { $0.renderState?.shadowSide != nil }) { 37 }
+        else if materials.contains(where: {
             $0.classic?.isVisible == false || $0.classic?.fog == false
                 || $0.physicallyBased?.isVisible == false || $0.physicallyBased?.fog == false
         }) { 36 }
