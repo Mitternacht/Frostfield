@@ -3121,10 +3121,11 @@ public final class MeshRenderer {
         }
         if receivesShadows, let shadowMap {
             // The FrostfieldDirectionalShadow record in FrostfieldShadowSampling.h.
-            // biasUp.w, slot 25, is the shadow strength. A node that does not receive shadows forces it to zero.
+            // biasUp.w is the shadow strength. A node that does not receive shadows forces it to zero.
             var uniforms = draw.relativeDirectional.map { shadowMap.relativeShaderUniforms(for: $0) }
                 ?? shadowMap.shaderUniforms
-            if draw.suppressesShadows, uniforms.count > 25 { uniforms[25].w = 0 }
+            let strength = DirectionalShadowMap.shadowStrengthUniformIndex
+            if draw.suppressesShadows, uniforms.count > strength { uniforms[strength].w = 0 }
             uniforms.withUnsafeBytes { bytes in
                 encoder.setFragmentBytes(bytes.baseAddress!, length: bytes.count, index: physicallyBased != nil || classic != nil ? 4 : 1)
             }

@@ -3,13 +3,13 @@
 
 #include <metal_stdlib>
 
-// The directional light's maps, matching DirectionalShadowMap.shaderUniforms (28 float4 slots).
-// A single map has one slice; a cascaded map has one slice per cascade.
+// The directional light's maps, matching DirectionalShadowMap.shaderUniforms (49 float4 slots).
+// A single map has one slice; a cascaded map has one slice per cascade, up to eight.
 struct FrostfieldDirectionalShadow {
-    metal::float4x4 clipFromWorld[4];
-    metal::float4 cascade[4];  // depth per UV, depth bias, model-relative flag in first record,
+    metal::float4x4 clipFromWorld[8];
+    metal::float4 cascade[8];  // depth per UV, depth bias, model-relative flag in first record,
                                // reciprocal half extent
-    metal::float4 splits;      // far view distance of each cascade
+    metal::float4 splits[2];   // far view distance of each cascade, four per vector
     metal::float4 forward;     // view axis or local split plane normal (xyz), blend fraction (w)
     metal::float4 origin;      // view origin (xyz) or local split plane offset (x), map count (w)
     metal::float4 settings;    // x: 1 for a cascaded map, y: tangent of the light's angular radius,
@@ -177,6 +177,10 @@ struct FrostfieldDirectionalSelection {
     float blend;
 };
 
+static inline float frostfieldCascadeSplit(constant FrostfieldDirectionalShadow& shadow, uint index) {
+    return shadow.splits[index >> 2][index & 3];
+}
+
 // The last part of each cascade cross-fades into the next. The last cascade
 // fades to unshadowed, and surfaces beyond its split are fully unshadowed.
 static inline FrostfieldDirectionalSelection frostfieldDirectionalSelection(
@@ -189,12 +193,12 @@ static inline FrostfieldDirectionalSelection frostfieldDirectionalSelection(
     float distance = relative ? metal::dot(localPosition, shadow.forward.xyz) + shadow.origin.x
                               : metal::dot(worldPosition - shadow.origin.xyz, shadow.forward.xyz);
     uint index = 0u;
-    while (index < count && distance > shadow.splits[index]) {
+    while (index < count && distance > frostfieldCascadeSplit(shadow, index)) {
         ++index;
     }
     if (index >= count) { return { position, index, 0.0f }; }
-    float far = shadow.splits[index];
-    float near = index == 0u ? shadow.settings.z : shadow.splits[index - 1u];
+    float far = frostfieldCascadeSplit(shadow, index);
+    float near = index == 0u ? shadow.settings.z : frostfieldCascadeSplit(shadow, index - 1u);
     float band = (far - near) * shadow.forward.w;
     float blend = band > 0 && distance > far - band ? metal::saturate((distance - (far - band)) / band) : 0.0f;
     return { position, index, blend };

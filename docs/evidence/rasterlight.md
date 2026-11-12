@@ -54,7 +54,9 @@ texels, in depth as well. The sphere's radius depends only on the camera's
 intrinsics and splits, so camera motion never rescales the grid. Each slice
 extends back over the previous cascade's blend band, so both cascades cover
 that band. The depth range reaches `casterMargin` toward the light. One
-Depth32Float array texture holds the maps, one slice per cascade. The scene
+Depth32Float array texture holds the maps, one slice per cascade. The shadow
+record holds eight cascade matrices and split distances. A request for nine
+cascades is rejected. The scene
 graph renders one caster pass per cascade and culls casters by that cascade's
 light frustum.
 

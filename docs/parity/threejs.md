@@ -44,7 +44,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 1 | 4 | 1 |
 | [`materials-textures`](#materials-textures) | 38 | 14 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
 | [`shader-authoring`](#shader-authoring) | 22 | 20 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
-| [`lights-shadows`](#lights-shadows) | 22 | 3 | 0 | 5 | 2 | 2 | 1 | 1 | 1 |
+| [`lights-shadows`](#lights-shadows) | 22 | 3 | 0 | 6 | 1 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 0 | 3 | 1 |
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
 | [`loaders-assets`](#loaders-assets) | 5 | 1 | 1 | 32 | 9 | 5 | 1 | 2 | 4 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **191** | **64** | **14** | **113** | **25** | **30** | **27** | **36** | **24** |
+| **Total** | **191** | **64** | **14** | **114** | **24** | **30** | **27** | **36** | **24** |
 
-331 of 524 capabilities are complete, with 125 partial and 68 missing.
+332 of 524 capabilities are complete, with 124 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -449,7 +449,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 
 | Capability | Three.js API | Frostfield API | Status | Evidence / gaps |
 | --- | --- | --- | :---: | --- |
-| Cascaded shadow maps | `CSM`, `CSMShadowNode` | `DirectionalShadowMap.Cascades`, `DirectionalShadowMap.fitCascades` | 🟡 | Up to four cascades with perspective, off-center and orthographic camera fitting. Supports practical or custom split positions, texel snapping, overlap blends and contact hardening. Higher cascade counts remain open. `CascadedShadowMapTests`. [Raster lighting evidence](../evidence/rasterlight.md) |
+| Cascaded shadow maps | `CSM`, `CSMShadowNode` | `DirectionalShadowMap.Cascades`, `DirectionalShadowMap.maximumCascadeCount`, `DirectionalShadowMap.fitCascades` | ✅ | Up to eight cascades with perspective, off-center and orthographic camera fitting. Supports practical or custom split positions, texel snapping, overlap blends and contact hardening. `CascadedShadowMapTests`. [Raster lighting evidence](../evidence/rasterlight.md) |
 | Sun light with auto-fitted cascades | `SunLight`, `SunShadowNode` | `SunLight`, `SolarPosition` | ✅ | A reusable, aimable sun fits cascades to the active perspective or orthographic view at scene encode. A linear RGB tint and a separate nonnegative intensity scale the direct light in stock and generated PBR, classic lit materials and shadowed Lambert. A tint-only update reuses the cached depth and cascade projections, and a rejected update keeps the previous settings. `SunLightTests`. [Raster lighting evidence](../evidence/rasterlight.md) · [Sun RGB evidence](../evidence/sun-light-rgb.md) |
 | Tiled shadow maps | `TileShadowNode` | — | ❌ |  |
 | Raster rect area lights (LTC) | `RectAreaLightUniformsLib`, `RectAreaLightTexturesLib` | `PunctualLight.Kind.rectangle(width:height:)`, `PunctualLight(rectangleWidth:height:power:)` | ✅ | Integrated r187 LTC tables and polygon evaluator for isotropic GGX and clearcoat. Tilted rough panels and grazing clearcoat match a numeric r187 reference in Metal readback. Diffuse uses analytic clipped Lambertian irradiance. Anisotropic specular and the small-emitter limit use native approximations. [LTC evidence](../evidence/rectangle-ltc.md) |
@@ -983,10 +983,10 @@ Lights, emissive surfaces and exposure stay separate: `LightRig` carries power o
   - 🟡 Spot cookie and projector light (`lights-shadows`, core)
   - ✅ Raster rect area lights (LTC) (`lights-shadows`, addons)
   - ✅ Tone mapping operators (`renderer`, core)
-- **Raster point and spot shadows** (3 of 7 ✅)
+- **Raster point and spot shadows** (4 of 7 ✅)
   - 🟡 Shadow map system (`lights-shadows`, core)
   - ✅ Shadow bias (`lights-shadows`, core)
-  - 🟡 Cascaded shadow maps (`lights-shadows`, addons)
+  - ✅ Cascaded shadow maps (`lights-shadows`, addons)
   - ❌ Clustered and batched many-light shading (`lights-shadows`, addons)
 - **HDR environments and lighting** (4 of 5 ✅)
   - ✅ Environment importance sampling and skies (`path-tracing`, third-party)

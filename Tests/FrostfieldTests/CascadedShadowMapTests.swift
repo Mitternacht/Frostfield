@@ -22,13 +22,17 @@ struct CascadedShadowSplitTests {
         let logarithmic = try DirectionalShadowMap.practicalSplits(near: 1, far: 100, count: 2, lambda: 1)
         #expect(abs(logarithmic[0] - 10) < 1e-4)
         #expect(try DirectionalShadowMap.practicalSplits(near: 1, far: 9, count: 1, lambda: 0.5) == [9])
+        let eight = try DirectionalShadowMap.practicalSplits(near: 1, far: 9, count: 8, lambda: 0)
+        #expect(eight.count == 8)
+        #expect(eight.last == 9)
+        #expect(zip(eight, eight.dropFirst()).allSatisfy { $0 < $1 })
     }
 
     @Test(
         "Practical splits reject ranges and parameters they cannot divide",
         arguments: [
             (Float(0), Float(100), 4, Float(0.75)), (-1, 100, 4, 0.75), (10, 10, 2, 0.5), (10, 5, 2, 0.5),
-            (.nan, 100, 2, 0.5), (1, .infinity, 2, 0.5), (1, 100, 0, 0.5), (1, 100, 5, 0.5),
+            (.nan, 100, 2, 0.5), (1, .infinity, 2, 0.5), (1, 100, 0, 0.5), (1, 100, 9, 0.5),
             (1, 100, 2, -0.1), (1, 100, 2, 1.1), (1, 100, 2, .nan),
         ] as [(Float, Float, Int, Float)]
     )
@@ -52,7 +56,7 @@ struct CascadedShadowMapTests {
         let queue = fixture.queue
         #expect(throws: DirectionalShadowMap.Failure.invalidCascades) {
             try DirectionalShadowMap(
-                queue: queue, resolution: 64, directionToLight: SIMD3(0, 1, 0), cascades: .init(count: 5)
+                queue: queue, resolution: 64, directionToLight: SIMD3(0, 1, 0), cascades: .init(count: 9)
             )
         }
         #expect(throws: DirectionalShadowMap.Failure.invalidCascades) {
@@ -404,7 +408,7 @@ struct CascadedShadowMapTests {
 
     @Test(
         "The last cascade fades to unshadowed over its blend band and ends at the maximum distance",
-        arguments: [1, 2]
+        arguments: [1, 2, 8]
     )
     func lastCascadeFade(count: Int) throws {
         let camera = try PerspectiveCamera(verticalFieldOfView: .pi / 3, near: 0.1, far: 100)

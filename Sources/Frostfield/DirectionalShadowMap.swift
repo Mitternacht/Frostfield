@@ -6,7 +6,7 @@ import simd
 ///
 /// A single map covers a cube centered at `center` in the light's coordinate system.
 /// A cascaded map, like the Three.js CSM addon, splits the camera's view range into
-/// up to four slices and gives each its own map. `SunLight` fits its cascades
+/// up to eight slices and gives each its own map. `SunLight` fits its cascades
 /// during scene encoding. For a manually managed map, call `fitCascades(camera:cameraTransform:aspectRatio:)`
 /// or `fitCascades(view:splitFractions:)` whenever the camera moves. Each map is fitted
 /// to a bounding sphere of its slice and snapped to whole texels.
@@ -14,7 +14,7 @@ public final class DirectionalShadowMap {
     /// The largest light angular radius, in radians, that the contact-hardening filter accepts.
     public static let maximumLightAngularRadius: Float = 0.25
     /// The most cascades one map holds.
-    public static let maximumCascadeCount = 4
+    public static let maximumCascadeCount = 8
     /// The most transmissive surface crossings stored per shadow texel.
     public static let maximumTransmissionLayers = 4
 
@@ -84,7 +84,11 @@ public final class DirectionalShadowMap {
     package private(set) var shadowSettings: SIMD2<Float>
     /// The record matching `FrostfieldDirectionalShadow` in Metal.
     package private(set) var shaderUniforms: [SIMD4<Float>] = []
-    private static let shaderUniformCount = 28
+    private static let splitVectorCount = (maximumCascadeCount + 3) / 4
+    /// Matrices, per-cascade records, split vectors, then forward, origin, settings, three bias axes and color.
+    private static let shaderUniformCount = maximumCascadeCount * 4 + maximumCascadeCount + splitVectorCount + 7
+    /// `biasUp.w` in the directional shadow record. Nodes that do not receive shadows force it to zero.
+    package static let shadowStrengthUniformIndex = maximumCascadeCount * 4 + maximumCascadeCount + splitVectorCount + 4
     /// An unsampled record for material variants that can draw without a directional map.
     static let unusedShaderUniforms = Array(repeating: SIMD4<Float>.zero, count: shaderUniformCount)
 
@@ -613,9 +617,9 @@ public final class DirectionalShadowMap {
             // The single map's bias is already normalized depth; cascades scale their width fraction.
             values.append(SIMD4(scale, map.shadowSettings.x * scale, 0, inverseHalfExtent))
         }
-        var splits = SIMD4<Float>(repeating: .greatestFiniteMagnitude)
-        for (index, split) in map.cascadeSplits.enumerated() { splits[index] = split }
-        values.append(splits)
+        var splits = Array(repeating: SIMD4<Float>(repeating: .greatestFiniteMagnitude), count: splitVectorCount)
+        for (index, split) in map.cascadeSplits.enumerated() { splits[index / 4][index % 4] = split }
+        values.append(contentsOf: splits)
         values.append(SIMD4(map.viewForward, map.cascades?.blendFraction ?? 0))
         values.append(SIMD4(map.viewOrigin, Float(map.cascadeViews.count)))
         let sampling: Float = switch map.sampling {
@@ -630,6 +634,7 @@ public final class DirectionalShadowMap {
         values.append(SIMD4(SIMD3<Float>(simd_normalize(linearRow(1, view))), map.shadowStrength))
         values.append(SIMD4(SIMD3<Float>(simd_normalize(linearRow(2, view))), Float(map.transmissionLayers)))
         values.append(SIMD4(map.color, 0))
+        precondition(values.count == shaderUniformCount)
         return values
     }
 
@@ -689,7 +694,7 @@ public final class DirectionalShadowMap {
         let cascadeRecords = Self.maximumCascadeCount * 4
         values[cascadeRecords].z = 1
         if cascades != nil {
-            let forward = cascadeRecords + Self.maximumCascadeCount + 1
+            let forward = cascadeRecords + Self.maximumCascadeCount + Self.splitVectorCount
             values[forward] = SIMD4(draw.splitPlane.x, draw.splitPlane.y, draw.splitPlane.z, values[forward].w)
             values[forward + 1].x = draw.splitPlane.w
         }
