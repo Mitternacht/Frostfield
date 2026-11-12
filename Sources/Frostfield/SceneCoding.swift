@@ -65,6 +65,28 @@ extension PerspectiveCamera: Codable {
     }
 }
 
+extension OrthographicCamera: Codable {
+    private enum CodingKeys: String, CodingKey { case halfHeight, near, far }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self = try validated(decoder.codingPath) {
+            try OrthographicCamera(
+                halfHeight: container.decode(Float.self, forKey: .halfHeight),
+                near: container.decode(Float.self, forKey: .near),
+                far: container.decode(Float.self, forKey: .far)
+            )
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(halfHeight, forKey: .halfHeight)
+        try container.encode(near, forKey: .near)
+        try container.encode(far, forKey: .far)
+    }
+}
+
 extension AxisAlignedBox: Codable {
     private enum CodingKeys: String, CodingKey { case minimum, maximum }
 

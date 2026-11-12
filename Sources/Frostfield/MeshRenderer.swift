@@ -1153,7 +1153,7 @@ public final class MeshRenderer {
 
         if graph.highPrecision, view != nil, graphCamera == nil { throw Failure.highPrecisionView }
         var clipFromWorld = try view?.clipFromWorld ?? viewProjection(
-            camera: graph.camera, cameraTransform: graph.cameraTransform, size: size, depthMode: depthMode
+            graph: graph, size: size, depthMode: depthMode
         )
         let environmentRotation = graph.effectiveEnvironmentEulerRotation
         guard graph.environmentIntensity.isFinite, graph.environmentIntensity >= 0, environmentRotation.isFiniteVector else {
@@ -1181,7 +1181,7 @@ public final class MeshRenderer {
                 clipFromWorld: clipFromWorld, position: $0.cameraPosition, direction: $0.directionToCamera,
                 highPrecision: graph.highPrecision
             )
-        } ?? SIMD4(cameraPosition, 1)
+        } ?? graph.orthographicDirectionToCamera.map { SIMD4($0, 0) } ?? SIMD4(cameraPosition, 1)
         try validateViewport(viewport, size: size)
         if graph.projectionJitter != .zero {
             guard TemporalAntiAliasing.isValidJitter(graph.projectionJitter) else { throw Failure.projectionJitter }
@@ -1208,10 +1208,7 @@ public final class MeshRenderer {
                 windowDepth: viewport.map { SIMD2(Float($0.znear), Float($0.zfar)) } ?? SIMD2(0, 1), depthMode: depthMode
             )
         } else {
-            graphView = try GraphViewContext(
-                camera: graph.camera, cameraTransform: graph.cameraTransform, width: size.x, height: size.y,
-                depthMode: depthMode
-            )
+            graphView = try GraphViewContext(graph: graph, width: size.x, height: size.y, depthMode: depthMode)
         }
         let logarithmicDepth = try depthMode == .logarithmic
             ? LogarithmicRasterDepth(view: graphView, pass: pass, viewport: viewport) : nil
@@ -1252,10 +1249,16 @@ public final class MeshRenderer {
                 guard let graphCamera else { throw DirectionalShadowMap.Failure.invalidCamera }
                 try shadowMap.fitCascades(view: graphCamera)
             } else {
-                try shadowMap.fitCascades(
-                    camera: graph.camera, cameraTransform: graph.cameraTransform,
-                    aspectRatio: Float(size.x) / Float(size.y)
-                )
+                if graph.orthographicCamera != nil {
+                    try shadowMap.fitCascades(view: graph.shaderGraphCamera(
+                        aspectRatio: Float(size.x) / Float(size.y), depthMode: depthMode
+                    ))
+                } else {
+                    try shadowMap.fitCascades(
+                        camera: graph.camera, cameraTransform: graph.cameraTransform,
+                        aspectRatio: Float(size.x) / Float(size.y)
+                    )
+                }
             }
         }
         try shadowMap?.validateFitted()
@@ -1296,10 +1299,19 @@ public final class MeshRenderer {
         let worldFrustum = cameraFrustum(for: clipFromWorld)
         let relativeFrustum = precision.flatMap { cameraFrustum(for: $0.clipMatrix(for: matrix_identity_double4x4)) }
         var primitiveDraws: [PrimitiveDraw] = []
+        var primitiveIndirectRecords = 0
+        if !graph.primitiveIndirectDraws.isEmpty {
+            for (id, _) in graph.primitiveIndirectDraws {
+                guard let node = nodes.first(where: { $0.id == id }) else {
+                    throw PrimitiveIndirectDraws.Failure.unknownNode(id)
+                }
+                guard node.primitive != nil else { throw PrimitiveIndirectDraws.Failure.incompatibleNode(id) }
+            }
+        }
         let primitiveView = !surfaceAttributes && nodes.contains { $0.primitive != nil }
             ? try PrimitiveView(
                 clipFromWorld: clipFromWorld, viewport: viewport, attachment: color, depthMode: depthMode,
-                precision: precision, orthographicBack: view?.directionToCamera
+                precision: precision, orthographicBack: view?.directionToCamera ?? graph.orthographicDirectionToCamera
             )
             : nil
         // Assign shadow slots before preparing casters, which need every shadow view.
@@ -1347,11 +1359,27 @@ public final class MeshRenderer {
                     primitive.recordResources(in: &inventory)
                     guard !inventory.hasTextureFeedback else { throw PlanarReflection.Failure.feedback }
                 }
-                if let draw = try primitiveView.draw(
+                if var draw = try primitiveView.draw(
                     primitive, elements: elements, node: node, nodeIndex: nodeIndex, frustum: worldFrustum,
                     device: device, color: color, recordsOpaqueDepth: ordering.recordsOpaqueDepth,
                     overrideTint: replacement == nil ? nil : primitiveOverride?.parameters
                 ) {
+                    if let source = graph.primitiveIndirectDraws[node.id] {
+                        try source.validate(commandBuffer: commandBuffer)
+                        let limits = try draw.indirectLimits()
+                        let validated = try source.encodeValidation(
+                            into: commandBuffer, vertexCount: limits.vertexCount, instanceCount: limits.instanceCount
+                        )
+                        primitiveIndirectRecords += validated.count
+                        guard primitiveIndirectRecords <= PrimitiveIndirectDraws.maximumSceneCount else {
+                            throw PrimitiveIndirectDraws.Failure.sceneBudget
+                        }
+                        draw.indirect = validated
+                        if !commandBuffer.retainedReferences {
+                            let retained = RetainedPrimitiveIndirect(source: source.buffer, validated: validated.buffer)
+                            commandBuffer.addCompletedHandler { _ in withExtendedLifetime(retained) {} }
+                        }
+                    }
                     primitiveDraws.append(draw)
                 } else {
                     statistics.culledPrimitiveCount += 1
@@ -2022,6 +2050,10 @@ public final class MeshRenderer {
 
     /// The point, line and sprite counts one primitive draw adds, not its `drawnPrimitiveCount`.
     private static func count(_ draw: PrimitiveDraw, into statistics: inout SceneDrawStatistics) {
+        if let indirect = draw.indirect {
+            statistics.indirectArgumentDrawCount += indirect.count
+            return
+        }
         switch draw.elements {
         case .points(let range): statistics.submittedPointCount += range.count
         case .lines(let lines): statistics.submittedLineSegmentCount += lines.segments.count
@@ -2510,6 +2542,11 @@ public final class MeshRenderer {
 
     private struct RetainedIndirectDraw: @unchecked Sendable {
         let renderer: MeshRenderer
+        let source: any MTLBuffer
+        let validated: any MTLBuffer
+    }
+
+    private struct RetainedPrimitiveIndirect: @unchecked Sendable {
         let source: any MTLBuffer
         let validated: any MTLBuffer
     }
@@ -3554,6 +3591,18 @@ public final class MeshRenderer {
         return clipFromWorld
     }
 
+    private static func viewProjection(
+        graph: SceneGraph, size: SIMD2<Int>, depthMode: MeshDepthMode
+    ) throws -> simd_float4x4 {
+        let worldFromCamera = graph.cameraTransform.matrix
+        let determinant = simd_determinant(worldFromCamera)
+        guard determinant.isFinite, determinant != 0 else { throw Failure.transform }
+        let aspect = Float(size.x) / Float(size.y)
+        let clipFromWorld = try graph.activeProjection(aspectRatio: aspect, depthMode: depthMode) * simd_inverse(worldFromCamera)
+        guard isFinite(clipFromWorld) else { throw Failure.transform }
+        return clipFromWorld
+    }
+
     private static func isColorTexture(_ texture: any MTLTexture) -> Bool {
         guard texture.textureType == .type2D, !texture.isFramebufferOnly,
               texture.usage.isEmpty || texture.usage.contains(.shaderRead) else { return false }
@@ -4072,8 +4121,9 @@ public struct SceneDrawStatistics: Equatable, Sendable {
     public var culledShadowCount = 0
     /// Metal indirect batch executions across the color, attribute and shadow passes.
     public var indirectBatchExecutionCount = 0
-    /// Indexed argument records submitted in the color, attribute and shadow passes.
+    /// Indexed mesh and primitive argument records submitted in the color, attribute and shadow passes.
     /// Records that the GPU turns into empty draws still count as submissions.
+    /// Primitive records replace the CPU point, segment and sprite counts for that draw.
     public var indirectArgumentDrawCount = 0
     /// Point, line and sprite nodes drawn in the color pass.
     public var drawnPrimitiveCount = 0
@@ -4144,7 +4194,7 @@ public extension SceneGraph {
     /// Picks a mesh using the supplied layer mask in place of the graph's camera layers,
     /// like Three.js `Raycaster.layers`. Hidden subtrees are skipped.
     func pick(at normalized: SIMD2<Float>, aspectRatio: Float, layers: SceneLayers) throws -> SceneHit? {
-        let ray = try camera.ray(at: normalized, aspectRatio: aspectRatio, cameraTransform: cameraTransform)
+        let ray = try cameraRay(at: normalized, aspectRatio: aspectRatio)
         return try nearestMeshHit(ray: ray, cameraPosition: cameraTransform.translation, layers: layers)
     }
 
@@ -4176,7 +4226,7 @@ public extension SceneGraph {
 
     /// Returns every mesh hit between the graph camera's clip planes.
     func intersections(at normalized: SIMD2<Float>, aspectRatio: Float) throws -> [SceneHit] {
-        try intersections(ray: camera.ray(at: normalized, aspectRatio: aspectRatio, cameraTransform: cameraTransform))
+        try intersections(ray: cameraRay(at: normalized, aspectRatio: aspectRatio))
     }
 
     /// Returns every mesh hit between the explicit render camera's clip planes.
@@ -4462,6 +4512,7 @@ extension MeshRenderer {
             guard let renderer = node.mesh ?? node.batch?.renderer else { continue }
             guard renderer.device === device else { throw Failure.wrongDevice }
             guard renderer.rawProgram == nil else { throw RawMeshProgram.Failure.unsupportedAuxiliaryPass }
+            let shadingCamera = graph.orthographicDirectionToCamera.map { SIMD4($0, 0) } ?? SIMD4(cameraPosition, 1)
             if shadowView != nil {
                 guard !renderer.isBlended, !renderer.requiresTransmissionBackdrop else { continue }
                 if let graphNode = renderer.graphShadow?.cameraNode {
@@ -4469,7 +4520,7 @@ extension MeshRenderer {
                 }
             }
             var draw = try renderer.prepare(
-                world: node.worldTransform, clipFromWorld: clipFromWorld, shadingCamera: SIMD4(cameraPosition, 1),
+                world: node.worldTransform, clipFromWorld: clipFromWorld, shadingCamera: shadingCamera,
                 parameters: node.materialParameters, jointPalette: node.jointPalette, morphWeights: node.morphWeights,
                 instances: node.instances
             )

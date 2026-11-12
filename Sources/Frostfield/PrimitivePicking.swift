@@ -160,8 +160,8 @@ public extension SceneGraph {
             cameraPosition = try explicit.pickingPosition()
         } else {
             let aspect = drawableSize.x / drawableSize.y
-            ray = try camera.ray(at: normalized, aspectRatio: aspect, cameraTransform: cameraTransform)
-            view = try camera.projection(aspectRatio: aspect) * simd_inverse(cameraTransform.matrix)
+            ray = try cameraRay(at: normalized, aspectRatio: aspect)
+            view = try activeProjection(aspectRatio: aspect, depthMode: .forward) * simd_inverse(cameraTransform.matrix)
             cameraPosition = cameraTransform.translation
         }
         return try PrimitivePickQuery(

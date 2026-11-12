@@ -325,11 +325,19 @@ struct USDZSceneLowering {
             cameraPath = "\(Self.root)/\(name)"
             body.open("def Camera \"\(name)\"")
             Self.writeTransform(graph.cameraTransform, into: &body)
-            try writeCamera(
-                .perspective(verticalFieldOfView: graph.camera.verticalFieldOfView, aspectRatio: nil,
-                             near: graph.camera.near, far: graph.camera.far),
-                path: cameraPath!, into: &body
-            )
+            let projection: GLTFScene.Camera.Projection
+            if let orthographic = graph.orthographicCamera {
+                projection = .orthographic(
+                    halfWidth: orthographic.halfHeight, halfHeight: orthographic.halfHeight,
+                    near: orthographic.near, far: orthographic.far
+                )
+            } else {
+                projection = .perspective(
+                    verticalFieldOfView: graph.camera.verticalFieldOfView, aspectRatio: nil,
+                    near: graph.camera.near, far: graph.camera.far
+                )
+            }
+            try writeCamera(projection, path: cameraPath!, into: &body)
             body.close()
         }
         return try finish(body: body, nodePaths: paths, sourceNodePaths: [:], cameraPath: cameraPath)

@@ -115,6 +115,66 @@ public struct PerspectiveCamera {
     }
 }
 
+/// A right-handed orthographic camera that looks down its local −Z axis.
+///
+/// The vertical half extent is in world units. The horizontal half extent is
+/// that height times the drawable aspect ratio, so a square window is square
+/// in world space. Clip distances are positive world units along the view
+/// direction. The projection matches an imported glTF orthographic camera.
+public struct OrthographicCamera: Equatable, Sendable {
+    public var halfHeight: Float
+    public var near: Float
+    public var far: Float
+
+    public init(halfHeight: Float, near: Float, far: Float) throws {
+        try Self.validate(halfHeight: halfHeight, near: near, far: far)
+        self.halfHeight = halfHeight
+        self.near = near
+        self.far = far
+    }
+
+    /// Column-major clip matrix. `x` grows right and `y` grows up.
+    /// Forward depth maps near to 0 and far to 1. Reversed depth maps near to 1 and far to 0.
+    public func projection(aspectRatio: Float, depthMode: MeshDepthMode = .forward) throws -> simd_float4x4 {
+        guard aspectRatio.isFinite, aspectRatio > 0 else { throw PerspectiveCamera.ValidationError.invalidAspectRatio }
+        try Self.validate(halfHeight: halfHeight, near: near, far: far)
+        let halfWidth = Double(halfHeight) * Double(aspectRatio)
+        let span = Double(far) - Double(near)
+        let reversed = depthMode == .reversed
+        let x = 1 / halfWidth
+        let y = 1 / Double(halfHeight)
+        let z = (reversed ? 1 : -1) / span
+        let offset = (reversed ? Double(far) : Double(near)) * z
+        let scales = SIMD4(Float(x), Float(y), Float(z), Float(offset))
+        let determinant = scales.x * scales.y * scales.z
+        guard [scales.x, scales.y, scales.z, scales.w, determinant].allSatisfy(\.isFinite), determinant != 0 else {
+            throw PerspectiveCamera.ValidationError.unrepresentableProjection
+        }
+        return simd_float4x4(columns: (
+            SIMD4(scales.x, 0, 0, 0), SIMD4(0, scales.y, 0, 0),
+            SIMD4(0, 0, scales.z, 0), SIMD4(0, 0, scales.w, 1)
+        ))
+    }
+
+    private static func validate(halfHeight: Float, near: Float, far: Float) throws {
+        guard halfHeight.isFinite, halfHeight > 0 else { throw ValidationError.invalidHalfHeight }
+        guard near.isFinite, far.isFinite, near > 0, far > near else {
+            throw PerspectiveCamera.ValidationError.invalidClippingPlanes
+        }
+    }
+
+    public enum ValidationError: LocalizedError, Equatable {
+        case invalidHalfHeight
+
+        public var errorDescription: String? {
+            switch self {
+            case .invalidHalfHeight:
+                "The orthographic half height must be finite and positive."
+            }
+        }
+    }
+}
+
 /// A pixel window into a larger camera image, such as one tile of a still or
 /// one display in a tiled setup. The origin is measured from the top left.
 public struct CameraViewOffset: Equatable, Sendable {

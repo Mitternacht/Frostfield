@@ -1,4 +1,5 @@
 import Metal
+import Synchronization
 
 /// A snapshot of prepared geometry, persistent draw buffers, material textures and render pipelines.
 public struct SceneResourceStatistics: Equatable, Sendable {
@@ -15,13 +16,41 @@ public struct SceneResourceStatistics: Equatable, Sendable {
     public fileprivate(set) var externalSurfaceTextureCount = 0
 }
 
+/// Device, cache, attachment and transient totals that ``SceneGraph/resourceStatistics()`` does not walk.
+public struct DeviceAllocationTotals: Equatable, Sendable {
+    /// ``MTLDevice/currentAllocatedSize`` for the device that rendered the scene.
+    public var deviceAllocatedBytes: Int
+    /// Runtime-compiled shader libraries still held for this device.
+    public var shaderCacheEntryCount: Int
+    /// UTF-8 source bytes of those cached libraries.
+    public var shaderCacheSourceBytes: Int
+    /// Sum of `allocatedSize` for the caller-owned attachments passed in.
+    public var attachmentAllocatedBytes: Int
+    /// Bytes of transient instance buffers allocated because every persistent slot was busy.
+    public var transientBufferBytes: Int
+}
+
+/// Counts transient instance buffers created when an ``InstanceSet`` cannot reuse a persistent slot.
+package enum TransientCommandAllocations {
+    private static let bytes = Mutex(0)
+
+    package static func record(_ length: Int) {
+        bytes.withLock { $0 += length }
+    }
+
+    package static var byteCount: Int {
+        bytes.withLock { $0 }
+    }
+}
+
 public extension SceneGraph {
     /// Counts resources reachable from the current nodes, including hidden nodes
     /// and all prepared LODs. Shared resources and texture views count once.
     /// Allocated bytes are available only when Metal reports all contributing sizes.
     /// Texture bytes backed by a buffer
     /// count with that buffer. IOSurface storage belongs to the producer.
-    /// Caller attachments, global caches and transient command resources are outside this snapshot.
+    /// Caller attachments, the shader-library cache and transient command resources are outside this snapshot.
+    /// Use ``deviceAllocationTotals(device:attachments:)`` for those.
     func resourceStatistics() -> SceneResourceStatistics {
         var inventory = SceneResourceInventory()
         if let environment {
@@ -41,6 +70,21 @@ public extension SceneGraph {
             nodes.append(contentsOf: node.children)
         }
         return inventory.result
+    }
+
+    /// Totals for the device, the shader cache, the supplied attachments and transient instance buffers.
+    /// Attachment bytes are the sizes Metal reports. A texture that reports zero contributes zero.
+    public func deviceAllocationTotals(
+        device: any MTLDevice, attachments: [any MTLTexture] = []
+    ) -> DeviceAllocationTotals {
+        let cache = ShaderLibraryCache.snapshot(for: device)
+        return DeviceAllocationTotals(
+            deviceAllocatedBytes: device.currentAllocatedSize,
+            shaderCacheEntryCount: cache.entries,
+            shaderCacheSourceBytes: cache.sourceBytes,
+            attachmentAllocatedBytes: attachments.reduce(0) { $0 + $1.allocatedSize },
+            transientBufferBytes: TransientCommandAllocations.byteCount
+        )
     }
 }
 

@@ -60,4 +60,51 @@ struct SceneResourceStatisticsTests {
         #expect(stats.bufferCount == 1 && stats.bufferLengthBytes == buffer.length)
         #expect(stats.bufferAllocatedBytes == expected)
     }
+
+    @Test("Device totals follow the shader cache, attachment sizes and transient instance buffers")
+    func deviceTotals() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let queue = try #require(device.makeCommandQueue())
+        let marker = UUID().uuidString.replacingOccurrences(of: "-", with: "_")
+        let source = "kernel void frostfield_cache_probe_\(marker)() {}"
+        let before = ShaderLibraryCache.snapshot(for: device)
+        _ = try ShaderLibraryCache.library(source: source, device: device)
+        let after = ShaderLibraryCache.snapshot(for: device)
+        #expect(after.entries == before.entries + 1)
+        #expect(after.sourceBytes == before.sourceBytes + source.utf8.count)
+        _ = try ShaderLibraryCache.library(source: source, device: device)
+        #expect(ShaderLibraryCache.snapshot(for: device).sourceBytes == after.sourceBytes)
+
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: 32, height: 16, mipmapped: false
+        )
+        descriptor.storageMode = .shared
+        descriptor.usage = .shaderRead
+        let texture = try #require(device.makeTexture(descriptor: descriptor))
+        let camera = try PerspectiveCamera(verticalFieldOfView: 1, near: 0.1, far: 10)
+        let totals = SceneGraph(roots: [], camera: camera).deviceAllocationTotals(device: device, attachments: [texture])
+        #expect(totals.shaderCacheEntryCount == after.entries)
+        #expect(totals.shaderCacheSourceBytes == after.sourceBytes)
+        #expect(totals.deviceAllocatedBytes == device.currentAllocatedSize)
+        #expect(totals.attachmentAllocatedBytes == texture.allocatedSize)
+        // The simulator reports zero for this attachment. A device that reports a size must contribute it.
+        if texture.allocatedSize > 0 {
+            #expect(totals.attachmentAllocatedBytes > 0)
+        }
+
+        let set = try InstanceSet(device: device, transforms: [matrix_identity_float4x4])
+        let transientBefore = TransientCommandAllocations.byteCount
+        var held: [any MTLCommandBuffer] = []
+        for index in 0..<4 {
+            var transform = matrix_identity_float4x4
+            transform.columns.3 = SIMD4(Float(index), 0, 0, 1)
+            try set.setTransform(transform, at: 0)
+            let command = try #require(queue.makeCommandBuffer())
+            _ = try set.acquireBuffer(for: command)
+            held.append(command)
+        }
+        let transient = SceneGraph(roots: [], camera: camera).deviceAllocationTotals(device: device)
+        #expect(transient.transientBufferBytes > transientBefore)
+        #expect(held.count == 4)
+    }
 }

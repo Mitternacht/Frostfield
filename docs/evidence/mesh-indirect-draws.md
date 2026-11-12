@@ -28,8 +28,17 @@ color pipeline. It uses the renderer's UInt32 triangle index storage. The GPU
 can select any in-range index start and count and, with a prepared
 `InstanceSet`, any in-range base instance and instance count. Without an
 instance set, a draw can use one instance at base zero. Zero counts or
-out-of-range vertex and instance indices produce empty draws. Unindexed
-indirect draws remain open.
+out-of-range vertex and instance indices produce empty draws.
+
+`PrimitiveIndirectDraws` is the unindexed counterpart for one point, line or
+sprite node. `SceneGraph.primitiveIndirectDraws` maps a node ID to ordered
+offsets in a hazard-tracked buffer of `MTLDrawPrimitivesIndirectArguments`.
+A compute kernel keeps a record only when its vertex count matches the
+prepared topology (6 for a point or sprite quad, 8 for a wide-line strip,
+or two vertices per hairline segment), its start and base instance are zero,
+and its instance count fits the prepared range. Anything else becomes an
+empty draw. The color pass submits the validated records and reports them in
+`indirectArgumentDrawCount` instead of the CPU point, segment or sprite counts.
 
 A signed base vertex shifts each index in the selected range. The first
 indirect draw prepares and caches a bounds tree from the mesh's immutable

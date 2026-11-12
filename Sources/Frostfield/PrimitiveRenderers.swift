@@ -50,6 +50,11 @@ public enum ScenePrimitive {
         }
     }
 
+    var lineWidthIsHairline: Bool {
+        if case .lines(let renderer) = self { return renderer.material.width == .hairline }
+        return false
+    }
+
     var drawElements: PrimitiveDrawElements? {
         switch self {
         case .points(let renderer):
@@ -359,7 +364,9 @@ public final class PointsRenderer {
                 material.colorUniforms, into: encoder, vertexUniformIndex: 4, vertexViewIndex: 5
             )
         }
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: range.count)
+        draw.issue(
+            .triangle, into: encoder, vertexStart: 0, vertexCount: 6, instanceCount: range.count
+        )
     }
 }
 
@@ -644,10 +651,10 @@ public final class LineRenderer {
         }
         let count = lines.segments.count
         if material.width == .hairline {
-            encoder.drawPrimitives(type: .line, vertexStart: 0, vertexCount: count * 2)
+            draw.issue(.line, into: encoder, vertexStart: 0, vertexCount: count * 2, instanceCount: 1)
         } else {
             // Three quads per segment in one strip: start region, body and end region.
-            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 8, instanceCount: count)
+            draw.issue(.triangleStrip, into: encoder, vertexStart: 0, vertexCount: 8, instanceCount: count)
         }
     }
 }
@@ -795,7 +802,7 @@ public final class SpriteRenderer {
         if material.colorGraph != nil { PrimitivePipeline.bindColorGraph(material.colorUniforms, into: encoder) }
         if let map = material.map { encoder.setFragmentTexture(map, index: 0) }
         if let fade = material.softParticleFade { softParticles?.bind(fade, into: encoder) }
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: sprites.count)
+        draw.issue(.triangle, into: encoder, vertexStart: 0, vertexCount: 6, instanceCount: sprites.count)
     }
 }
 
@@ -959,6 +966,56 @@ struct PrimitiveDraw {
     let tint: SIMD4<Float>
     let order: SceneColorOrder
     let isMaterialOverride: Bool
+    var indirect: PrimitiveIndirectDraws.Validated? = nil
+
+    /// Submits the prepared topology, or the validated GPU arguments when this draw has them.
+    func issue(
+        _ type: MTLPrimitiveType, into encoder: any MTLRenderCommandEncoder,
+        vertexStart: Int, vertexCount: Int, instanceCount: Int
+    ) {
+        if let indirect {
+            for index in 0..<indirect.count {
+                encoder.drawPrimitives(
+                    type: type, indirectBuffer: indirect.buffer,
+                    indirectBufferOffset: index * PrimitiveIndirectDraws.recordByteCount
+                )
+            }
+            return
+        }
+        if type == .line, instanceCount == 1 {
+            encoder.drawPrimitives(type: type, vertexStart: vertexStart, vertexCount: vertexCount)
+        } else {
+            encoder.drawPrimitives(
+                type: type, vertexStart: vertexStart, vertexCount: vertexCount, instanceCount: instanceCount
+            )
+        }
+    }
+
+    /// Vertex and instance limits the validation kernel requires for this prepared draw.
+    func indirectLimits() throws -> (vertexCount: UInt32, instanceCount: UInt32) {
+        let vertexCount: Int
+        let instanceCount: Int
+        switch elements {
+        case .points(let range):
+            vertexCount = 6
+            instanceCount = range.count
+        case .sprites(let count):
+            vertexCount = 6
+            instanceCount = count
+        case .lines(let lines):
+            if primitive.lineWidthIsHairline {
+                vertexCount = lines.segments.count * 2
+                instanceCount = 1
+            } else {
+                vertexCount = 8
+                instanceCount = lines.segments.count
+            }
+        }
+        guard let vertices = UInt32(exactly: vertexCount), let instances = UInt32(exactly: instanceCount), instances > 0 else {
+            throw PrimitiveIndirectDraws.Failure.indexLimit
+        }
+        return (vertices, instances)
+    }
 
     var isBlended: Bool { order.phase == .blended }
     var isOverlay: Bool { order.phase == .overlay }

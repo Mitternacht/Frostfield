@@ -142,11 +142,7 @@ public final class PostProcessScenePass {
     }
 
     static func camera(for scene: SceneGraph, width: Int, height: Int, depthMode: MeshDepthMode) throws -> ShaderGraphCamera {
-        try ShaderGraphCamera(
-            viewMatrix: simd_inverse(scene.cameraTransform.matrix),
-            projectionMatrix: scene.camera.projection(aspectRatio: Float(width) / Float(height), depthMode: depthMode),
-            near: scene.camera.near, far: scene.camera.far
-        )
+        try scene.shaderGraphCamera(aspectRatio: Float(width) / Float(height), depthMode: depthMode)
     }
 
     public enum Failure: LocalizedError, Equatable {

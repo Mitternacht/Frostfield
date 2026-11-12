@@ -52,9 +52,7 @@ public struct SceneInteractionGroup {
     public func dispatch(
         _ phase: Phase, at normalized: SIMD2<Float>, aspectRatio: Float, in graph: SceneGraph
     ) throws -> SceneHit? {
-        let ray = try graph.camera.ray(
-            at: normalized, aspectRatio: aspectRatio, cameraTransform: graph.cameraTransform
-        )
+        let ray = try graph.cameraRay(at: normalized, aspectRatio: aspectRatio)
         return try dispatch(phase, ray: ray, in: graph)
     }
 

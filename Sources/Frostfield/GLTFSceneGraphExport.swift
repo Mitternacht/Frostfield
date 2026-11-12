@@ -114,10 +114,19 @@ struct GLTFSceneGraphExport {
 
         var cameraNode: Int?
         if includesCamera {
-            let camera = try builder.addCamera(.perspective(
-                verticalFieldOfView: graph.camera.verticalFieldOfView, aspectRatio: nil,
-                near: graph.camera.near, far: graph.camera.far
-            ), name: nil)
+            let projection: GLTFScene.Camera.Projection
+            if let orthographic = graph.orthographicCamera {
+                projection = .orthographic(
+                    halfWidth: orthographic.halfHeight, halfHeight: orthographic.halfHeight,
+                    near: orthographic.near, far: orthographic.far
+                )
+            } else {
+                projection = .perspective(
+                    verticalFieldOfView: graph.camera.verticalFieldOfView, aspectRatio: nil,
+                    near: graph.camera.near, far: graph.camera.far
+                )
+            }
+            let camera = try builder.addCamera(projection, name: nil)
             let index = try builder.addNode(name: "Camera", transform: graph.cameraTransform, context: "camera", camera: camera)
             roots.append(index)
             cameraNode = index

@@ -1204,6 +1204,46 @@ static float dielectricF0(float ior) {
     return ratio * ratio;
 }
 
+struct FrostfieldTransmissionExit {
+    float2 uv;
+    float travel;
+};
+
+// The baked thickness estimates the exit point. Only the opaque scene
+// snapshot is available, so offscreen exits fall back to the entry UV.
+static FrostfieldTransmissionExit frostfieldTransmissionExit(
+    float ior, float thickness, float3 view, float3 normal, float3 worldPosition, float2 pixelUV,
+    float2 inverseSize, constant float4x4& clipFromWorld, constant float4x4& inverseTransposeModel,
+    constant float4& backdropViewport
+) {
+    FrostfieldTransmissionExit result;
+    result.uv = pixelUV;
+    result.travel = 0.0f;
+    if (thickness > 0.0f) {
+        float3 ray = refract(-view, normal, 1.0f / ior);
+        float3 localRay = (transpose(inverseTransposeModel) * float4(ray, 0)).xyz;
+        float rateScale = max(abs(localRay.x), max(abs(localRay.y), abs(localRay.z)));
+        if (rateScale > 0.0f && isfinite(rateScale)) {
+            float distance = (thickness / rateScale) / length(localRay / rateScale);
+            if (distance > 0.0f && isfinite(distance)) {
+                result.travel = distance;
+                float4 exit = clipFromWorld * float4(worldPosition + ray * distance, 1);
+                if (exit.w > 0.0f && all(isfinite(exit))) {
+                    float2 refracted = exit.xy / exit.w * float2(0.5f, -0.5f) + 0.5f;
+                    if (all(refracted >= 0.0f) && all(refracted <= 1.0f)) {
+                        result.uv = refracted * backdropViewport.xy + backdropViewport.zw;
+                    }
+                }
+            }
+        }
+    }
+    float2 halfTexel = min(inverseSize, backdropViewport.xy) * 0.5f;
+    result.uv = clamp(
+        result.uv, backdropViewport.zw + halfTexel, backdropViewport.zw + backdropViewport.xy - halfTexel
+    );
+    return result;
+}
+
 static PBRTransmission sampleTransmission(
     PBRSurface surface, PBRLayers layers, FrostfieldPBRVaryings input, float4 camera, PBRTexCoords coordinates,
     constant float4& optical, constant float4& attenuation, constant float4x4& clipFromWorld,
@@ -1224,31 +1264,15 @@ static PBRTransmission sampleTransmission(
 
         float3 view = pbrView(camera, input.worldPosition, surface.normal);
         float2 inverseSize = 1.0f / float2(backdrop.get_width(), backdrop.get_height());
-        float2 uv = input.position.xy * inverseSize;
-        float travel = 0.0f;
-        // The baked thickness estimates the exit point. Only the opaque scene
-        // snapshot is available, so offscreen exits fall back to the entry UV.
-        if (thickness > 0.0f) {
-            float3 ray = refract(-view, surface.normal, 1.0f / optical.y);
-            float3 localRay = (transpose(inverseTransposeModel) * float4(ray, 0)).xyz;
-            float rateScale = max(abs(localRay.x), max(abs(localRay.y), abs(localRay.z)));
-            if (rateScale > 0.0f && isfinite(rateScale)) {
-                float distance = (thickness / rateScale) / length(localRay / rateScale);
-                if (distance > 0.0f && isfinite(distance)) {
-                    travel = distance;
-                    float4 exit = clipFromWorld * float4(input.worldPosition + ray * travel, 1);
-                    if (exit.w > 0.0f && all(isfinite(exit))) {
-                        float2 refracted = exit.xy / exit.w * float2(0.5f, -0.5f) + 0.5f;
-                        if (all(refracted >= 0.0f) && all(refracted <= 1.0f)) {
-                            uv = refracted * backdropViewport.xy + backdropViewport.zw;
-                        }
-                    }
-                }
-            }
-        }
-
-        float2 halfTexel = min(inverseSize, backdropViewport.xy) * 0.5f;
-        uv = clamp(uv, backdropViewport.zw + halfTexel, backdropViewport.zw + backdropViewport.xy - halfTexel);
+        float2 pixelUV = input.position.xy * inverseSize;
+        // attenuation.a carries KHR_materials_dispersion. Zero keeps the single base-IOR sample.
+        float dispersion = attenuation.a;
+        FrostfieldTransmissionExit base = frostfieldTransmissionExit(
+            optical.y, thickness, view, surface.normal, input.worldPosition, pixelUV, inverseSize,
+            clipFromWorld, inverseTransposeModel, backdropViewport
+        );
+        float travel = base.travel;
+        float2 uv = base.uv;
         float blur = surface.roughness * saturate(2.0f * (optical.y - 1.0f));
         float lod = blur * float(backdrop.get_num_mip_levels() - 1u);
         float3 scatterDepth = float3(0);
@@ -1261,7 +1285,30 @@ static PBRTransmission sampleTransmission(
             lod = max(lod, saturate(depth * 0.25f) * float(backdrop.get_num_mip_levels() - 1u));
         }
         constexpr sampler backdropFilter(coord::normalized, address::clamp_to_edge, filter::linear, mip_filter::linear);
-        float3 behind = max(backdrop.sample(backdropFilter, uv, level(lod)).rgb, float3(0));
+        float3 behind;
+        if (!(dispersion > 0.0f)) {
+            behind = max(backdrop.sample(backdropFilter, uv, level(lod)).rgb, float3(0));
+        } else {
+            // Same Cauchy fit as the path tracer: Fraunhofer C, d and F lines.
+            float3 wavelengths = frostfieldDispersionWavelengths;
+            float2 redUV = frostfieldTransmissionExit(
+                frostfieldDispersedIOR(optical.y, dispersion, wavelengths.x), thickness, view, surface.normal,
+                input.worldPosition, pixelUV, inverseSize, clipFromWorld, inverseTransposeModel, backdropViewport
+            ).uv;
+            float2 greenUV = frostfieldTransmissionExit(
+                frostfieldDispersedIOR(optical.y, dispersion, wavelengths.y), thickness, view, surface.normal,
+                input.worldPosition, pixelUV, inverseSize, clipFromWorld, inverseTransposeModel, backdropViewport
+            ).uv;
+            float2 blueUV = frostfieldTransmissionExit(
+                frostfieldDispersedIOR(optical.y, dispersion, wavelengths.z), thickness, view, surface.normal,
+                input.worldPosition, pixelUV, inverseSize, clipFromWorld, inverseTransposeModel, backdropViewport
+            ).uv;
+            behind = float3(
+                max(backdrop.sample(backdropFilter, redUV, level(lod)).r, 0.0f),
+                max(backdrop.sample(backdropFilter, greenUV, level(lod)).g, 0.0f),
+                max(backdrop.sample(backdropFilter, blueUV, level(lod)).b, 0.0f)
+            );
+        }
         if (travel > 0.0f && optical.w > 0.0f) {
             float pathLength = min(travel / optical.w, 1e20f);
             behind *= pow(attenuation.rgb, float3(pathLength));

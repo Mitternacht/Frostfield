@@ -206,9 +206,15 @@ public struct TransformGizmo: Sendable {
         let depth = simd_dot(eye, SIMD3<Double>(cameraRotation.act(Axis.z.direction)))
         let cameraDepth = depth / Double(camera.scale.z)
         guard position.isFiniteVector else { throw Failure.invalidTransform }
-        guard (Double(graph.camera.near)...Double(graph.camera.far)).contains(cameraDepth) else { return nil }
-        let field = Double(graph.camera.verticalFieldOfView)
-        let size = Float(2 * depth * tan(field / 2) * Double(sizeInPixels) / Double(drawableHeight))
+        let clips = graph.activeClipDistances
+        guard (Double(clips.near)...Double(clips.far)).contains(cameraDepth) else { return nil }
+        let size: Float
+        if let orthographic = graph.orthographicCamera {
+            size = Float(2 * Double(orthographic.halfHeight) * Double(sizeInPixels) / Double(drawableHeight))
+        } else {
+            let field = Double(graph.camera.verticalFieldOfView)
+            size = Float(2 * depth * tan(field / 2) * Double(sizeInPixels) / Double(drawableHeight))
+        }
         let farthestHandle = simd_abs(SIMD3<Double>(position)).max() + Double(size) * 1.25
         guard size.isNormal, size > 0, farthestHandle <= Double(Float.greatestFiniteMagnitude) else {
             throw Failure.invalidDrawable

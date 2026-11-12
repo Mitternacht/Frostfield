@@ -17,6 +17,7 @@ struct GLTFExtensionPolicyTests {
             "KHR_lights_punctual", "KHR_animation_pointer", "KHR_materials_clearcoat", "KHR_materials_transmission", "KHR_materials_volume",
             "KHR_materials_ior", "KHR_materials_emissive_strength", "KHR_materials_specular", "KHR_materials_sheen",
             "KHR_materials_anisotropy", "KHR_materials_iridescence", "KHR_materials_dispersion", "KHR_materials_unlit",
+            "EXT_materials_bump",
             "KHR_materials_variants", "KHR_texture_transform", "KHR_texture_basisu", "EXT_texture_webp", "EXT_texture_avif",
             "KHR_materials_diffuse_transmission", "KHR_materials_diffuse_roughness", "KHR_materials_volume_scatter",
         ])

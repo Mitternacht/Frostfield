@@ -28,8 +28,12 @@ overlapping heap placements. A zero report for an existing resource leaves
 the corresponding allocation total unavailable. The iPhone simulator
 returned zero allocation bytes for nonempty buffers in the fixture.
 The snapshot covers prepared draw resources and material textures.
-Caller-owned attachments, global caches,
-retired palettes, and transient command resources are outside its scope.
+Caller-owned attachments, the shader-library cache, retired palettes, and
+transient command buffers are outside that walk. `deviceAllocationTotals(device:attachments:)`
+reports them separately: the device's `currentAllocatedSize`, the number and
+source bytes of cached shader libraries for that device, the sum of
+`allocatedSize` on the attachments the caller passes, and the bytes of
+transient instance buffers allocated when every persistent slot was busy.
 [Metal resource allocation size](https://developer.apple.com/documentation/metal/mtlresource/allocatedsize)
 
 The resource fixture references one mesh and instance set from two nodes,

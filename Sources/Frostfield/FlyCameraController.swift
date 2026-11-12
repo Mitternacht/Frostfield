@@ -27,6 +27,9 @@ public struct FlyCameraController: Equatable, Sendable {
     public let dampingRate: Float
     /// Pitch range, within −pi/2...pi/2.
     public let pitchLimits: ClosedRange<Float>
+    /// When false, ``handle(_:)`` and ``update(deltaTime:movement:)`` leave the camera where it is.
+    /// ``look(by:)`` still turns it. Defaults to true.
+    public var isEnabled = true
 
     public init(
         position: SIMD3<Float> = .zero,
@@ -87,6 +90,7 @@ public struct FlyCameraController: Equatable, Sendable {
     public mutating func update(deltaTime: Float, movement: SIMD3<Float> = .zero) throws {
         guard deltaTime.isFinite, deltaTime >= 0 else { throw Failure.invalidDeltaTime }
         guard flyFinite(movement) else { throw Failure.invalidMovement }
+        guard isEnabled else { return }
         var input = flyDouble(simd_clamp(movement, SIMD3(repeating: -1), SIMD3(repeating: 1)))
         let length = simd_length(input)
         if length > 1 { input /= length }

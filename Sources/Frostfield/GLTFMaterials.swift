@@ -10,12 +10,13 @@ extension GLTFScene {
             case blend
         }
 
-        /// Native height-map metadata carried from an imported MTL material.
-        /// This is outside the portable glTF material schema.
+        /// A linear height map in the red channel.
+        /// `EXT_materials_bump` and an imported MTL material both fill it.
+        /// A normal texture takes precedence when both are present.
         public struct BumpMap {
             /// A linear height field in the red channel.
             public let texture: Texture
-            /// The signed `-bm` strength from the material library.
+            /// Signed height strength. `EXT_materials_bump` stores `bumpFactor` here.
             public let scale: Float
         }
 
@@ -239,12 +240,13 @@ struct GLTFMaterialDocument: Decodable {
     static let diffuseTransmissionExtension = "KHR_materials_diffuse_transmission"
     static let diffuseRoughnessExtension = "KHR_materials_diffuse_roughness"
     static let volumeScatterExtension = "KHR_materials_volume_scatter"
+    static let bumpExtension = "EXT_materials_bump"
     static let textureTransformExtension = "KHR_texture_transform"
     /// Extensions accepted inside a material record.
     static let materialExtensions: Set<String> = [
         clearcoatExtension, transmissionExtension, volumeExtension, iorExtension, emissiveStrengthExtension,
         specularExtension, sheenExtension, anisotropyExtension, iridescenceExtension, dispersionExtension, unlitExtension,
-        diffuseTransmissionExtension, diffuseRoughnessExtension, volumeScatterExtension,
+        diffuseTransmissionExtension, diffuseRoughnessExtension, volumeScatterExtension, bumpExtension,
     ]
     /// Extensions a scene loaded with materials can require.
     static let supportedExtensions = materialExtensions.union([textureTransformExtension, GLTFMaterialVariantsDocument.extensionName])
@@ -296,6 +298,7 @@ struct GLTFMaterialDocument: Decodable {
         let diffuseTransmission: Result<DiffuseTransmissionRecord, any Error>?
         let diffuseRoughness: Result<DiffuseRoughnessRecord, any Error>?
         let volumeScatter: Result<VolumeScatterRecord, any Error>?
+        let bump: Result<BumpRecord, any Error>?
         let unsupported: String?
 
         private struct Name: CodingKey {
@@ -328,6 +331,7 @@ struct GLTFMaterialDocument: Decodable {
             diffuseTransmission = record(GLTFMaterialDocument.diffuseTransmissionExtension, as: DiffuseTransmissionRecord.self)
             diffuseRoughness = record(GLTFMaterialDocument.diffuseRoughnessExtension, as: DiffuseRoughnessRecord.self)
             volumeScatter = record(GLTFMaterialDocument.volumeScatterExtension, as: VolumeScatterRecord.self)
+            bump = record(GLTFMaterialDocument.bumpExtension, as: BumpRecord.self)
             unsupported = values.allKeys.map(\.stringValue).filter { !GLTFMaterialDocument.materialExtensions.contains($0) }.min()
         }
     }
@@ -367,6 +371,12 @@ struct GLTFMaterialDocument: Decodable {
         let iridescenceThicknessMinimum: Float?
         let iridescenceThicknessMaximum: Float?
         let iridescenceThicknessTexture: TextureBinding?
+        let extensions: [String: Present]?
+    }
+
+    struct BumpRecord: Decodable {
+        let bumpFactor: Float?
+        let bumpTexture: TextureBinding?
         let extensions: [String: Present]?
     }
 
@@ -677,7 +687,7 @@ struct GLTFMaterialDocument: Decodable {
                 emissiveStrength: layers.emissiveStrength, specular: layers.specular, sheen: layers.sheen,
                 anisotropy: layers.anisotropy, iridescence: layers.iridescence, dispersion: layers.dispersion,
                 isUnlit: layers.isUnlit, diffuseTransmission: layers.diffuseTransmission,
-                diffuseRoughness: layers.diffuseRoughness, volumeScatter: volumeScatter, bumpMap: nil
+                diffuseRoughness: layers.diffuseRoughness, volumeScatter: volumeScatter, bumpMap: layers.bumpMap
             ))
         }
         return resolved
@@ -789,6 +799,7 @@ struct GLTFMaterialDocument: Decodable {
         var iridescence: GLTFScene.Material.Iridescence?
         var dispersion: Float = 0
         var isUnlit = false
+        var bumpMap: GLTFScene.Material.BumpMap?
     }
 
     private func resolveLayers(
@@ -862,6 +873,15 @@ struct GLTFMaterialDocument: Decodable {
                 indexOfRefraction: ior, minimumThickness: minimum, maximumThickness: maximum,
                 thicknessTexture: try texture(iridescence.iridescenceThicknessTexture, "iridescence thickness", index)
             )
+        }
+        if let bump = try extensionRecord(extensions?.bump, name: "bump", material: index) {
+            try rejectExtensions(bump.extensions, context: "bump on material \(index)")
+            let factor = bump.bumpFactor ?? 1
+            guard factor.isFinite else { throw invalid("bump factor must be finite") }
+            guard let source = try texture(bump.bumpTexture, "bump", index) else {
+                throw invalid("EXT_materials_bump needs a bumpTexture")
+            }
+            layers.bumpMap = GLTFScene.Material.BumpMap(texture: source, scale: factor)
         }
         if let dispersion = try extensionRecord(extensions?.dispersion, name: "dispersion", material: index) {
             try rejectExtensions(dispersion.extensions, context: "dispersion on material \(index)")

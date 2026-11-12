@@ -131,7 +131,7 @@ public final class SelectionOutline: PostProcessEffect {
         try depthMode.requireProjectionDepth()
         guard width > 0, height > 0 else { throw PostProcessEffectError.sizeMismatch }
         let view = try clipFromWorld ?? {
-            try Self.projection(graph.camera, aspectRatio: Float(width) / Float(height), depthMode: depthMode)
+            try Self.projection(graph, aspectRatio: Float(width) / Float(height), depthMode: depthMode)
                 * simd_inverse(graph.cameraTransform.matrix)
         }()
         let mask: any MTLTexture
@@ -167,6 +167,15 @@ public final class SelectionOutline: PostProcessEffect {
         selectionMask = mask
         self.depthMode = depthMode
         return drawCount
+    }
+
+    /// The graph camera's projection. An orthographic camera already carries the depth mode.
+    /// A perspective camera keeps the double-precision reversed-depth rewrite.
+    static func projection(_ graph: SceneGraph, aspectRatio: Float, depthMode: MeshDepthMode) throws -> simd_float4x4 {
+        if graph.orthographicCamera != nil {
+            return try graph.activeProjection(aspectRatio: aspectRatio, depthMode: depthMode)
+        }
+        return try projection(graph.camera, aspectRatio: aspectRatio, depthMode: depthMode)
     }
 
     /// The camera's projection with forward depth, or with near and far mapped to 1 and 0

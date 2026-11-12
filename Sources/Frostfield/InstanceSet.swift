@@ -190,6 +190,7 @@ public final class InstanceSet {
                 throw Failure.resource
             }
             transient.label = "Frostfield transient instances"
+            TransientCommandAllocations.record(transient.length)
             write(into: transient)
             if !commandBuffer.retainedReferences {
                 let retained = RetainedInstanceBuffer(buffer: transient)

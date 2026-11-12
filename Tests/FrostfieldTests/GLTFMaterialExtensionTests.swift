@@ -358,4 +358,42 @@ struct GLTFMaterialExtensionTests {
         #expect(try center("Green") == SIMD4(0, 1, 0, 1))
         #expect(try center("Blue") == SIMD4(0, 0, 1, 1))
     }
+
+    @Test("EXT_materials_bump imports a height map and a normal texture still wins")
+    func bumpExtension() throws {
+        let required = ["EXT_materials_bump"]
+        let data = try asset(
+            materials: [[
+                "extensions": ["EXT_materials_bump": ["bumpFactor": 2.0, "bumpTexture": ["index": 0, "texCoord": 0]]],
+            ]],
+            sections: ["extensionsUsed": required, "extensionsRequired": required]
+        )
+        let material = try load(data)
+        let bump = try #require(material.bumpMap)
+        #expect(bump.scale == 2)
+        #expect(bump.texture.sourceIndex == 0)
+        #expect(material.normalTexture == nil)
+        guard let device = MTLCreateSystemDefaultDevice() else { return }
+        let prepared = try material.prepare(device: device)
+        #expect(prepared.bumpMap?.scale == 2)
+        #expect(prepared.bumpMap != nil)
+
+        let withNormal = try asset(
+            materials: [[
+                "normalTexture": ["index": 0],
+                "extensions": ["EXT_materials_bump": ["bumpFactor": 2.0, "bumpTexture": ["index": 0]]],
+            ]],
+            sections: ["extensionsUsed": required, "extensionsRequired": required]
+        )
+        let suppressed = try load(withNormal)
+        #expect(suppressed.bumpMap?.scale == 2)
+        #expect(suppressed.normalTexture != nil)
+        #expect(try suppressed.prepare(device: device).bumpMap == nil)
+
+        let missing = try asset(
+            materials: [["extensions": ["EXT_materials_bump": ["bumpFactor": 1]]]],
+            sections: ["extensionsUsed": required, "extensionsRequired": required]
+        )
+        #expect(throws: GLTFMeshLoader.Failure.self) { try load(missing) }
+    }
 }

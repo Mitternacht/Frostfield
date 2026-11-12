@@ -165,6 +165,22 @@ struct GraphViewContext {
         self.depthMode = depthMode
     }
 
+    /// A scene pass. Uses ``SceneGraph/orthographicCamera`` when the graph has one.
+    init(graph: SceneGraph, width: Int, height: Int, depthMode: MeshDepthMode) throws {
+        let clips = graph.activeClipDistances
+        viewMatrix = simd_inverse(graph.cameraTransform.matrix)
+        projectionMatrix = try graph.activeProjection(aspectRatio: Float(width) / Float(height), depthMode: depthMode)
+        cameraPosition = graph.cameraTransform.translation
+        near = clips.near
+        far = clips.far
+        viewportOrigin = .zero
+        viewportSize = SIMD2(Float(width), Float(height))
+        targetSize = viewportSize
+        hasProjection = true
+        windowDepth = SIMD2(0, 1)
+        self.depthMode = depthMode
+    }
+
     /// A pass with a caller-supplied clip matrix and camera position, and the
     /// separate view and projection when the caller supplies them.
     init(

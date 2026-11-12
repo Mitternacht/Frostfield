@@ -28,7 +28,7 @@ import simd
 public struct SceneArchive: Sendable, Equatable {
     /// The newest manifest version this build reads and writes. Captures use the
     /// earliest version that can store the scene.
-    public static let formatVersion = 30
+    public static let formatVersion = 31
     /// Maximum root-to-leaf node count. Keeps nested scene values safe to release
     /// on a Swift task stack even though archive traversal itself is iterative.
     public static let maximumHierarchyDepth = 1_024
@@ -223,6 +223,9 @@ public struct SceneArchive: Sendable, Equatable {
         if document.version < 30, document.materials.contains(where: { $0.classic?.surfaceGraph != nil }) {
             throw Failure.decoding("classic node graphs require archive version 30")
         }
+        if document.version < 31, document.scene.orthographicCamera != nil {
+            throw Failure.decoding("an orthographic scene camera requires archive version 31")
+        }
         let rotation = (document.scene.environmentEulerRotation ?? .zero) + SIMD3(0, document.scene.environmentRotation, 0)
         guard rotation.isFiniteVector else { throw Failure.decoding("scene environment rotation angles must be finite") }
         return document
@@ -313,6 +316,7 @@ struct ArchiveManifest: Codable {
 
 struct ArchiveScene: Codable {
     var camera: PerspectiveCamera
+    var orthographicCamera: OrthographicCamera?
     var cameraTransform: SceneTransform
     var cameraLayers: SceneLayers
     var environment: Int?
@@ -762,7 +766,8 @@ private struct ArchiveCapture {
             pending.append(contentsOf: node.children.reversed().map { ($0, index, depth + 1) })
         }
         let scene = ArchiveScene(
-            camera: graph.camera, cameraTransform: graph.cameraTransform, cameraLayers: graph.cameraLayers,
+            camera: graph.camera, orthographicCamera: graph.orthographicCamera,
+            cameraTransform: graph.cameraTransform, cameraLayers: graph.cameraLayers,
             environment: try graph.environment.map { try environment($0) },
             environmentIntensity: graph.environmentIntensity, environmentRotation: graph.environmentRotation,
             environmentEulerRotation: graph.environmentEulerRotation == .zero ? nil : graph.environmentEulerRotation,
@@ -775,7 +780,8 @@ private struct ArchiveCapture {
         let needsVersion2 = clips.contains { $0.propertyTracks != nil } || materials.contains { $0.liveFactors != nil }
         let rig = photometry.rig(lightRig, writer: &writer)
         let lighting = photometry.record
-        let version = if materials.contains(where: { $0.classic?.surfaceGraph != nil }) { 30 }
+        let version = if scene.orthographicCamera != nil { 31 }
+        else if materials.contains(where: { $0.classic?.surfaceGraph != nil }) { 30 }
         else if graphs.contains(where: \.hasCastShadowOutput) { 29 }
         else if graphs.contains(where: \.hasViewportSafeUVNode) { 28 }
         else if materials.contains(where: { $0.physicallyBased?.unlitUsesGraphEmission == true }) { 27 }
@@ -1356,6 +1362,7 @@ private struct ArchiveLoader {
             if let parent = records[index].parent { children[parent].append(node) } else { roots.append(node) }
         }
         var graph = SceneGraph(roots: roots.reversed(), camera: scene.camera, cameraTransform: scene.cameraTransform)
+        graph.orthographicCamera = scene.orthographicCamera
         graph.cameraLayers = scene.cameraLayers
         graph.environment = try scene.environment.map { try environment($0) }
         graph.environmentIntensity = scene.environmentIntensity

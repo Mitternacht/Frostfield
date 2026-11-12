@@ -399,4 +399,39 @@ struct CameraControllerTests {
             try FlyCameraController(pitch: 1.2, maximumSpeed: 1, pitchLimits: -1...1)
         }
     }
+
+    @Test("A shared control event moves an enabled camera and leaves a disabled one")
+    func enabledEvents() throws {
+        var orbit = try OrbitCameraController(
+            distance: 4, projection: .perspective(verticalFieldOfView: Self.fieldOfView), dampingRate: nil
+        )
+        let settled = orbit.pose
+        orbit.isEnabled = false
+        try orbit.handle(.init(.pointer(phase: .changed, delta: SIMD2(0.4, 0))))
+        try orbit.update(deltaTime: 1)
+        #expect(orbit.pose == settled)
+        #expect(throws: OrbitCameraController.Failure.invalidDelta) {
+            try orbit.handle(.init(.pointer(phase: .changed, delta: SIMD2(.nan, 0))))
+        }
+        orbit.isEnabled = true
+        try orbit.handle(.init(.pointer(phase: .changed, delta: SIMD2(0.4, 0))))
+        try orbit.update(deltaTime: 1)
+        #expect(abs(orbit.pose.yaw - 0.4) < 1e-4)
+        let dolly = orbit.pose.distance
+        try orbit.handle(.init(.scroll(delta: SIMD2(0, log(Float(2))))))
+        try orbit.update(deltaTime: 0)
+        #expect(abs(orbit.pose.distance - dolly / 2) < 1e-4)
+
+        var fly = try FlyCameraController(maximumSpeed: 2, accelerationRate: 100, dampingRate: 100)
+        try fly.handle(.init(.movement(direction: SIMD3(0, 0, 1), deltaTime: 1)))
+        let moved = fly.position
+        #expect(simd_length(moved) > 0.5)
+        fly.isEnabled = false
+        try fly.handle(.init(.movement(direction: SIMD3(0, 0, 1), deltaTime: 1)))
+        try fly.update(deltaTime: 1, movement: SIMD3(0, 0, 1))
+        #expect(fly.position == moved)
+        #expect(throws: FlyCameraController.Failure.invalidDeltaTime) {
+            try fly.handle(.init(.movement(direction: .zero, deltaTime: -1)))
+        }
+    }
 }

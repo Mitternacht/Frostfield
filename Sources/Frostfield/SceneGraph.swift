@@ -186,6 +186,10 @@ public struct SceneGraph {
 
     public var roots: [SceneNode]
     public var camera: PerspectiveCamera
+    /// When set, raster encode, picking, post, outlines and shadow fitting use this
+    /// orthographic camera instead of `camera`. The perspective camera stays available
+    /// for field-of-view animation and archives that predate the orthographic view.
+    public var orthographicCamera: OrthographicCamera?
     public var cameraTransform: SceneTransform
     /// An alternate material for this graph's raster color and surface-attribute
     /// draws. Meshes, LODs and batches keep their geometry and authored shadows.
@@ -239,6 +243,9 @@ public struct SceneGraph {
     /// another feature runs on a graph, such as a planar reflection or cube capture, reports to
     /// the inspector of the graph it encodes, as a separate encode. See ``SceneEncodeInspector``.
     public var encodeInspector: (any SceneEncodeInspector)? = nil
+    /// GPU-written draw arguments for point, line and sprite nodes, keyed by node ID.
+    /// An empty dictionary leaves those draws CPU-counted. See ``PrimitiveIndirectDraws``.
+    public var primitiveIndirectDraws: [UUID: PrimitiveIndirectDraws] = [:]
 
     public init(
         roots: [SceneNode],
@@ -248,6 +255,52 @@ public struct SceneGraph {
         self.roots = roots
         self.camera = camera
         self.cameraTransform = cameraTransform
+    }
+
+    /// The clip matrix of the orthographic camera when one is set, otherwise the perspective camera.
+    public func activeProjection(aspectRatio: Float, depthMode: MeshDepthMode) throws -> simd_float4x4 {
+        if let orthographicCamera {
+            return try orthographicCamera.projection(aspectRatio: aspectRatio, depthMode: depthMode)
+        }
+        return try camera.projection(aspectRatio: aspectRatio, depthMode: depthMode)
+    }
+
+    /// Clip distances of the camera that ``activeProjection(aspectRatio:depthMode:)`` uses.
+    public var activeClipDistances: (near: Float, far: Float) {
+        if let orthographicCamera { return (orthographicCamera.near, orthographicCamera.far) }
+        return (camera.near, camera.far)
+    }
+
+    /// The view used by scene passes. Parallel when ``orthographicCamera`` is set.
+    public func shaderGraphCamera(aspectRatio: Float, depthMode: MeshDepthMode) throws -> ShaderGraphCamera {
+        let clips = activeClipDistances
+        return try ShaderGraphCamera(
+            viewMatrix: simd_inverse(cameraTransform.matrix),
+            projectionMatrix: activeProjection(aspectRatio: aspectRatio, depthMode: depthMode),
+            near: clips.near, far: clips.far
+        )
+    }
+
+    /// A ray through the camera that the default encode uses. Orthographic rays stay parallel.
+    public func cameraRay(
+        at normalized: SIMD2<Float>, aspectRatio: Float, depthMode: MeshDepthMode = .forward
+    ) throws -> SceneRay {
+        if orthographicCamera != nil {
+            return try shaderGraphCamera(aspectRatio: aspectRatio, depthMode: depthMode)
+                .ray(at: normalized, depthMode: depthMode)
+        }
+        return try camera.ray(at: normalized, aspectRatio: aspectRatio, cameraTransform: cameraTransform)
+    }
+
+    /// Direction from the scene back toward the camera when the default view is orthographic.
+    /// Shading treats a w = 0 camera vector as this direction, and point sizing uses it as the view axis.
+    var orthographicDirectionToCamera: SIMD3<Float>? {
+        guard orthographicCamera != nil else { return nil }
+        let column = cameraTransform.matrix.columns.2
+        let towardCamera = SIMD3(column.x, column.y, column.z)
+        let length = simd_length(towardCamera)
+        guard length.isFinite, length > 0 else { return nil }
+        return towardCamera / length
     }
 
     /// Whether a resolved node is drawn, lit, shadowed and picked for this graph's camera:

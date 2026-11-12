@@ -72,6 +72,7 @@ let package = Package(
                 .process("RasterMotionVectors.metal"),
                 .process("CurveFlow.metal"),
                 .process("MeshIndirectDraws.metal"),
+                .process("PrimitiveIndirectDraws.metal"),
                 .process("Particles.metal"),
                 .process("ColorGrade.metal"),
                 .process("TextureDebugPass.metal"),

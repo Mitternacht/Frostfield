@@ -40,23 +40,23 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | [`renderer`](#renderer) | 18 | 5 | 3 | 1 | 0 | 2 | 0 | 1 | 1 |
 | [`scene-graph`](#scene-graph) | 11 | 6 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
-| [`cameras-controls`](#cameras-controls) | 6 | 2 | 1 | 3 | 1 | 0 | 0 | 3 | 0 |
+| [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 0 | 3 | 0 |
 | [`geometry`](#geometry) | 20 | 3 | 0 | 14 | 2 | 0 | 0 | 5 | 1 |
-| [`materials-textures`](#materials-textures) | 33 | 19 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
+| [`materials-textures`](#materials-textures) | 34 | 18 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
 | [`shader-authoring`](#shader-authoring) | 21 | 21 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 21 | 4 | 0 | 5 | 2 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 0 | 3 | 1 |
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
-| [`loaders-assets`](#loaders-assets) | 5 | 1 | 1 | 29 | 11 | 6 | 1 | 2 | 4 |
+| [`loaders-assets`](#loaders-assets) | 5 | 1 | 1 | 31 | 10 | 5 | 1 | 2 | 4 |
 | [`post-processing`](#post-processing) | 7 | 4 | 1 | 29 | 5 | 0 | 5 | 7 | 2 |
 | [`effects-misc`](#effects-misc) | 1 | 3 | 0 | 6 | 2 | 2 | 0 | 2 | 6 |
 | [`path-tracing`](#path-tracing) | 0 | 0 | 0 | 1 | 0 | 1 | 12 | 4 | 0 |
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
-| [`performance-scale`](#performance-scale) | 5 | 5 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
+| [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **175** | **79** | **15** | **109** | **28** | **31** | **23** | **40** | **24** |
+| **Total** | **180** | **75** | **14** | **111** | **27** | **30** | **23** | **40** | **24** |
 
-307 of 524 capabilities are complete, with 147 partial and 70 missing.
+314 of 524 capabilities are complete, with 142 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -165,13 +165,13 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | --- | --- | --- | :---: | --- |
 | Perspective camera | `PerspectiveCamera` | `PerspectiveCamera(verticalFieldOfView:near:far:)`, `PerspectiveCamera.projection(aspectRatio:)` | ✅ | Immutable (recreate to change), no zoom; `SceneMathTests`; [programmable-scene](../evidence/programmable-scene.md) |
 | Physical lens parameters | `filmGauge`, `setFocalLength`, `focus` | `PhysicalLens`, `PhysicalCamera`, `PhysicalCamera.perspectiveCamera(aspectRatio:)`, `PhysicalCamera.pathCameraModel(aspectRatio:)` | ✅ | Focal length, sensor size and fit, f-number, focus distance and clip planes yield a matched raster perspective camera and path camera model. The lens also provides EV100 and display exposure. `PhysicalCameraTests`, `PhysicalCameraRenderTests`. [Camera and light evidence](../evidence/pathcamera.md) |
-| Orthographic camera | `OrthographicCamera` | `GLTFScene.Camera.Projection.orthographic(halfWidth:halfHeight:near:far:)`, `OrbitCameraController.Projection.orthographic`, `PathTracer.CameraModel.Projection.orthographic(height:)` | 🟡 | Raster uses imported or caller-supplied matrices through the explicit-view encode. Path tracing uses parallel rays from an orthographic camera model. `SceneGraph.camera` remains perspective-only. `GLTFCameraTests`, `CameraControllerTests`, `PathProjectionTests`. [Camera and light evidence](../evidence/pathcamera.md) |
+| Orthographic camera | `OrthographicCamera` | `OrthographicCamera(halfHeight:near:far:)`, `SceneGraph.orthographicCamera`, `GLTFScene.Camera.Projection.orthographic(halfWidth:halfHeight:near:far:)`, `PathTracer.CameraModel.Projection.orthographic(height:)` | ✅ | Setting `SceneGraph.orthographicCamera` makes the default raster encode, `pick`, primitive picking, post, outlines, cascade fit and gizmo size use parallel projection. Lit shading uses that same parallel view direction. The stored `camera` stays perspective for field-of-view animation. Archive version 31 keeps the orthographic camera. Path tracing still takes an explicit orthographic camera model. `OrthographicSceneCameraTests`, `GLTFCameraTests`, `PathProjectionTests`. [Camera and light evidence](../evidence/pathcamera.md) |
 | View offset (sub-frustum) | `setViewOffset` | `CameraViewOffset`, `PerspectiveCamera.projection(viewOffset:)`, `ShaderGraphCamera.cropped(to:)` | ✅ | Render and pick through perspective or orthographic windows, including overscan and reversed depth. `CameraViewOffsetTests`. [View offset evidence](../evidence/camera-view-offset.md) |
 | Array camera (multi-view) | `ArrayCamera` | `ArrayCamera`, `SceneGraph.encode(pass:commandBuffer:arrayCamera:...)`, `SceneGraph.pick(atPixel:in:viewIndex:)` | 🟡 | Ordered views with their own poses, projections, viewports, scissors and layer masks encode as one pass per view. The first pass clears, later passes load and store, and the last applies the caller's store and resolve, so overlapping views share depth tests. A validation pre-pass leaves nothing encoded when a later view fails, except for failures that depend on state earlier views leave. Automatic shadow maps redraw once per view, and the Three.js r187 loop does not. Single-pass vertex amplification, choosing among overlapping views when picking, per-view screen-space occlusion, indirect draws, toon outlines and motion vectors remain open. `ArrayCameraTests`. [Array camera evidence](../evidence/array-camera.md) |
 | Cube camera | `CubeCamera` | `CubeCamera.makeTarget(device:size:mipmapped:)`, `CubeCamera.encode(_:at:excluding:background:clearColor:shadowMap:punctualShadowMaps:commandBuffer:)` | ✅ | Six HDR views with layers and subtree exclusion, then mip regeneration. Requires single-sample forward-depth draws. `CubeCameraTests`. [Probe evidence](../evidence/rasterlight.md#hdr-scene-cube-capture) |
 | Stereo camera | `StereoCamera` | `PhysicalCamera.stereoPair(cameraTransform:eyeSeparation:convergenceDistance:aspectRatio:)`, `PathTracer.CameraModel.Projection.stereoEquirectangular(interpupillaryDistance:)` | ✅ | Parallel stereo views with optional convergence feed separate raster views or path-traced stills. Omnidirectional stereo uses a top-bottom path output. `PathProjectionTests`. [Camera and light evidence](../evidence/pathcamera.md) |
 | Camera coordinate system | `coordinateSystem`, `projectionMatrixInverse` | `GLTFScene.Camera.metalProjection(viewportAspectRatio:depthMode:)` | ✅ | Fixed right-handed Metal clip space (z 0…1); `SceneMathTests`, `GLTFCameraTests` |
-| Controls base class | `Controls` | — | ❌ | `OrbitCameraController` and `FlyCameraController` are separate value types with no shared protocol, enabled flag or event binding |
+| Controls base class | `Controls` | `CameraControls`, `CameraControlEvent`, `OrbitCameraController.isEnabled`, `FlyCameraController.isEnabled` | ✅ | Both controllers share the protocol. `handle(_:)` maps a pointer drag, scroll or movement sample onto orbit or fly, and does nothing while `isEnabled` is false. A nonfinite sample still throws. The package does not subscribe to AppKit or UIKit events; the app supplies the sample. `CameraControllerTests`. [animation-and-tools](../evidence/animation-and-tools.md) |
 
 ### Official addons (`examples/jsm`)
 
@@ -295,7 +295,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Volume thickness and attenuation | `thickness`, `attenuationDistance`, `attenuationColor` | `PhysicallyBasedMaterial.Transmission.attenuationDistance`, `PhysicallyBasedMaterial.Transmission.thickness` | ✅ | Beer–Lambert; raster estimates thickness in mesh space; the path tracer uses real exit distances, so thickness maps apply only in raster; `TransmissionTests`, `GLTFTransmissionTests` |
 | Index of refraction | `ior` | `PhysicallyBasedMaterial.Transmission.indexOfRefraction` | ✅ | `GLTFTransmissionTests` |
 | Specular intensity and color | `specularIntensity`, `specularColor` | `PhysicallyBasedMaterial.Specular(factor:colorFactor:factorTexture:colorTexture:)` | ✅ | Scales dielectric F0 and F90 in raster and path tracer; metals unaffected; `MaterialExtensionsTests`, `GLTFMaterialExtensionTests`; [materials-and-assets](../evidence/materials-and-assets.md) |
-| Dispersion | `dispersion` | `PhysicallyBasedMaterial.Transmission.dispersion` | 🟡 | Path tracer only, for volumes with nonzero thickness, one of three wavelengths per path; raster ignores it; `MaterialExtensionsTests`; [materials-and-assets](../evidence/materials-and-assets.md) |
+| Dispersion | `dispersion` | `PhysicallyBasedMaterial.Transmission.dispersion` | ✅ | The path tracer picks one Fraunhofer wavelength per path. Raster samples the backdrop at the C, d and F lines when dispersion and thickness are positive, and keeps the single base-index sample when dispersion is zero. `MaterialExtensionsTests`; [materials-and-assets](../evidence/materials-and-assets.md) |
 | Rough diffuse (EON) | `diffuseRoughness` | `PhysicallyBasedMaterial.DiffuseRoughness(factor:texture:)` | ✅ | Energy-preserving rough diffuse with a scalar or texture in both renderers. Raster approximates nonuniform environment lighting. `TranslucencyTests`. [Media evidence](../evidence/path-media.md) |
 | Retroreflection | `retroreflectivity` | `PhysicallyBasedMaterial.retroreflectivity` | ✅ | Direct GGX and environment reflection use the scalar retroreflective lobe in raster. Both path backends sample the matching proposal and PDF. Native archive v23 retains the scalar. [Retroreflection evidence](../evidence/pbr-retroreflection.md) |
 | Line materials (basic, dashed, wide) | `LineBasicMaterial`, `LineDashedMaterial`, `Line2NodeMaterial` | `LineMaterial`, `LineRenderer` | 🟡 | Hairlines and wide strokes with dashes, vertex colors and alpha blending. Custom line shader nodes and path tracing remain open. `LineRenderingTests`, `LineShapeTests`. [Drawable evidence](../evidence/pointslines.md) |
@@ -594,9 +594,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | KHR_materials_iridescence | `iridescence` | `GLTFScene.Material.Iridescence`, `PhysicallyBasedMaterial.Iridescence` | ✅ | Thin-film Fresnel; raster evaluates it once per pixel, the path tracer per microfacet sample; `GLTFMaterialExtensionTests`, `MaterialExtensionsTests`; [materials-and-assets](../evidence/materials-and-assets.md) |
 | KHR_materials_anisotropy | `anisotropy` | `GLTFScene.Material.Anisotropy`, `PhysicallyBasedMaterial.Anisotropy` | ✅ | Anisotropic GGX in raster and the path tracer; raster image lighting uses a bent normal; `GLTFMaterialExtensionTests`, `MaterialExtensionsTests`; [materials-and-assets](../evidence/materials-and-assets.md) |
 | KHR_materials_emissive_strength | `emissiveIntensity` | `GLTFScene.Material.emissiveStrength`, `PhysicallyBasedMaterial.emissiveStrength` | ✅ | Unbounded emissive multiplier in raster and the path tracer; `GLTFMaterialExtensionTests`, `MaterialExtensionsTests` |
-| KHR_materials_dispersion | `dispersion` | `GLTFScene.Material.dispersion`, `PhysicallyBasedMaterial.Transmission.dispersion` | 🟡 | The path tracer refracts per wavelength; raster ignores it; `GLTFMaterialExtensionTests`, `MaterialExtensionsTests` |
+| KHR_materials_dispersion | `dispersion` | `GLTFScene.Material.dispersion`, `PhysicallyBasedMaterial.Transmission.dispersion` | ✅ | Import stores the factor. The path tracer refracts one wavelength per path. Raster samples three wavelengths when thickness is positive and leaves the base-index sample unchanged at zero. `GLTFMaterialExtensionTests`, `MaterialExtensionsTests` |
 | KHR_materials_diffuse_roughness | `GLTFMaterialsDiffuseRoughnessExtension` | `GLTFScene.Material.DiffuseRoughness`, `PhysicallyBasedMaterial.DiffuseRoughness` | ✅ | Required and optional imports with the material option. Factor and red-channel map render in both backends. `GLTFTranslucencyTests`, `GLTFExtensionPolicyTests`, `TranslucencyTests`. |
-| EXT_materials_bump | `bumpMap` | — | ❌ |  |
+| EXT_materials_bump | `bumpMap` | `GLTFScene.Material.BumpMap`, `PhysicallyBasedMaterial.BumpMap` | ✅ | Import reads `bumpFactor` and `bumpTexture` into the red-channel height map that raster and path tracing already evaluate. A normal texture still wins. `GLTFMaterialExtensionTests`, `BumpMapTests` |
 | Gaussian splats (KHR_gaussian_splatting, .ply, .splat, .ksplat, .spz) | `GLTFGaussianSplatLoaderExtension`, `SPLATLoader`, `SPZLoader` | — | ❌ |  |
 | FBX import | `FBXLoader` | — | ❌ |  |
 | OBJ import | `OBJLoader` | `OBJMeshLoader.load(contentsOf:)`, `ModelIOSceneLoader.load(contentsOf:options:)` | 🟡 | ModelIO keeps hierarchy and submeshes, triangulates concave faces and reads MTL factors and maps. The direct mesh parser retains normalized RGB and RGBA vertex colors. Non-triangle primitive import remains open. `OBJMeshLoaderTests`, `MeshFileExporterTests`, `ModelIOSceneLoaderTests`. [Format evidence](../evidence/formats.md) |
@@ -836,11 +836,11 @@ Three.js has no capability in this tier.
 | Instanced meshes | `InstancedMesh`, `Mesh.count` | `InstanceSet(device:transforms:tints:capacity:)`, `InstanceSet.setTransform(_:at:)`, `InstanceSet.setTint(_:at:)`, `InstanceSet.count`, `SceneNode.instances`, `MeshRenderer.supportsInstancing` | ✅ | One draw per set in color and shadow passes, also picked and path traced; up to 262,144 instances with transforms and RGBA tints, one handedness per set; transmitting materials cannot be instanced; `InstancingTests`; [scale-and-dynamics](../evidence/scale-and-dynamics.md) |
 | Batched meshes, culling and sorting | `BatchedMesh`, `perObjectFrustumCulled` | `BatchedMesh`, `SceneNode(batch:)`, `SceneHit.batchInstanceID` | 🟡 | Editable palette and instance slots, stable handles, per-view and per-light culling, aggregate bounds and custom per-pass ordering. Eligible materials can use cached indirect Metal bundles. Independent reservations, resizing, transmission and path tracing remain open. `BatchedMeshTests`, `BatchedMeshIndirectTests`. [Batch evidence](../evidence/batched-mesh.md) |
 | Level of detail | `LOD` | `LevelOfDetail(levels:currentLevel:)`, `LevelOfDetail.Level(mesh:distance:hysteresis:)`, `SceneNode.levelsOfDetail`, `SceneGraph.updateLevelsOfDetail(cameraPosition:)` | ✅ | Up to 16 levels by camera distance with Three.js hysteresis, shared by color, shadows, picking and path tracing; world distance, not screen size; `CullingAndLODTests`; [scale-and-dynamics](../evidence/scale-and-dynamics.md) |
-| Indirect drawing | `setIndirect` | `MeshIndirectDraws`, `SceneGraph.encode(...indirectDraws:)`, `MeshRenderer.encode(_:pass:commandBuffer:indirectDraws:instances:)` | 🟡 | GPU-written indexed counts, starts, instance ranges, and signed base vertices drive standalone and graph color, shadow, attribute, and selection passes. Ordered offsets and vertex bounds are validated on the GPU. Indirect primitive draws remain open. `MeshIndirectDrawTests`. [Indirect draw evidence](../evidence/mesh-indirect-draws.md) |
+| Indirect drawing | `setIndirect` | `MeshIndirectDraws`, `PrimitiveIndirectDraws`, `SceneGraph.primitiveIndirectDraws`, `SceneGraph.encode(...indirectDraws:)` | ✅ | GPU-written indexed counts, starts, instance ranges, and signed base vertices drive mesh color, shadow, attribute, and selection passes. Point, hairline, wide-line and sprite draws read `MTLDrawPrimitivesIndirectArguments` after a GPU check that the vertex count matches the prepared topology. A bad record draws nothing. `MeshIndirectDrawTests`, `PrimitiveIndirectDrawTests`. [Indirect draw evidence](../evidence/mesh-indirect-draws.md) |
 | Render bundles | `BundleGroup` | `BatchedMesh.Submission.indirectCommandBuffer` | 🟡 | Reuses immutable indexed Metal command layouts with current instance records and material bindings for unlit and textured batches. Requires a supported GPU. Arbitrary scene-subtree bundles and wider materials remain open. `BatchedMeshIndirectTests`. [Batch evidence](../evidence/batched-mesh.md) |
 | Occlusion queries | `occlusionTest`, `isOccluded` | `SceneGraph.encodeWithOcclusionQueries`, `SceneOcclusionFrame.results()` | ✅ | Metal visibility queries report whether color draws for each requested node had passing fragments, or whether the node was skipped. Handles batches, mixed drawables, transmission passes and explicit views. `SceneOcclusionQueryTests`. [Query evidence](../evidence/scene-occlusion.md) |
 | GPU timestamp queries | `trackTimestamp`, `resolveTimestampsAsync` | `GPUTimingBatch`, `SceneGraph.encodeTimed`, `ComputeGPUTiming`, `RenderGPUTiming`, `PostProcessPass.encodeTimed`, `PostProcessChain.renderTimed` | ✅ | Native per-pass queries and async frame totals for render and compute captures across submitted command buffers. Scene shadows and graph stages share the counters. A separate timed chain covers its full GPU execution, and `PathTracer.Timing` covers path passes. Requires hardware support for stage counters. `GPUTimingBatchTests`, `RenderGPUTimingTests`. [Timing evidence](../evidence/scene-gpu-timing.md) |
-| Renderer statistics | `renderer.info` | `SceneDrawStatistics`, `SceneGraph.resourceStatistics()`, `PathTracingScene.statistics` | 🟡 | Per-view submitted mesh and sprite triangles, logical points and segments, and shadow triangles. GPU-authored indirect records count separately. Prepared scene snapshots deduplicate buffers, texture storage and pipelines and report logical buffer bytes and available Metal allocation totals. Device-wide cache, attachment and transient allocation totals remain open. `SceneResourceStatisticsTests`, `CullingAndLODTests`. [Statistics evidence](../evidence/scene-render-statistics.md) |
+| Renderer statistics | `renderer.info` | `SceneDrawStatistics`, `SceneGraph.resourceStatistics()`, `SceneGraph.deviceAllocationTotals(device:attachments:)`, `PathTracingScene.statistics` | ✅ | Per-view submitted mesh and sprite triangles, logical points and segments, and shadow triangles. GPU-authored indirect records count separately. Prepared scene snapshots deduplicate buffers, texture storage and pipelines. Device totals report `currentAllocatedSize`, the shader-library cache, caller attachment bytes and transient instance-buffer bytes. `SceneResourceStatisticsTests`, `CullingAndLODTests`. [Statistics evidence](../evidence/scene-render-statistics.md) |
 | Pipeline precompilation | `compileAsync`, `initTextureAsync` | `MeshRenderer(device:colorPixelFormat:geometry:material:depthMode:skin:)` | 🟡 | Pipelines compile synchronously when a renderer is prepared; identical generated graph sources share an internal library cache; no asynchronous compile or binary archives; `ShaderGraphRenderingTests` |
 | Static object hint | `Object3D.static` | — | ❌ |  |
 | Pluggable drawing pipeline | `drawingPipeline` | — | ❌ |  |
@@ -1004,11 +1004,11 @@ Lights, emissive surfaces and exposure stay separate: `LightRig` carries power o
   - ❌ glTF optimization pipeline (`performance-scale`, third-party)
 - **Texture transform** (all ✅)
 - **Material extensions** (8 of 10 ✅)
-  - 🟡 KHR_materials_dispersion (`loaders-assets`, addons)
-  - 🟡 Dispersion (`materials-textures`, core)
+  - ✅ KHR_materials_dispersion (`loaders-assets`, addons)
+  - ✅ Dispersion (`materials-textures`, core)
 - **Instancing, batching, culling and LOD** (4 of 8 ✅)
   - 🟡 Batched meshes, culling and sorting (`performance-scale`, core)
-  - 🟡 Indirect drawing (`performance-scale`, core)
+  - ✅ Indirect drawing (`performance-scale`, core)
   - 🟡 EXT_mesh_gpu_instancing (`loaders-assets`, addons)
   - ✅ Merge geometries (`performance-scale`, addons)
 
@@ -1021,7 +1021,7 @@ Lights, emissive surfaces and exposure stay separate: `LightRig` carries power o
   - 🟡 Property binding paths (`animation`, core)
   - 🟡 KHR_animation_pointer (`loaders-assets`, third-party)
 - **Camera controls** (1 of 4 ✅)
-  - ❌ Controls base class (`cameras-controls`, core)
+  - ✅ Controls base class (`cameras-controls`, core)
   - 🟡 Smooth camera transitions and framing (`cameras-controls`, third-party)
   - 🟡 Camera constraints, collision and input mapping (`cameras-controls`, third-party)
 - **Picking** (2 of 4 ✅)
@@ -1052,7 +1052,7 @@ Mac measurements: Lab offscreen benchmarks ([lab-benchmarks](../evidence/lab-ben
 - **Update costs, quality, frame time and memory** (2 of 3 ✅)
   - ✅ Frame-budgeted progressive rendering (`path-tracing`, third-party)
   - ✅ GPU timestamp queries (`performance-scale`, core)
-  - 🟡 Renderer statistics (`performance-scale`, core)
+  - ✅ Renderer statistics (`performance-scale`, core)
 
 ## Method and limits
 

@@ -310,7 +310,8 @@ public struct PhysicallyBasedMaterial {
         /// The path tracer refracts volumes (nonzero thickness) with a per-wavelength
         /// index of refraction, sampling one of red, green or blue per path at the
         /// Fraunhofer C, d and F lines, where green uses `indexOfRefraction` exactly.
-        /// Raster rendering ignores dispersion.
+        /// Raster samples the backdrop once per wavelength when this is positive and the
+        /// thickness is positive. Zero keeps the single base-index sample.
         public let dispersion: Float
 
         public init(
@@ -1382,7 +1383,7 @@ public struct PhysicallyBasedMaterial {
             )
             encoder.setFragmentBytes(&optical, length: MemoryLayout<SIMD4<Float>>.size, index: 14)
             if let transmission, self.material.hasTransmission {
-                var attenuation = SIMD4(transmission.attenuationColor, 0)
+                var attenuation = SIMD4(transmission.attenuationColor, transmission.dispersion)
                 encoder.setFragmentBytes(&attenuation, length: MemoryLayout<SIMD4<Float>>.size, index: 15)
             }
             if material.surfaceGraph != nil {

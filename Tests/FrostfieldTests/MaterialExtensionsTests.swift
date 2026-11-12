@@ -534,4 +534,71 @@ struct MaterialExtensionsTests {
         #expect(fringes.count >= 5)
         #expect(dispersed.allSatisfy { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite })
     }
+
+    @Test("Raster dispersion leaves a tilted slab unchanged at zero and shifts the color split when set")
+    func rasterDispersion() throws {
+        let raster = try GeometryRenderFixture(side: 32)
+        func card(_ x: Float, _ color: SIMD3<Float>) throws -> SceneNode {
+            let material = try PhysicallyBasedMaterial(
+                lightIntensity: 0, ambientIntensity: 0, baseColorFactor: SIMD4(color, 1),
+                alphaMode: .opaque, shadingModel: .unlit
+            )
+            let mesh = try MeshRenderer(
+                device: raster.device, colorPixelFormat: .rgba16Float,
+                geometry: .plane(width: 4, height: 6), material: .physicallyBased(material)
+            )
+            return SceneNode(transform: .init(translation: SIMD3(x, 0, -6)), mesh: mesh)
+        }
+        func image(_ dispersion: Float) throws -> [SIMD4<Float>] {
+            let glass = try PhysicallyBasedMaterial(
+                roughness: 0, lightIntensity: 0, ambientIntensity: 0, baseColorFactor: SIMD4(repeating: 1),
+                alphaMode: .opaque,
+                transmission: .init(factor: 1, indexOfRefraction: 1.5, thickness: 2, dispersion: dispersion)
+            )
+            let glassMesh = try MeshRenderer(
+                device: raster.device, colorPixelFormat: .rgba16Float,
+                geometry: .plane(width: 3, height: 3), material: .physicallyBased(glass)
+            )
+            let graph = SceneGraph(roots: [
+                try card(-2, SIMD3(1, 0, 0)), try card(2, SIMD3(0, 0, 1)),
+                SceneNode(
+                    transform: .init(
+                        translation: SIMD3(0, 0, -3),
+                        rotation: simd_quatf(angle: 0.7, axis: SIMD3(0, 1, 0))
+                    ),
+                    mesh: glassMesh
+                ),
+            ], camera: raster.camera)
+            let target = try raster.makeTarget()
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .rgba16Float, width: raster.side, height: raster.side, mipmapped: true
+            )
+            descriptor.storageMode = .private
+            descriptor.usage = .shaderRead
+            let backdrop = try #require(raster.device.makeTexture(descriptor: descriptor))
+            let buffer = try #require(raster.queue.makeCommandBuffer())
+            _ = try graph.encode(
+                pass: raster.pass(color: target.color, depth: target.depth), commandBuffer: buffer,
+                transmissionBackdrop: backdrop
+            )
+            try raster.finish(buffer)
+            return try raster.pixels(of: target.color)
+        }
+        func sides(_ pixels: [SIMD4<Float>]) -> (red: Int, blue: Int) {
+            var red = 0
+            var blue = 0
+            for pixel in pixels {
+                if pixel.x > pixel.z + 0.2, pixel.x > 0.2 { red += 1 }
+                if pixel.z > pixel.x + 0.2, pixel.z > 0.2 { blue += 1 }
+            }
+            return (red, blue)
+        }
+        let plainPixels = try image(0)
+        let dispersedPixels = try image(20)
+        let plain = sides(plainPixels)
+        let dispersed = sides(dispersedPixels)
+        let delta = zip(plainPixels, dispersedPixels).map { simd_distance($0.0, $0.1) }.max() ?? 0
+        #expect(plain.red > 10 && plain.blue > 10)
+        #expect(delta > 0.02, "delta \(delta) plain \(plain) dispersed \(dispersed)")
+    }
 }

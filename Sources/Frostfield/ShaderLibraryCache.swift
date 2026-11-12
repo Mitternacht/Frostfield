@@ -80,4 +80,13 @@ package enum ShaderLibraryCache {
             return state.entries.reduce(0) { $0 + ($1.key.source.contains(marker) ? $1.value.compilations : 0) }
         }
     }
+
+    /// Cached libraries for one device: how many, and how many source bytes they hold.
+    package static func snapshot(for device: any MTLDevice) -> (entries: Int, sourceBytes: Int) {
+        let key = ObjectIdentifier(device)
+        return state.withLock { state in
+            let entries = state.entries.filter { $0.key.device == key }
+            return (entries.count, entries.reduce(0) { $0 + $1.key.source.utf8.count })
+        }
+    }
 }

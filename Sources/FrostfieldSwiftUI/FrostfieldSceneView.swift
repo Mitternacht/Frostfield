@@ -267,10 +267,14 @@ private enum SceneContent {
             try renderer.encode(scene, pass: pass, commandBuffer: commandBuffer)
         case .graph(_, _, let graph, let shadowMap, let depthMode):
             if let shadowMap, shadowMap.cascades != nil, let color = pass.colorAttachments[0].texture, color.height > 0 {
-                try shadowMap.fitCascades(
-                    camera: graph.camera, cameraTransform: graph.cameraTransform,
-                    aspectRatio: Float(color.width) / Float(color.height)
-                )
+                let aspect = Float(color.width) / Float(color.height)
+                if graph.orthographicCamera != nil {
+                    try shadowMap.fitCascades(view: graph.shaderGraphCamera(aspectRatio: aspect, depthMode: depthMode))
+                } else {
+                    try shadowMap.fitCascades(
+                        camera: graph.camera, cameraTransform: graph.cameraTransform, aspectRatio: aspect
+                    )
+                }
             }
             try graph.encode(pass: pass, commandBuffer: commandBuffer, shadowMap: shadowMap, depthMode: depthMode)
         case .path:

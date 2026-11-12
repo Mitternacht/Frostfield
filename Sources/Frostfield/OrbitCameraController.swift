@@ -125,6 +125,9 @@ public struct OrbitCameraController: Equatable, Sendable {
     /// and ``goal`` shrinks by `exp(−dampingRate × seconds)`, so results do not depend
     /// on the frame rate. Three.js's default damping at 60 Hz is about 3.1 per second.
     public let dampingRate: Float?
+    /// When false, ``handle(_:)`` and ``update(deltaTime:)`` leave the pose where it is.
+    /// Direct orbit, pan and dolly calls still edit the goal. Defaults to true.
+    public var isEnabled = true
 
     private struct AxisTurn: Equatable, Sendable {
         let start: SIMD2<Double>
@@ -363,6 +366,7 @@ public struct OrbitCameraController: Equatable, Sendable {
     /// every remaining difference is below 1e-5 radians or 1e-5 of the visible half height.
     public mutating func update(deltaTime: Float) throws {
         guard deltaTime.isFinite, deltaTime >= 0 else { throw Failure.invalidDeltaTime }
+        guard isEnabled else { return }
         if var turn = axisTurn {
             turn.elapsed += Double(deltaTime)
             if turn.elapsed >= turn.duration {
