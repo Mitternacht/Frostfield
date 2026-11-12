@@ -28,7 +28,7 @@ import simd
 public struct SceneArchive: Sendable, Equatable {
     /// The newest manifest version this build reads and writes. Captures use the
     /// earliest version that can store the scene.
-    public static let formatVersion = 31
+    public static let formatVersion = 32
     /// Maximum root-to-leaf node count. Keeps nested scene values safe to release
     /// on a Swift task stack even though archive traversal itself is iterative.
     public static let maximumHierarchyDepth = 1_024
@@ -226,6 +226,9 @@ public struct SceneArchive: Sendable, Equatable {
         if document.version < 31, document.scene.orthographicCamera != nil {
             throw Failure.decoding("an orthographic scene camera requires archive version 31")
         }
+        if document.version < 32, document.scene.nodes.contains(where: { $0.receivesShadow == false }) {
+            throw Failure.decoding("a node that does not receive shadows requires archive version 32")
+        }
         let rotation = (document.scene.environmentEulerRotation ?? .zero) + SIMD3(0, document.scene.environmentRotation, 0)
         guard rotation.isFiniteVector else { throw Failure.decoding("scene environment rotation angles must be finite") }
         return document
@@ -364,6 +367,8 @@ struct ArchiveNode: Codable {
     var primitive: Int?
     var materialParameters: SIMD4<Float>
     var castsShadow: Bool
+    /// Nil means the node receives shadows. False is stored from archive version 32.
+    var receivesShadow: Bool?
     var jointPalette: Int?
     var light: PunctualLight?
     var hasPunctualShadowStrength: Bool { (light?.shadow?.shadowStrength ?? 1) != 1 }
@@ -780,7 +785,8 @@ private struct ArchiveCapture {
         let needsVersion2 = clips.contains { $0.propertyTracks != nil } || materials.contains { $0.liveFactors != nil }
         let rig = photometry.rig(lightRig, writer: &writer)
         let lighting = photometry.record
-        let version = if scene.orthographicCamera != nil { 31 }
+        let version = if nodes.contains(where: { $0.receivesShadow == false }) { 32 }
+        else if scene.orthographicCamera != nil { 31 }
         else if materials.contains(where: { $0.classic?.surfaceGraph != nil }) { 30 }
         else if graphs.contains(where: \.hasCastShadowOutput) { 29 }
         else if graphs.contains(where: \.hasViewportSafeUVNode) { 28 }
@@ -834,6 +840,7 @@ private struct ArchiveCapture {
             mesh: try node.mesh.map { try mesh($0) },
             primitive: try node.primitive.map { try primitive($0) },
             materialParameters: node.materialParameters, castsShadow: node.castsShadow,
+            receivesShadow: node.receivesShadow ? nil : false,
             jointPalette: node.jointPalette.map { writer.append(ArchiveMatrices.pack($0.matrices)) },
             light: lighting.light, ambientLight: node.ambientLight,
             instances: node.instances.map { instanceSet($0) }, morphWeights: node.morphWeights,
@@ -1393,6 +1400,7 @@ private struct ArchiveLoader {
         var node = SceneNode(
             id: record.id, transform: record.transform, mesh: try record.mesh.map { try mesh($0) },
             materialParameters: record.materialParameters, castsShadow: record.castsShadow,
+            receivesShadow: record.receivesShadow ?? true,
             jointPalette: try record.jointPalette.map {
                 try JointPalette(matrices: ArchiveMatrices.unpack(try reader.array($0, of: SIMD4<Float>.self)))
             },

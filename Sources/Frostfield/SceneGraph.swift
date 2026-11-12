@@ -20,6 +20,9 @@ public struct SceneNode: Identifiable {
     public var materialParameters: SIMD4<Float>
     public var children: [SceneNode]
     public var castsShadow: Bool
+    /// When false, this node is drawn fully lit even if its material samples shadow maps.
+    /// Children do not inherit it. Defaults to true.
+    public var receivesShadow: Bool
     /// Required when this node uses a skinned mesh.
     public var jointPalette: JointPalette?
     /// An optional light that contributes to PBR surfaces in this scene.
@@ -87,6 +90,7 @@ public struct SceneNode: Identifiable {
         materialParameters: SIMD4<Float> = SIMD4(repeating: 1),
         children: [SceneNode] = [],
         castsShadow: Bool = true,
+        receivesShadow: Bool = true,
         jointPalette: JointPalette? = nil,
         light: PunctualLight? = nil,
         ambientLight: AmbientLight? = nil,
@@ -113,6 +117,7 @@ public struct SceneNode: Identifiable {
         self.materialParameters = materialParameters
         self.children = children
         self.castsShadow = castsShadow
+        self.receivesShadow = receivesShadow
         self.jointPalette = jointPalette
         self.light = light
         self.ambientLight = ambientLight
@@ -153,6 +158,7 @@ public struct ResolvedSceneNode: Identifiable {
     public let batch: BatchedMesh?
     public let materialParameters: SIMD4<Float>
     public let castsShadow: Bool
+    public let receivesShadow: Bool
     public let jointPalette: JointPalette?
     public let light: ResolvedPunctualLight?
     public let ambientLight: AmbientLight?
@@ -378,6 +384,7 @@ public struct SceneGraph {
                 batch: node.batch,
                 materialParameters: node.materialParameters,
                 castsShadow: node.castsShadow,
+                receivesShadow: node.receivesShadow,
                 jointPalette: node.jointPalette,
                 light: light,
                 ambientLight: node.ambientLight,

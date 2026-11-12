@@ -527,6 +527,32 @@ struct ClassicMaterialTests {
         }
     }
 
+    @Test("A node can stay lit while its material is prepared to receive shadows")
+    func nodeReceivesShadow() throws {
+        let blocker = SceneNode(
+            transform: SceneTransform(translation: SIMD3(2.625, 0, 0.5)),
+            mesh: try mesh(try ClassicMaterial(model: .basic), state: MeshRenderState(colorWriteMask: []), halfExtent: 0.25)
+        )
+        let shadowMap = try DirectionalShadowMap(
+            queue: fixture.queue, resolution: 512, directionToLight: SIMD3(0.6, 0, 0.8), center: SIMD3(0, 0, -3), halfExtent: 5
+        )
+        var lit = SceneNode(
+            transform: SceneTransform(translation: SIMD3(0, 0, -3)),
+            mesh: try mesh(try ClassicMaterial(model: .lambert, ambient: SIMD3(repeating: 0.1 * .pi), receivesShadows: true), halfExtent: 1.6),
+            castsShadow: false
+        )
+        let shadowed = try fixture.render(SceneGraph(roots: [lit, blocker], camera: fixture.camera), shadowMap: shadowMap).pixels
+        lit.receivesShadow = false
+        let unshadowed = try fixture.render(SceneGraph(roots: [lit, blocker], camera: fixture.camera), shadowMap: shadowMap).pixels
+        let level = 0.1 + 0.8 / Float.pi
+        #expect(fixture.pixel(shadowed, x: 32, y: 32).x < 0.2)
+        #expect(isNearly(fixture.pixel(unshadowed, x: 32, y: 32), SIMD4(level, level, level, 1)))
+        let stored = SceneGraph(roots: [lit, blocker], camera: fixture.camera)
+        let archive = try SceneArchive(capturing: stored, commandQueue: fixture.queue)
+        let loaded = try archive.load(device: fixture.device, commandQueue: fixture.queue).graph
+        #expect(loaded.roots.contains { $0.receivesShadow == false && $0.castsShadow == false })
+    }
+
     @Test("Classic materials reject values outside their ranges and maps their model ignores")
     func validation() throws {
         let white = try texture(width: 1, height: 1, bytes: [255, 255, 255, 255])

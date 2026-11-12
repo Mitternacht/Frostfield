@@ -39,7 +39,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Area | Core ✅ | Core 🟡 | Core ❌ | Addons ✅ | Addons 🟡 | Addons ❌ | Third-party ✅ | Third-party 🟡 | Third-party ❌ |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | [`renderer`](#renderer) | 18 | 5 | 3 | 1 | 0 | 2 | 0 | 1 | 1 |
-| [`scene-graph`](#scene-graph) | 11 | 6 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
+| [`scene-graph`](#scene-graph) | 12 | 5 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 1 | 2 | 0 |
 | [`geometry`](#geometry) | 21 | 2 | 0 | 14 | 2 | 0 | 0 | 5 | 1 |
 | [`materials-textures`](#materials-textures) | 34 | 18 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **181** | **74** | **14** | **111** | **27** | **30** | **24** | **39** | **24** |
+| **Total** | **182** | **73** | **14** | **111** | **27** | **30** | **24** | **39** | **24** |
 
-316 of 524 capabilities are complete, with 140 partial and 68 missing.
+317 of 524 capabilities are complete, with 139 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -125,7 +125,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Hierarchy management | `add`, `remove`, `attach`, `parent` | `SceneGraph.add`, `SceneGraph.removeNode(withID:)`, `SceneGraph.attach(_:to:)`, `SceneGraph.parentID(of:)` | ✅ | Edits the value tree by node ID and preserves the world transform on attach where TRS can represent it. Rejects cycles, duplicate IDs and reparenting that would introduce shear. `SceneNodeConveniencesTests`. |
 | Traversal and lookup | `traverse`, `getObjectByName`, `getObjectById` | `SceneGraph.forEachNode`, `SceneGraph.forEachVisibleNode`, `SceneGraph.node(named:)`, `SceneGraph.node(withID:)` | ✅ | Depth-first traversal with parent IDs, visible-only traversal, name and ID lookup, and predicate queries. `SceneNodeConveniencesTests`. |
 | World-space conversion | `getWorldPosition`, `localToWorld`, `worldToLocal` | `SceneGraph.worldPosition(of:)`, `SceneGraph.localToWorld(_:in:)`, `SceneGraph.worldToLocal(_:in:)` | ✅ | Transform and invert points through the hierarchy. `SceneNodeConveniencesTests`. |
-| Per-object flags and metadata | `visible`, `castShadow`, `receiveShadow`, `name`, `userData`, `frustumCulled` | `SceneNode.isVisible`, `SceneNode.castsShadow`, `SceneNode.frustumCulled`, `SceneNode.name`, `SceneNode.metadata`, `SceneNode.renderOrder` | 🟡 | Visibility suppresses the subtree. Names round-trip through glTF and JSON-compatible metadata stays on the node. Receiving shadows is a material flag. `SceneNodeConveniencesTests`, `RenderStateTests`. |
+| Per-object flags and metadata | `visible`, `castShadow`, `receiveShadow`, `name`, `userData`, `frustumCulled` | `SceneNode.isVisible`, `SceneNode.castsShadow`, `SceneNode.receivesShadow`, `SceneNode.frustumCulled`, `SceneNode.name`, `SceneNode.metadata`, `SceneNode.renderOrder` | ✅ | Visibility suppresses the subtree. Names round-trip through glTF and JSON-compatible metadata stays on the node. `receivesShadow` defaults to true and, when false, clears directional shadow strength and punctual shadow strength for that draw. Archive version 32 stores the opt-out. `SceneNodeConveniencesTests`, `ClassicMaterialTests`, `RenderStateTests`. |
 | Object render callbacks | `onBeforeRender`, `onAfterRender` | `SceneNode.onBeforeEncode`, `SceneNode.onAfterEncode`, `SceneRenderObjectContext` | 🟡 | CPU-side hooks run just before and after each draw a node really encodes in the color and surface-attribute passes, for meshes (plain, instanced, skinned and batched), points, lines and sprites, once per array-camera view. They receive the node ID, draw kind and index, view index, final world transform and final material parameters. Hidden, filtered, culled and empty draws never call them. A hook gets no renderer, geometry, material or group, cannot change the draw or its GPU state, and shadow passes, scene callbacks and material callbacks have no hooks. `RenderHooksTests`. [Hook evidence](../evidence/render-hooks.md) |
 | Group container | `Group` | `SceneNode(id:transform:mesh:materialParameters:children:castsShadow:jointPalette:light:)` | ✅ | Mesh-less nodes group children; `SceneGraphTests` |
 | Scene root | `Scene` (background, environment, fog) | `SceneGraph(roots:camera:cameraTransform:)`, `SceneGraph.environmentIntensity`, `SceneGraph.environmentEulerRotation` | 🟡 | Graph-wide IBL intensity and XYZ orientation for raster PBR and opt-in path lighting; the background is a separate `EnvironmentBackground` pass and environment maps are per material; fog is configured separately by the raster effect or path lighting; perspective camera only; `LightRigTests`; [light-rig](../evidence/light-rig.md) |

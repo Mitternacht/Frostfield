@@ -1459,6 +1459,7 @@ public final class MeshRenderer {
                 jointPalette: node.jointPalette, morphWeights: node.morphWeights, instances: node.instances,
                 precise: precise
             )
+            draw.suppressesShadows = !node.receivesShadow
             draw.indirectSource = indirectDraws[node.id]
             let castsShadow = node.castsShadow && renderer.rawProgram == nil
                 && !renderer.isBlended && !renderer.requiresTransmissionBackdrop
@@ -1984,6 +1985,30 @@ public final class MeshRenderer {
                     )
                 }
             }
+            var punctualShadowsSuppressed = false
+            func bindScenePunctualLights(suppressShadows: Bool) {
+                guard let lightTables, let fallback = draws.lazy.compactMap(\.colorRenderer.punctualShadowFallback).first else {
+                    return
+                }
+                let bound = suppressShadows ? lights.map { light in
+                    var light = light
+                    light.shadowReceiver.x = 0
+                    return light
+                } : lights
+                if let punctualShadowMaps, usesPunctualShadows {
+                    bindPunctualLights(
+                        bound, shadowTexture: punctualShadowMaps.texture, shadowViews: shadowSlots.sliceViews,
+                        shadowMoments: spotShadowMoments, relativeLightPositions: shadowSlots.relativeLightPositions,
+                        tables: lightTables, rectangleLTC: rectangleLTC?.texture, into: encoder
+                    )
+                } else {
+                    bindPunctualLights(
+                        bound, shadowTexture: fallback, shadowViews: [],
+                        relativeLightPositions: shadowSlots.relativeLightPositions,
+                        tables: lightTables, rectangleLTC: rectangleLTC?.texture, into: encoder
+                    )
+                }
+            }
             // Merge both sorted lists. For equal keys on the same node, draw the mesh first.
             var querying = false
             func selectVisibility(_ offset: Int?) {
@@ -2024,6 +2049,10 @@ public final class MeshRenderer {
                 drawIndex += 1
                 if let node, let context { node.onBeforeEncode?(context) }
                 if !drawsOutlinesAfterScene { encodeOutline(item) }
+                if item.colorDraw.suppressesShadows != punctualShadowsSuppressed {
+                    bindScenePunctualLights(suppressShadows: item.colorDraw.suppressesShadows)
+                    punctualShadowsSuppressed = item.colorDraw.suppressesShadows
+                }
                 item.colorRenderer.encode(
                     item.colorDraw, into: encoder, shadowMap: shadowMap, transmission: transmission,
                     sceneEnvironment: sceneEnvironment, graphView: graphView, viewBasis: viewBasis,
@@ -2615,6 +2644,8 @@ public final class MeshRenderer {
         var indirectSource: MeshIndirectDraws?
         var indirect: MeshIndirectDraws.Validated?
         var batch: BatchedMesh.Packet?
+        /// The node asked to stay lit. Directional strength is cleared and punctual maps are unbound for this draw.
+        var suppressesShadows = false
         var drawCallCount: Int { indirect?.count ?? batch?.runs.count ?? 1 }
     }
 
@@ -3013,8 +3044,10 @@ public final class MeshRenderer {
         }
         if receivesShadows, let shadowMap {
             // The FrostfieldDirectionalShadow record in FrostfieldShadowSampling.h.
-            let uniforms = draw.relativeDirectional.map { shadowMap.relativeShaderUniforms(for: $0) }
+            // biasUp.w, slot 25, is the shadow strength. A node that does not receive shadows forces it to zero.
+            var uniforms = draw.relativeDirectional.map { shadowMap.relativeShaderUniforms(for: $0) }
                 ?? shadowMap.shaderUniforms
+            if draw.suppressesShadows, uniforms.count > 25 { uniforms[25].w = 0 }
             uniforms.withUnsafeBytes { bytes in
                 encoder.setFragmentBytes(bytes.baseAddress!, length: bytes.count, index: physicallyBased != nil || classic != nil ? 4 : 1)
             }
