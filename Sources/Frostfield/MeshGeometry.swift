@@ -102,6 +102,35 @@ public struct MeshGeometry: Sendable {
         self.indices = indices
     }
 
+    /// An expanded copy whose vertices move along their normals by `thickness`.
+    /// Winding is reversed, so the shell's front faces point back toward the source mesh.
+    public func outlineShell(thickness: Float) throws -> MeshGeometry {
+        guard thickness.isFinite, thickness > 0 else { throw ValidationError.invalidOutlineThickness }
+        let expanded = try vertices.enumerated().map { index, vertex in
+            let normal = SIMD3<Double>(vertex.normal)
+            let length = simd_length(normal)
+            guard length.isFinite, length > 0 else { throw ValidationError.invalidVertex(index) }
+            let unit = normal / length
+            let position = SIMD3<Double>(vertex.position) + unit * Double(thickness)
+            let stored = SIMD3<Float>(position)
+            guard stored.x.isFinite, stored.y.isFinite, stored.z.isFinite else {
+                throw ValidationError.invalidVertex(index)
+            }
+            return MeshVertex(
+                position: stored, normal: SIMD3<Float>(-unit), textureCoordinate: vertex.textureCoordinate,
+                secondaryTextureCoordinate: vertex.secondaryTextureCoordinate, tangent: vertex.tangent,
+                color: vertex.color
+            )
+        }
+        var reversed = indices
+        for triangle in stride(from: 0, to: reversed.count, by: 3) {
+            reversed.swapAt(triangle + 1, triangle + 2)
+        }
+        var shell = try MeshGeometry(vertices: expanded, indices: reversed)
+        shell.groups = groups
+        return shell
+    }
+
     func replacingVertices(_ vertices: [MeshVertex]) throws -> MeshGeometry {
         var geometry = try MeshGeometry(vertices: vertices, indices: indices)
         geometry.groups = groups
@@ -246,6 +275,7 @@ public struct MeshGeometry: Sendable {
         case invalidVertex(Int)
         case indexOutOfBounds(UInt32)
         case invalidGroup(Int)
+        case invalidOutlineThickness
 
         public var errorDescription: String? {
             switch self {
@@ -259,6 +289,8 @@ public struct MeshGeometry: Sendable {
                 "Mesh index \(index) is outside the vertex array."
             case .invalidGroup(let index):
                 "Mesh group \(index) must hold whole triangles inside the index array, use a nonnegative material index, and not overlap another group."
+            case .invalidOutlineThickness:
+                "An outline shell thickness must be finite and positive."
             }
         }
     }
