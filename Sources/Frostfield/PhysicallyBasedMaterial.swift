@@ -528,6 +528,9 @@ public struct PhysicallyBasedMaterial {
     public let isDoubleSided: Bool
     /// Uses the scene's directional shadow map for the direct light when enabled.
     public let receivesShadows: Bool
+    /// When false, a display pass that receives this material's exclusion mask copies the
+    /// scene color without exposure or a tone curve. Defaults to true.
+    public let toneMapped: Bool
     /// Replaces the constant ambient fill with prefiltered diffuse and specular light.
     public let environment: Environment?
     public let clearcoat: Clearcoat?
@@ -756,7 +759,8 @@ public struct PhysicallyBasedMaterial {
         lightMap: LightMap? = nil,
         lightMapIntensity: Float = 1,
         retroreflectivity: Float = 0,
-        unlitUsesGraphEmission: Bool = false
+        unlitUsesGraphEmission: Bool = false,
+        toneMapped: Bool = true
     ) throws {
         guard !unlitUsesGraphEmission || (shadingModel == .unlit && surfaceGraph?.outputs.emission != nil) else {
             throw Failure.unlitGraphEmission
@@ -822,6 +826,7 @@ public struct PhysicallyBasedMaterial {
             && transmission.map { $0.factor > 0 && $0.indexOfRefraction != 0 && $0.thickness > 0 } ?? false
         self.isDoubleSided = isDoubleSided && !hasVolume
         self.receivesShadows = receivesShadows
+        self.toneMapped = toneMapped
         self.environment = environment
         self.clearcoat = clearcoat
         self.transmission = transmission

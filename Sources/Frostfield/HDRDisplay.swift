@@ -1,6 +1,8 @@
 import CoreGraphics
 import Foundation
 import Metal
+import simd
+import Synchronization
 
 /// Presents an HDR image as display-referred color with a choice of tone mapping
 /// operators, like Three.js `renderer.toneMapping` and `toneMappingExposure`.
@@ -236,11 +238,12 @@ public final class HDRDisplay {
         source: any MTLTexture,
         destination: any MTLTexture,
         settings: Settings = Settings(),
+        untonemappedMask: (any MTLTexture)? = nil,
         commandBuffer: any MTLCommandBuffer
     ) throws {
         try encode(
             source: source, destination: destination, settings: settings, resamples: false,
-            fade: nil, commandBuffer: commandBuffer
+            fade: nil, untonemappedMask: untonemappedMask, commandBuffer: commandBuffer
         )
     }
 
@@ -251,7 +254,7 @@ public final class HDRDisplay {
     ) throws {
         try encode(
             source: source, destination: destination, settings: settings, resamples: true,
-            fade: nil, commandBuffer: commandBuffer
+            fade: nil, untonemappedMask: nil, commandBuffer: commandBuffer
         )
     }
 
@@ -266,13 +269,14 @@ public final class HDRDisplay {
         )
         try encode(
             source: to, destination: destination, settings: settings, resamples: true,
-            fade: (from, weight), commandBuffer: commandBuffer
+            fade: (from, weight), untonemappedMask: nil, commandBuffer: commandBuffer
         )
     }
 
     private func encode(
         source: any MTLTexture, destination: any MTLTexture, settings: Settings, resamples: Bool,
-        fade: (texture: any MTLTexture, weight: Float)?, commandBuffer: any MTLCommandBuffer
+        fade: (texture: any MTLTexture, weight: Float)?, untonemappedMask: (any MTLTexture)?,
+        commandBuffer: any MTLCommandBuffer
     ) throws {
         var options = try validate(
             source: source, destination: destination, settings: settings,
@@ -282,6 +286,14 @@ public final class HDRDisplay {
         pass.colorAttachments[0].texture = destination
         pass.colorAttachments[0].loadAction = .dontCare
         pass.colorAttachments[0].storeAction = .store
+        if let untonemappedMask {
+            guard untonemappedMask.device === device, untonemappedMask.textureType == .type2D,
+                  untonemappedMask.pixelFormat == .r8Unorm, untonemappedMask.sampleCount == 1,
+                  untonemappedMask.width == destination.width, untonemappedMask.height == destination.height,
+                  untonemappedMask.usage.contains(.shaderRead), !untonemappedMask.isFramebufferOnly else {
+                throw Failure.incompatibleTextures
+            }
+        }
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else {
             throw Failure.encoder
         }
@@ -297,6 +309,9 @@ public final class HDRDisplay {
         encoder.setFragmentBytes(&destinationSize, length: MemoryLayout<SIMD2<UInt32>>.stride, index: 2)
         var weight = fade?.weight ?? 1
         encoder.setFragmentBytes(&weight, length: MemoryLayout<Float>.size, index: 3)
+        encoder.setFragmentTexture(untonemappedMask ?? source, index: 2)
+        var hasMask: UInt32 = untonemappedMask == nil ? 0 : 1
+        encoder.setFragmentBytes(&hasMask, length: MemoryLayout<UInt32>.size, index: 4)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
     }
@@ -409,6 +424,87 @@ public final class HDRDisplay {
 }
 
 // MARK: - Custom tone mapping
+
+extension SceneGraph {
+    /// Marks visible pixels whose material has `toneMapped == false`.
+    /// The depth texture must be the one stored by the color pass. The mask is cleared to zero,
+    /// then each opted-out mesh is drawn white with an equal depth test.
+    public func encodeToneMapMask(
+        depth: any MTLTexture, into mask: any MTLTexture, commandBuffer: any MTLCommandBuffer,
+        depthMode: MeshDepthMode = .forward
+    ) throws {
+        guard mask.pixelFormat == .r8Unorm, mask.textureType == .type2D, depth.textureType == .type2D,
+              mask.width == depth.width, mask.height == depth.height, mask.width > 0,
+              mask.usage.contains(.renderTarget), depth.pixelFormat == .depth32Float,
+              commandBuffer.device === mask.device, depth.device === mask.device else {
+            throw HDRDisplay.Failure.incompatibleTextures
+        }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = mask
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        pass.colorAttachments[0].storeAction = .store
+        pass.depthAttachment.texture = depth
+        pass.depthAttachment.loadAction = .load
+        pass.depthAttachment.storeAction = .store
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else {
+            throw HDRDisplay.Failure.encoder
+        }
+        encoder.label = "Frostfield tone-map exclusion"
+        let aspect = Float(mask.width) / Float(mask.height)
+        let clip = try activeProjection(aspectRatio: aspect, depthMode: depthMode) * simd_inverse(cameraTransform.matrix)
+        for node in try resolve() where renders(node) {
+            guard let mesh = node.mesh, !mesh.toneMapped else { continue }
+            let resources = try ToneMapMaskRenderer.resources(device: mesh.device, skinned: mesh.skin != nil)
+            try mesh.encodeToneMapMask(
+                world: node.worldTransform, clipFromWorld: clip, into: encoder,
+                pipeline: resources.pipeline, depthState: resources.depth
+            )
+        }
+        encoder.endEncoding()
+    }
+}
+
+private enum ToneMapMaskRenderer {
+    struct Resources {
+        let pipeline: any MTLRenderPipelineState
+        let depth: any MTLDepthStencilState
+    }
+
+    private static let cache = Mutex<[ObjectIdentifier: (plain: Resources, skinned: Resources)]>([:])
+
+    static func resources(device: any MTLDevice, skinned: Bool) throws -> Resources {
+        let key = ObjectIdentifier(device)
+        if let cached = cache.withLock({ $0[key] }) {
+            return skinned ? cached.skinned : cached.plain
+        }
+        let library = try device.makeDefaultLibrary(bundle: .module)
+        func make(_ vertex: String) throws -> Resources {
+            guard let vertexFunction = library.makeFunction(name: vertex),
+                  let fragment = library.makeFunction(name: "frostfield_tonemap_mask_fragment") else {
+                throw HDRDisplay.Failure.missingShader
+            }
+            let descriptor = MTLRenderPipelineDescriptor()
+            descriptor.vertexFunction = vertexFunction
+            descriptor.fragmentFunction = fragment
+            descriptor.colorAttachments[0].pixelFormat = .r8Unorm
+            descriptor.depthAttachmentPixelFormat = .depth32Float
+            let pipeline = try device.makeRenderPipelineState(descriptor: descriptor)
+            let depthDescriptor = MTLDepthStencilDescriptor()
+            depthDescriptor.depthCompareFunction = .equal
+            depthDescriptor.isDepthWriteEnabled = false
+            guard let depth = device.makeDepthStencilState(descriptor: depthDescriptor) else {
+                throw HDRDisplay.Failure.encoder
+            }
+            return Resources(pipeline: pipeline, depth: depth)
+        }
+        let pair = (plain: try make("frostfield_mesh_vertex"), skinned: try make("frostfield_skinned_mesh_vertex"))
+        cache.withLock { store in
+            if store[key] == nil { store[key] = pair }
+        }
+        return skinned ? pair.skinned : pair.plain
+    }
+}
 
 extension PostProcessGraph {
     /// A display pass that applies a caller-written tone curve, like Three.js

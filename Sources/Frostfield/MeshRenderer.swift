@@ -136,6 +136,14 @@ public final class MeshRenderer {
     }
     /// The material this renderer was prepared with.
     public let material: MeshMaterial
+    /// False when this renderer's physically based or classic material opts out of display tone mapping.
+    public var toneMapped: Bool {
+        switch material {
+        case .physicallyBased(let material): material.toneMapped
+        case .classic(let material): material.toneMapped
+        default: true
+        }
+    }
     private var rawProgram: RawMeshProgram? {
         guard case .rawMetal(let program) = material else { return nil }
         return program
@@ -2971,11 +2979,13 @@ public final class MeshRenderer {
         viewBasis: ViewBasis,
         screenInputs: PBRScreenInputs? = nil,
         environmentPipeline: (any MTLRenderPipelineState)? = nil,
-        viewportTextures: SceneViewportSnapshot.Prepared? = nil
+        viewportTextures: SceneViewportSnapshot.Prepared? = nil,
+        colorPipeline: (any MTLRenderPipelineState)? = nil,
+        depthStencil: (any MTLDepthStencilState)? = nil
     ) {
         var draw = prepared
-        encoder.setRenderPipelineState(environmentPipeline ?? pipeline)
-        encoder.setDepthStencilState(depthState)
+        encoder.setRenderPipelineState(colorPipeline ?? environmentPipeline ?? pipeline)
+        encoder.setDepthStencilState(depthStencil ?? depthState)
         if let stencil = renderState.stencil { encoder.setStencilReferenceValue(UInt32(stencil.reference)) }
         encoder.setFrontFacing(draw.frontFacing)
         encoder.setCullMode(renderState.cullMode)
@@ -3062,6 +3072,26 @@ public final class MeshRenderer {
             }
         }
         drawIndices(draw, into: encoder)
+    }
+
+    /// Draws this mesh into a tone-map exclusion mask. The fragment is constant white.
+    /// The caller supplies an equal, read-only depth state so only the visible surface is marked.
+    func encodeToneMapMask(
+        world: simd_float4x4, clipFromWorld: simd_float4x4, into encoder: any MTLRenderCommandEncoder,
+        pipeline: any MTLRenderPipelineState, depthState maskDepth: any MTLDepthStencilState
+    ) throws {
+        let draw = try prepare(
+            world: world, clipFromWorld: clipFromWorld, shadingCamera: SIMD4(0, 0, 1, 1),
+            parameters: SIMD4(repeating: 1), jointPalette: nil, morphWeights: nil, instances: nil
+        )
+        let view = try GraphViewContext(
+            camera: try PerspectiveCamera(verticalFieldOfView: 1, near: 0.1, far: 10),
+            cameraTransform: .init(), width: 1, height: 1, depthMode: .forward
+        )
+        encode(
+            draw, into: encoder, shadowMap: nil, graphView: view, viewBasis: Self.viewBasis(cameraTransform: .init()),
+            colorPipeline: pipeline, depthStencil: maskDepth
+        )
     }
 
     /// World-space right, up and backward view axes, matching `FrostfieldViewBasis` in

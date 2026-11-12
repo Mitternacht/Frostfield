@@ -28,7 +28,7 @@ import simd
 public struct SceneArchive: Sendable, Equatable {
     /// The newest manifest version this build reads and writes. Captures use the
     /// earliest version that can store the scene.
-    public static let formatVersion = 32
+    public static let formatVersion = 33
     /// Maximum root-to-leaf node count. Keeps nested scene values safe to release
     /// on a Swift task stack even though archive traversal itself is iterative.
     public static let maximumHierarchyDepth = 1_024
@@ -228,6 +228,9 @@ public struct SceneArchive: Sendable, Equatable {
         }
         if document.version < 32, document.scene.nodes.contains(where: { $0.receivesShadow == false }) {
             throw Failure.decoding("a node that does not receive shadows requires archive version 32")
+        }
+        if document.version < 33, document.materials.contains(where: { $0.physicallyBased?.toneMapped == false }) {
+            throw Failure.decoding("a material that skips tone mapping requires archive version 33")
         }
         let rotation = (document.scene.environmentEulerRotation ?? .zero) + SIMD3(0, document.scene.environmentRotation, 0)
         guard rotation.isFiniteVector else { throw Failure.decoding("scene environment rotation angles must be finite") }
@@ -620,6 +623,8 @@ struct ArchivePBR: Codable {
     var surfaceTextures: [String: Int]?
     var unlit: Bool
     var unlitUsesGraphEmission: Bool?
+    /// Nil means the material is tone mapped. False is stored from archive version 33.
+    var toneMapped: Bool? = nil
 }
 
 struct ArchiveEnvironment: Codable {
@@ -785,7 +790,8 @@ private struct ArchiveCapture {
         let needsVersion2 = clips.contains { $0.propertyTracks != nil } || materials.contains { $0.liveFactors != nil }
         let rig = photometry.rig(lightRig, writer: &writer)
         let lighting = photometry.record
-        let version = if nodes.contains(where: { $0.receivesShadow == false }) { 32 }
+        let version = if materials.contains(where: { $0.physicallyBased?.toneMapped == false }) { 33 }
+        else if nodes.contains(where: { $0.receivesShadow == false }) { 32 }
         else if scene.orthographicCamera != nil { 31 }
         else if materials.contains(where: { $0.classic?.surfaceGraph != nil }) { 30 }
         else if graphs.contains(where: \.hasCastShadowOutput) { 29 }
@@ -1207,7 +1213,8 @@ private struct ArchiveCapture {
             },
             surfaceUniforms: material.surfaceUniforms.map { uniformSet($0) },
             surfaceTextures: surfaceTextures, unlit: material.shadingModel == .unlit,
-            unlitUsesGraphEmission: material.unlitUsesGraphEmission ? true : nil
+            unlitUsesGraphEmission: material.unlitUsesGraphEmission ? true : nil,
+            toneMapped: material.toneMapped ? nil : false
         )
     }
 
@@ -1752,7 +1759,8 @@ private struct ArchiveLoader {
             },
             lightMapIntensity: record.lightMapIntensity ?? 1,
             retroreflectivity: record.retroreflectivity ?? 0,
-            unlitUsesGraphEmission: record.unlitUsesGraphEmission ?? false
+            unlitUsesGraphEmission: record.unlitUsesGraphEmission ?? false,
+            toneMapped: record.toneMapped ?? true
         )
     }
 

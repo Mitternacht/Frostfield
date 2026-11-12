@@ -281,19 +281,35 @@ static float4 ditherOutput(float4 color, constant HDRDisplayOptions& options, fl
     return float4(frostfieldR187DitherOutput(color.rgb, fragmentCoordinate, options.ditherMode), color.a);
 }
 
+static float4 keepUntonemapped(float4 mapped, float4 raw, uint2 pixel, texture2d<float> mask, uint enabled) {
+    if (enabled == 0u || mask.read(pixel).r <= 0.5f) { return mapped; }
+    float alpha = saturate(raw.a);
+    if (!(alpha > 0.0f)) { return float4(0); }
+    return float4(max(raw.rgb, float3(0)), alpha);
+}
+
+fragment float4 frostfield_tonemap_mask_fragment() {
+    return float4(1);
+}
+
 fragment float4 frostfield_hdr_fragment(
     HDRDisplayVertex in [[stage_in]],
     texture2d<float> source [[texture(0)]],
     texture2d<float> preview [[texture(1)]],
+    texture2d<float> untonemapped [[texture(2)]],
     constant HDRDisplayOptions& options [[buffer(0)]],
     constant float& antiAliasing [[buffer(1)]],
     constant uint2& outputSize [[buffer(2)]],
-    constant float& weight [[buffer(3)]]
+    constant float& weight [[buffer(3)]],
+    constant uint& hasUntonemappedMask [[buffer(4)]]
 ) {
     uint2 pixel = uint2(in.position.xy);
     float knee = in.knee;
     bool resamples = any(outputSize != uint2(source.get_width(), source.get_height()));
-    float4 center = displayColor(displaySample(source, preview, pixel, outputSize, resamples, weight), options, knee);
+    float4 raw = displaySample(source, preview, pixel, outputSize, resamples, weight);
+    float4 center = keepUntonemapped(
+        displayColor(raw, options, knee), raw, pixel, untonemapped, hasUntonemappedMask
+    );
     if (antiAliasing == 0) { return ditherOutput(center, options, in.position.xy, outputSize); }
 
     uint2 maximum = outputSize - 1u;

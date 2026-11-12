@@ -375,6 +375,58 @@ struct ToneMappingTests {
         #expect(translucent[1] == .zero)
     }
 
+    @Test("A material can keep its linear color when the display applies a tone curve")
+    func materialToneMapped() throws {
+        let scene = try GeometryRenderFixture(side: 32)
+        func quad(x: Float, toneMapped: Bool) throws -> SceneNode {
+            let material = try PhysicallyBasedMaterial(
+                lightIntensity: 0, ambientIntensity: 0, baseColorFactor: SIMD4(0, 0, 0, 1),
+                emissiveFactor: SIMD3(repeating: 1), alphaMode: .opaque, emissiveStrength: 4,
+                toneMapped: toneMapped
+            )
+            let mesh = try MeshRenderer(
+                device: scene.device, colorPixelFormat: .rgba16Float, geometry: .plane(width: 0.5, height: 0.5),
+                material: .physicallyBased(material)
+            )
+            return SceneNode(transform: .init(translation: SIMD3(x, 0, -3)), mesh: mesh)
+        }
+        let graph = SceneGraph(
+            roots: [try quad(x: -0.5, toneMapped: true), try quad(x: 0.5, toneMapped: false)],
+            camera: scene.camera
+        )
+        let target = try scene.makeTarget()
+        let colorDescriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba16Float, width: scene.side, height: scene.side, mipmapped: false
+        )
+        colorDescriptor.storageMode = .shared
+        colorDescriptor.usage = [.renderTarget, .shaderRead]
+        let color = try #require(scene.device.makeTexture(descriptor: colorDescriptor))
+        let pass = scene.pass(color: color, depth: target.depth)
+        pass.depthAttachment.storeAction = .store
+        let maskDescriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .r8Unorm, width: scene.side, height: scene.side, mipmapped: false
+        )
+        maskDescriptor.usage = [.renderTarget, .shaderRead]
+        maskDescriptor.storageMode = .private
+        let mask = try #require(scene.device.makeTexture(descriptor: maskDescriptor))
+        let displayed = try scene.makeTarget().color
+        let display = try HDRDisplay(device: scene.device, destinationPixelFormat: .rgba16Float)
+        let buffer = try #require(scene.queue.makeCommandBuffer())
+        _ = try graph.encode(pass: pass, commandBuffer: buffer)
+        try graph.encodeToneMapMask(depth: target.depth, into: mask, commandBuffer: buffer)
+        try display.encode(
+            source: color, destination: displayed, settings: .init(toneMapping: .reinhard),
+            untonemappedMask: mask, commandBuffer: buffer
+        )
+        try scene.finish(buffer)
+        let pixels = try scene.pixels(of: displayed)
+        func pixel(_ x: Int) -> SIMD4<Float> { pixels[16 * scene.side + x] }
+        let mapped = pixel(13)
+        let raw = pixel(19)
+        #expect(abs(mapped.x - 0.8) < 0.05, "\(mapped)")
+        #expect(abs(raw.x - 4) < 0.05, "\(raw)")
+    }
+
     @Test("Invalid headroom, white point and formats are rejected before encoding")
     func validation() throws {
         let source = try fixture.color(width: 1, height: 1) { _, _ in SIMD4(repeating: 1) }

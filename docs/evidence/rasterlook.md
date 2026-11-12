@@ -5,7 +5,11 @@
 `HDRDisplay` maps exposed scene-linear color to display-referred color in one
 full-screen raster pass. Every operator receives straight (unpremultiplied),
 nonnegative linear sRGB multiplied by `2^exposureStops`, and the result is
-premultiplied again.
+premultiplied again. `PhysicallyBasedMaterial.toneMapped` and `ClassicMaterial.toneMapped`
+default to true. Set either to false and draw `SceneGraph.encodeToneMapMask`
+into an R8 texture from the stored depth. Pass that mask to
+`HDRDisplay.encode(...untonemappedMask:)`. Marked pixels are copied without
+exposure or a curve. Archive version 33 stores a physically based opt-out.
 
 | Three.js | Frostfield | Formula source | Verified by |
 | --- | --- | --- | --- |
