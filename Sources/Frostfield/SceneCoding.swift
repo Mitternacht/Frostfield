@@ -395,6 +395,9 @@ extension MaterialGraph.Input: Codable {
             self = match
         } else if name.hasPrefix("elementField:"), let index = Int(name.dropFirst("elementField:".count)) {
             self = .elementField(index)
+        } else if name.hasPrefix("materialScalar:"),
+                  let scalar = MaterialScalar(rawValue: String(name.dropFirst("materialScalar:".count))) {
+            self = .materialScalar(scalar)
         } else {
             throw corrupted(container, "Unknown graph input \(name).", codingPath: decoder.codingPath)
         }
@@ -417,6 +420,7 @@ extension MaterialGraph.Input: Codable {
         case .baseColor: "baseColor"
         case .metallic: "metallic"
         case .roughness: "roughness"
+        case .materialScalar(let scalar): "materialScalar:\(scalar.rawValue)"
         case .emission: "emission"
         case .objectPosition: "objectPosition"
         case .objectNormal: "objectNormal"

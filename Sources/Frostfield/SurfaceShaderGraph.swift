@@ -223,6 +223,11 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
     }
     var hasCastShadowOutput: Bool { outputs.castShadowColor != nil }
 
+    /// The graph reads opacity, index of refraction, transmission, or thickness by name.
+    var readsMaterialScalar: Bool {
+        nodes.contains { if case .input(.materialScalar) = $0 { true } else { false } }
+    }
+
     /// Declarations every generated graph function depends on. Place this source
     /// after `#include <metal_stdlib>` and `using namespace metal;`.
     public static var supportSource: String { ShaderProgram.supportSource }

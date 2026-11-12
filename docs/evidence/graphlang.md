@@ -244,7 +244,7 @@ GPU shades with the same pattern.
 | `mx_noise_float` and friends; `ImprovedNoise`, `SimplexNoise` addons | Lattice, fractal and cellular nodes with `ShaderNoise` | Frostfield's CPU and GPU functions agree within 1.2 × 10⁻⁷. MaterialX, Perlin and simplex algorithms remain separate. |
 | `attribute()`, `varying()`, custom vertex attributes | Not provided | Missing |
 | `instanceIndex` | Not provided | Missing |
-| `materialReference`, `reference` | Declared uniforms by name | Partial |
+| `materialReference`, `reference` | `reference(_:)`, `referenceColor(_:)`, `referenceVector(_:)` | Named reads of sampled base color, metallic, roughness, emission and opacity, the parameter vector, and the authored index of refraction, transmission and thickness. Unknown names throw. Factor textures are not folded into the refraction, transmission or thickness reads |
 | Node labels | `named(_:)`, `labels` | Match |
 
 ## Limits

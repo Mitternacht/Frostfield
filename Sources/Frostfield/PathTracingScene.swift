@@ -751,7 +751,7 @@ public final class PathTracingScene {
         package var translucency: SIMD4<Float>
         /// Multiple-scattering color before the entry-point texture (rgb) and Henyey-Greenstein g (a).
         package var scattering: SIMD4<Float>
-        /// Extinction per world unit (rgb), unused.
+        /// Extinction per world unit (rgb). `w` is the authored transmission thickness.
         package var extinction: SIMD4<Float>
         /// Diffuse roughness, clearcoat normal scale, light-map intensity, retroreflectivity.
         package var surface: SIMD4<Float>
@@ -1466,6 +1466,7 @@ public final class PathTracingScene {
                 }
             }
             lobes.flags.x = flags
+            lobes.extinction.w = material.transmission?.thickness ?? 0
             if flags & PathTracingScene.lobeNullBoundary != 0 { hasNullBoundaries = true }
             return lobes
         }

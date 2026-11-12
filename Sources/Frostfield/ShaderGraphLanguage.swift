@@ -47,6 +47,16 @@ extension MaterialGraph {
         case roughness
         /// Authored linear emission. Surface stage.
         case emission
+        /// One authored scalar: opacity, index of refraction, transmission, or thickness.
+        case materialScalar(MaterialScalar)
+
+    /// A material property read by name through ``ShaderGraphBuilder/reference(_:)``.
+    public enum MaterialScalar: String, Hashable, Sendable {
+        case opacity
+        case indexOfRefraction
+        case transmission
+        case thickness
+    }
         /// Undeformed object-space position. Vertex stage.
         case objectPosition
         /// Unit undeformed object-space normal. Vertex stage.
@@ -108,7 +118,7 @@ extension MaterialGraph {
                  .objectPosition, .objectNormal, .cameraPosition: .vector3
             case .parameters, .elementField: .vector4
             case .metallic, .roughness, .elementIndex, .elementCount, .time, .deltaTime, .frame,
-                 .cameraNear, .cameraFar, .directionalShadowVisibility: .scalar
+                 .cameraNear, .cameraFar, .directionalShadowVisibility, .materialScalar: .scalar
             case .viewMatrix, .projectionMatrix, .modelMatrix: .matrix4
             case .normalMatrix: .matrix3
             }
@@ -119,7 +129,7 @@ extension MaterialGraph {
             switch self {
             case .uv0, .uv1: stage == .surface || stage == .vertex
             case .worldPosition, .normal, .tangent, .bitangent, .viewDirection, .parameters,
-                 .baseColor, .metallic, .roughness, .emission, .cameraPosition, .cameraNear, .cameraFar,
+                 .baseColor, .metallic, .roughness, .emission, .materialScalar, .cameraPosition, .cameraNear, .cameraFar,
                  .viewMatrix, .projectionMatrix, .modelMatrix, .normalMatrix, .directionalShadowVisibility: stage == .surface
             case .objectPosition, .objectNormal: stage == .vertex
             case .screenUV, .viewportSize, .screenCoordinate, .screenSize: stage == .postProcess || stage == .surface
@@ -152,6 +162,13 @@ extension MaterialGraph {
             case .baseColor: "input.baseColor"
             case .metallic: "input.metallic"
             case .roughness: "input.roughness"
+            case .materialScalar(let scalar):
+                switch scalar {
+                case .opacity: "input.materialScalars.x"
+                case .indexOfRefraction: "input.materialScalars.y"
+                case .transmission: "input.materialScalars.z"
+                case .thickness: "input.materialScalars.w"
+                }
             case .emission: "input.emission"
             case .objectPosition: "input.objectPosition"
             case .objectNormal: "frostfield_graph_unit(input.objectNormal)"

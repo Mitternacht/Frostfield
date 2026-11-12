@@ -110,7 +110,7 @@ struct PTMaterialExtensions {
 struct PTMaterialLobes {
     float4 translucency;  // diffuse transmission color (rgb), translucent share of the diffuse lobe (a)
     float4 scattering;    // multiple-scattering color before the entry texture (rgb), Henyey-Greenstein g (a)
-    float4 extinction;    // per world unit (rgb), unused
+    float4 extinction;    // per world unit (rgb); w is the authored transmission thickness
     float4 surface;       // diffuse roughness, clearcoat normal scale, light-map intensity, retroreflectivity
     uint4 flags;          // x: ptLobe flags
     // Clearcoat normal, diffuse transmission, diffuse transmission color, diffuse roughness and
@@ -1124,6 +1124,7 @@ static FrostfieldSurfaceInput ptMakeGraphInput(
     graphInput.baseColor = sample.base.rgb;
     graphInput.metallic = sample.metallic;
     graphInput.roughness = sample.roughness;
+    graphInput.materialScalars = float4(sample.base.a, material.factors.w, material.factors.z, material.lobes.extinction.w);
     graphInput.emission = sample.emission;
     graphInput.bitangent = graphFrame.w != 0.0f ? ptUnit(cross(sample.vertexNormal, graphFrame.xyz) * graphFrame.w, float3(0))
         : float3(0);

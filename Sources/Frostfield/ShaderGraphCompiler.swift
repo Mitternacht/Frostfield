@@ -1529,6 +1529,7 @@ struct ShaderProgram: Hashable, Sendable {
         float3 baseColor;
         float metallic;
         float roughness;
+        float4 materialScalars; // opacity, index of refraction, transmission, thickness
         float3 emission;
         float3 bitangent;
         float3 cameraPosition;

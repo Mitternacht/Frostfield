@@ -1,3 +1,4 @@
+import Foundation
 import Frostfield
 import Metal
 import simd
@@ -315,6 +316,54 @@ struct ShaderGraphRenderingTests {
         }
     }
 
+    @Test("Named material references match the authored opacity, refraction, transmission and thickness")
+    func materialReferencesAcrossRenderers() throws {
+        let graph = try SurfaceShaderGraph { s in
+            let opacity = try s.reference("opacity")
+            let index = try s.reference("ior")
+            let transmission = try s.reference("transmission")
+            let thickness = try s.reference("thickness")
+            return .init(
+                emission: s.vector(
+                    opacity * s.constant(Float(0.25)),
+                    index - s.constant(Float(1)),
+                    transmission * s.constant(Float(0.5)) + thickness
+                ),
+                transmissionMask: s.constant(Float(0))
+            )
+        }
+        let material = try PhysicallyBasedMaterial(
+            lightIntensity: 0, ambientIntensity: 0, baseColorFactor: SIMD4(repeating: 1), alphaMode: .opaque,
+            transmission: PhysicallyBasedMaterial.Transmission(factor: 0.25, indexOfRefraction: 1.4, thickness: 0.1),
+            surfaceGraph: graph
+        )
+        let mesh = try MeshRenderer(
+            device: device, colorPixelFormat: .rgba16Float, geometry: .plane(width: 2, height: 4),
+            material: .physicallyBased(material)
+        )
+        let scene = SceneGraph(
+            roots: [SceneNode(transform: .init(translation: SIMD3(0, 0, -2)), mesh: mesh)], camera: camera
+        )
+        let expected = SIMD3<Float>(0.25, 0.4, 0.225)
+        let backdrop = try transmissionBackdrop()
+        try render(scene, transmissionBackdrop: backdrop)
+        let raster = try readPixel(x: Self.size / 2)
+        #expect(near(raster, expected), "raster \(raster)")
+        let tracer = try PathTracer(queue: queue, scene: PathTracingScene(queue: queue, graph: scene))
+        let accumulation = try tracer.makeAccumulation(width: Self.size, height: Self.size)
+        let history = try trace(tracer, accumulation: accumulation, previous: nil)
+        let traced = try readPixel(from: history.texture, x: Self.size / 2)
+        #expect(near(traced, expected), "path \(traced)")
+
+        let archive = try SceneArchive(capturing: scene, commandQueue: queue)
+        let json = try #require(JSONSerialization.jsonObject(with: archive.manifest) as? [String: Any])
+        #expect(json["version"] as? Int == 40)
+        let loaded = try archive.load(device: device, commandQueue: queue, colorPixelFormat: .rgba16Float)
+        try render(loaded.graph, transmissionBackdrop: backdrop)
+        let archived = try readPixel(x: Self.size / 2)
+        #expect(near(archived, expected), "archived raster \(archived)")
+    }
+
     @Test("Linear filtering of 32-bit float graph textures follows the GPU's support")
     func floatFiltering() throws {
         func material(_ filtering: ShaderTextureInput.Filtering) throws -> PhysicallyBasedMaterial {
@@ -353,9 +402,18 @@ struct ShaderGraphRenderingTests {
         return try #require(device.makeTexture(descriptor: descriptor))
     }
 
-    private func render(_ graph: SceneGraph) throws {
+    private func transmissionBackdrop() throws -> any MTLTexture {
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba16Float, width: Self.size, height: Self.size, mipmapped: true
+        )
+        descriptor.storageMode = .shared
+        descriptor.usage = .shaderRead
+        return try #require(device.makeTexture(descriptor: descriptor))
+    }
+
+    private func render(_ graph: SceneGraph, transmissionBackdrop: (any MTLTexture)? = nil) throws {
         let buffer = try #require(queue.makeCommandBuffer())
-        try graph.encode(pass: pass, commandBuffer: buffer)
+        try graph.encode(pass: pass, commandBuffer: buffer, transmissionBackdrop: transmissionBackdrop)
         buffer.commit()
         buffer.waitUntilCompleted()
         try #require(buffer.status == .completed)

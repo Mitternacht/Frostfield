@@ -441,9 +441,9 @@ struct GraphCastShadowTests {
             let relabeled = try SceneArchive(manifest: JSONSerialization.data(withJSONObject: json), binary: archive.binary)
             _ = try relabeled.load(device: scene.gpu.device, commandQueue: scene.gpu.queue)
         }
-        #expect(throws: SceneArchive.Failure.unsupportedVersion(30)) {
+        #expect(throws: SceneArchive.Failure.unsupportedVersion(SceneArchive.formatVersion + 1)) {
             var json = try #require(try JSONSerialization.jsonObject(with: authored.manifest) as? [String: Any])
-            json["version"] = 30
+            json["version"] = SceneArchive.formatVersion + 1
             return try SceneArchive(manifest: JSONSerialization.data(withJSONObject: json), binary: authored.binary)
         }
     }

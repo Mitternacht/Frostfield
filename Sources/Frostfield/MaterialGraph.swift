@@ -409,6 +409,8 @@ public struct MaterialGraph: Sendable {
         case invalidStruct(NodeID)
         /// Two struct values were required to be the same declaration and were not.
         case structMismatch(node: NodeID, expected: Int, actual: Int)
+        /// `reference` was asked for a property this graph does not read.
+        case unknownMaterialReference(String)
 
         public var errorDescription: String? {
             switch self {
@@ -463,6 +465,8 @@ public struct MaterialGraph: Sendable {
                     + "counting nested loops multiplied together; the limit is \(MaterialGraph.maximumTotalIterations)."
             case .invalidStruct(let node):
                 "Material graph node \(node) uses a struct the graph does not declare, or a field it does not have."
+            case .unknownMaterialReference(let name):
+                "The material graph cannot reference “\(name)”."
             case .structMismatch(let node, let expected, let actual):
                 "Material graph node \(node) needs struct \(expected), but received struct \(actual)."
             }

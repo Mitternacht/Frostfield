@@ -204,6 +204,39 @@ public final class ShaderGraphBuilder {
     public var baseColor: ShaderValue<SIMD3<Float>> { input(.baseColor) }
     public var metallic: ShaderValue<Float> { input(.metallic) }
     public var roughness: ShaderValue<Float> { input(.roughness) }
+
+    /// Reads an authored scalar by name: `metallic`, `metalness`, `roughness`,
+    /// `opacity`, `ior`, `indexOfRefraction`, `transmission`, or `thickness`.
+    /// Colors use ``referenceColor(_:)`` and the parameter vector uses ``referenceVector(_:)``.
+    public func reference(_ name: String) throws -> ShaderValue<Float> {
+        switch name {
+        case "metallic", "metalness": return metallic
+        case "roughness": return roughness
+        case "opacity": return input(.materialScalar(.opacity))
+        case "ior", "indexOfRefraction": return input(.materialScalar(.indexOfRefraction))
+        case "transmission": return input(.materialScalar(.transmission))
+        case "thickness": return input(.materialScalar(.thickness))
+        default: throw MaterialGraph.Failure.unknownMaterialReference(name)
+        }
+    }
+
+    /// Reads an authored color by the names accepted by ``reference(_:)``.
+    public func referenceColor(_ name: String) throws -> ShaderValue<SIMD3<Float>> {
+        switch name {
+        case "baseColor", "color", "diffuse": return baseColor
+        case "emission", "emissive": return emission
+        default: throw MaterialGraph.Failure.unknownMaterialReference(name)
+        }
+    }
+
+    /// Reads the node's `materialParameters` when `name` is `parameters`.
+    public func referenceVector(_ name: String) throws -> ShaderValue<SIMD4<Float>> {
+        switch name {
+        case "parameters": return parameters
+        default: throw MaterialGraph.Failure.unknownMaterialReference(name)
+        }
+    }
+
     public var emission: ShaderValue<SIMD3<Float>> { input(.emission) }
     /// Undeformed object-space position. Vertex stage.
     public var objectPosition: ShaderValue<SIMD3<Float>> { input(.objectPosition) }

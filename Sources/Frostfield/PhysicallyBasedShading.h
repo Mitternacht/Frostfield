@@ -255,6 +255,8 @@ static PBRSurface samplePBR(
     // surface.base then holds the transmitted RGB and a coverage of one.
     , bool graphCastShadow = false
 #endif
+    // Index of refraction, transmission factor, authored thickness. Opacity is the sampled alpha.
+    , float4 materialOptical = float4(1.5f, 0.0f, 0.0f, 0.0f)
 #endif
 ) {
 #if defined(FROSTFIELD_GENERATED_SURFACE)
@@ -323,6 +325,7 @@ static PBRSurface samplePBR(
     graphInput.baseColor = surface.base.rgb;
     graphInput.metallic = surface.metallic;
     graphInput.roughness = surface.roughness;
+    graphInput.materialScalars = float4(surface.base.a, materialOptical.x, materialOptical.y, materialOptical.z);
     graphInput.emission = surface.emission;
     graphInput.bitangent = graphFrame.w != 0.0f ? unitOr(cross(vertexNormal, graphFrame.xyz) * graphFrame.w, float3(0))
         : float3(0);
@@ -1822,7 +1825,11 @@ fragment FROSTFIELD_PBR_COLOR_OUTPUT frostfield_mesh_pbr(
         metalRoughTexture, metalRoughSampler, normalTexture, normalSampler,
         occlusionTexture, occlusionSampler, emissiveTexture, emissiveSampler, alphaMapTexture, alphaMapInfo
 #if defined(FROSTFIELD_GENERATED_SURFACE)
-        , graphResources
+        , graphResources, false, 1.0f
+#if defined(FROSTFIELD_GRAPH_CAST_SHADOW)
+        , false
+#endif
+        , float4(optical.y, optical.x, optical.z, 0.0f)
 #endif
     );
     if (extensions.options.x != 0.0f) {
@@ -1954,7 +1961,13 @@ fragment FROSTFIELD_PBR_COLOR_OUTPUT frostfield_mesh_pbr_shadowed(
         , graphResources
 #if defined(FROSTFIELD_GRAPH_DIRECTIONAL_SHADOW)
         , false, graphVisibility
+#else
+        , false, 1.0f
 #endif
+#if defined(FROSTFIELD_GRAPH_CAST_SHADOW)
+        , false
+#endif
+        , float4(optical.y, optical.x, optical.z, 0.0f)
 #endif
     );
     if (extensions.options.x != 0.0f) {
@@ -2037,7 +2050,11 @@ fragment FROSTFIELD_PBR_ATTRIBUTE_OUTPUT frostfield_mesh_pbr_attributes(
         metalRoughTexture, metalRoughSampler, normalTexture, normalSampler,
         occlusionTexture, occlusionSampler, emissiveTexture, emissiveSampler, alphaMapTexture, alphaMapInfo
 #if defined(FROSTFIELD_GENERATED_SURFACE)
-        , graphResources
+        , graphResources, false, 1.0f
+#if defined(FROSTFIELD_GRAPH_CAST_SHADOW)
+        , false
+#endif
+        , float4(optical.y, optical.x, optical.z, 0.0f)
 #endif
     );
     if (extensions.options.x != 0.0f) {
@@ -2077,6 +2094,7 @@ fragment void frostfield_mesh_graph_shadow(
     constant float4& parameters [[buffer(0)]], constant float4& settings [[buffer(2)]],
     constant float4& controls [[buffer(6)]], constant float4& emission [[buffer(7)]],
     constant float4& baseColorFactor [[buffer(8)]], constant uint& coordinates [[buffer(9)]],
+    constant float4& optical [[buffer(14)]],
     constant float4* graphUniforms [[buffer(19)]], constant FrostfieldPBRExtensions& extensions [[buffer(21)]],
     constant float4* alphaMapInfo [[buffer(23), function_constant(frostfield_has_alpha_map)]],
     constant FrostfieldGraphView& graphView [[buffer(24)]],
@@ -2098,7 +2116,12 @@ fragment void frostfield_mesh_graph_shadow(
     (void)samplePBR(
         input, front, parameters, float4(0), baseColorFactor, settings, controls, emission, texCoords,
         colorTexture, colorSampler, metalRoughTexture, metalRoughSampler, normalTexture, normalSampler,
-        occlusionTexture, occlusionSampler, emissiveTexture, emissiveSampler, alphaMapTexture, alphaMapInfo, resources, true
+        occlusionTexture, occlusionSampler, emissiveTexture, emissiveSampler, alphaMapTexture, alphaMapInfo,
+        resources, true, 1.0f
+#if defined(FROSTFIELD_GRAPH_CAST_SHADOW)
+        , false
+#endif
+        , float4(optical.y, optical.x, optical.z, 0.0f)
     );
 }
 #endif
@@ -2109,6 +2132,7 @@ fragment float4 frostfield_mesh_graph_transmitted_shadow(
     constant float4& settings [[buffer(2)]],
     constant float4& controls [[buffer(6)]], constant float4& emission [[buffer(7)]],
     constant float4& baseColorFactor [[buffer(8)]], constant uint& coordinates [[buffer(9)]],
+    constant float4& optical [[buffer(14)]],
     constant float4* graphUniforms [[buffer(19)]], constant FrostfieldPBRExtensions& extensions [[buffer(21)]],
     constant float4* alphaMapInfo [[buffer(23), function_constant(frostfield_has_alpha_map)]],
     constant FrostfieldGraphView& graphView [[buffer(24)]],
@@ -2132,7 +2156,7 @@ fragment float4 frostfield_mesh_graph_transmitted_shadow(
         input, front, parameters, float4(0), baseColorFactor, settings, controls, emission, texCoords,
         colorTexture, colorSampler, metalRoughTexture, metalRoughSampler, normalTexture, normalSampler,
         occlusionTexture, occlusionSampler, emissiveTexture, emissiveSampler, alphaMapTexture, alphaMapInfo,
-        resources, false, 1.0f, true
+        resources, false, 1.0f, true, float4(optical.y, optical.x, optical.z, 0.0f)
     );
     // Sampling and graph derivatives run before the per-pixel peel rejection.
     if (frostfieldAlreadyPeeled(input.position, followsPeel, previousDepth)) { discard_fragment(); }

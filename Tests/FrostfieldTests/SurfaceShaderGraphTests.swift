@@ -74,6 +74,37 @@ struct SurfaceShaderGraphTests {
         #expect(source.contains("surface.transmissionMask = saturate(frostfield_graph_finite(n0) ? n0 : finite_transmissionMask)"))
     }
 
+    @Test("Named references read authored material inputs and reject an unknown name")
+    func materialReferenceNames() throws {
+        let graph = try SurfaceShaderGraph { s in
+            let color = try s.referenceColor("diffuse")
+            let emission = try s.referenceColor("emissive")
+            let roughness = try s.reference("metalness")
+            let opacity = try s.reference("opacity")
+            let index = try s.reference("indexOfRefraction")
+            let transmission = try s.reference("transmission")
+            let thickness = try s.reference("thickness")
+            let parameters = try s.referenceVector("parameters")
+            return .init(emission: color + emission + s.vector(
+                roughness + opacity + index + transmission + thickness, parameters.x, parameters.y
+            ))
+        }
+        let source = try graph.metalFunction(named: "material_reference")
+        #expect(source.contains("input.baseColor"))
+        #expect(source.contains("input.emission"))
+        #expect(source.contains("input.metallic"))
+        #expect(source.contains("input.materialScalars.x"))
+        #expect(source.contains("input.materialScalars.y"))
+        #expect(source.contains("input.materialScalars.z"))
+        #expect(source.contains("input.materialScalars.w"))
+        #expect(source.contains("input.parameters"))
+        #expect(throws: MaterialGraph.Failure.unknownMaterialReference("sheen")) {
+            try SurfaceShaderGraph { s in
+                .init(emission: s.vector(try s.reference("sheen"), s.constant(Float(0)), s.constant(Float(0))))
+            }
+        }
+    }
+
     @Test("Generated function names reject reserved names, non-ASCII and source delimiters",
           arguments: ["", "9surface", "surface);", "sürface", "float3", "thread", "ff__graph", "ff_"])
     func invalidName(_ name: String) throws {
