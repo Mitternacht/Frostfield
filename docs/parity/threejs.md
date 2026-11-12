@@ -40,7 +40,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | [`renderer`](#renderer) | 18 | 5 | 3 | 1 | 0 | 2 | 0 | 1 | 1 |
 | [`scene-graph`](#scene-graph) | 11 | 6 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
-| [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 0 | 3 | 0 |
+| [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 1 | 2 | 0 |
 | [`geometry`](#geometry) | 20 | 3 | 0 | 14 | 2 | 0 | 0 | 5 | 1 |
 | [`materials-textures`](#materials-textures) | 34 | 18 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
 | [`shader-authoring`](#shader-authoring) | 21 | 21 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **180** | **75** | **14** | **111** | **27** | **30** | **23** | **40** | **24** |
+| **Total** | **180** | **75** | **14** | **111** | **27** | **30** | **24** | **39** | **24** |
 
-314 of 524 capabilities are complete, with 142 partial and 68 missing.
+315 of 524 capabilities are complete, with 141 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -187,7 +187,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Capability | Three.js API | Frostfield API | Status | Evidence / gaps |
 | --- | --- | --- | :---: | --- |
 | Extended controls collection | drei `<CameraControls>`, `<ScrollControls>`, `<PresentationControls>` | `OrbitCameraController` | 🟡 | Covers the orbit, dolly, pan, damping and fit parts of `<CameraControls>`; no scroll-driven or presentation controls; `CameraControllerTests` |
-| Smooth camera transitions and framing | camera-controls `setLookAt`, `fitToBox`, `smoothTime` | `OrbitCameraController.frame(_:aspectRatio:)`, `OrbitCameraController.update(deltaTime:)`, `OrbitCameraController.settle()` | 🟡 | Exponential damping toward a goal pose and a bounding-sphere fit like `fitToBox`; no setLookAt-style goal setter, timed transitions or fit padding; `CameraControllerTests` |
+| Smooth camera transitions and framing | camera-controls `setLookAt`, `fitToBox`, `smoothTime` | `OrbitCameraController.look(at:from:)`, `OrbitCameraController.transitionDuration`, `OrbitCameraController.frame(_:aspectRatio:padding:)`, `OrbitCameraController.update(deltaTime:)`, `OrbitCameraController.settle()` | ✅ | `look(at:from:)` sets the goal from an eye and a target. `transitionDuration` reaches that goal in a fixed time and restarts when the goal changes; nil keeps exponential damping. `frame` takes a view padding fraction. `CameraControllerTests`. [animation-and-tools](../evidence/animation-and-tools.md) |
 | Camera constraints, collision and input mapping | camera-controls `setBoundary`, `colliderMeshes` | `OrbitCameraController.Limits(distance:orthographicHalfHeight:pitch:yaw:)`, `FlyCameraController.pitchLimits` | 🟡 | Distance, pitch, yaw and orthographic-height ranges; no target boundary, mesh collision or input mapping; `CameraControllerTests` |
 
 <a id="geometry"></a>
@@ -1022,7 +1022,7 @@ Lights, emissive surfaces and exposure stay separate: `LightRig` carries power o
   - 🟡 KHR_animation_pointer (`loaders-assets`, third-party)
 - **Camera controls** (1 of 4 ✅)
   - ✅ Controls base class (`cameras-controls`, core)
-  - 🟡 Smooth camera transitions and framing (`cameras-controls`, third-party)
+  - ✅ Smooth camera transitions and framing (`cameras-controls`, third-party)
   - 🟡 Camera constraints, collision and input mapping (`cameras-controls`, third-party)
 - **Picking** (2 of 4 ✅)
   - 🟡 Pointer events on 3D objects (`interaction-tools`, third-party)

@@ -434,4 +434,35 @@ struct CameraControllerTests {
             try fly.handle(.init(.movement(direction: .zero, deltaTime: -1)))
         }
     }
+
+    @Test("A look goal, a timed move and frame padding place the camera")
+    func timedLookAndPadding() throws {
+        var controller = try orbit(target: .zero, distance: 4, yaw: 0, pitch: 0)
+        try controller.look(at: SIMD3(1, 2, 3), from: SIMD3(1, 2, 8))
+        try controller.update(deltaTime: 0)
+        #expect(close(controller.cameraTransform.translation, SIMD3(1, 2, 8)))
+        #expect(close(forward(controller.cameraTransform), SIMD3(0, 0, -1)))
+
+        controller.transitionDuration = 1
+        try controller.look(at: SIMD3(1, 2, 3), from: SIMD3(1, 2, 12))
+        try controller.update(deltaTime: 0.5)
+        #expect(abs(controller.pose.distance - 7) < 1e-3)
+        try controller.update(deltaTime: 0.5)
+        #expect(close(controller.cameraTransform.translation, SIMD3(1, 2, 12)))
+        controller.transitionDuration = -1
+        #expect(throws: OrbitCameraController.Failure.invalidTransitionDuration) {
+            try controller.update(deltaTime: 0)
+        }
+        controller.transitionDuration = nil
+
+        let box = try AxisAlignedBox(minimum: SIMD3(repeating: -1), maximum: SIMD3(repeating: 1))
+        var tight = try orbit(target: .zero, distance: 1, yaw: 0, pitch: 0)
+        var padded = tight
+        try tight.frame(box, aspectRatio: 1)
+        try padded.frame(box, aspectRatio: 1, padding: 0.5)
+        #expect(abs(padded.goal.distance / tight.goal.distance - 2) < 1e-3)
+        #expect(throws: OrbitCameraController.Failure.invalidPadding) {
+            try tight.frame(box, aspectRatio: 1, padding: 1)
+        }
+    }
 }

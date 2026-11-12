@@ -128,6 +128,11 @@ public struct OrbitCameraController: Equatable, Sendable {
     /// When false, ``handle(_:)`` and ``update(deltaTime:)`` leave the pose where it is.
     /// Direct orbit, pan and dolly calls still edit the goal. Defaults to true.
     public var isEnabled = true
+    /// When set, ``update(deltaTime:)`` moves from the pose at the latest goal change to the
+    /// goal in this many seconds, and reaches it exactly. Nil keeps exponential damping,
+    /// or a snap when ``dampingRate`` is also nil. Zero snaps on the next update.
+    /// A new goal restarts the interval from the presented pose. This wins over damping.
+    public var transitionDuration: Float? = nil
 
     private struct AxisTurn: Equatable, Sendable {
         let start: SIMD2<Double>
@@ -137,6 +142,14 @@ public struct OrbitCameraController: Equatable, Sendable {
     }
 
     private var axisTurn: AxisTurn?
+    private var timedMove: TimedMove?
+    private var timedGoal: Pose?
+
+    private struct TimedMove: Equatable {
+        var start: Pose
+        var elapsed: Double
+        let duration: Double
+    }
 
     /// Creates a settled controller. The pose must lie within the limits.
     public init(
@@ -336,26 +349,51 @@ public struct OrbitCameraController: Equatable, Sendable {
         }
     }
 
+    /// Places the goal so the camera sits at `eye` and looks at `target`.
+    /// Yaw and pitch follow the shortest orbit that puts the target on the view axis.
+    /// The orthographic half height is unchanged. Call ``update(deltaTime:)`` to present it.
+    public mutating func look(at target: SIMD3<Float>, from eye: SIMD3<Float>) throws {
+        guard orbitFinite(target), orbitFinite(eye) else { throw Failure.invalidTarget }
+        let offset = orbitDouble(eye) - orbitDouble(target)
+        let distance = simd_length(offset)
+        guard distance.isFinite, distance > 0 else { throw Failure.invalidTarget }
+        let back = offset / distance
+        let pitch = Float(asin(min(1, max(-1, back.y))))
+        let horizontal = cos(Double(pitch))
+        let yaw = abs(horizontal) < 1e-6 ? goal.yaw : Float(atan2(back.x, back.z))
+        guard limits.distance.contains(Float(distance)), limits.pitch.contains(pitch),
+              limits.yaw?.contains(yaw) ?? true else { throw Failure.poseOutsideLimits }
+        axisTurn = nil
+        goal.target = target
+        goal.distance = Float(distance)
+        goal.yaw = yaw
+        goal.pitch = pitch
+    }
+
     /// Centers the target on a box and fits its bounding sphere in the view, keeping
     /// yaw and pitch. A perspective camera fits the sphere within the narrower of the
     /// vertical and horizontal fields of view. An orthographic camera sets the half
     /// height and backs away to at least twice the radius, so near planes up to one
     /// radius from the camera keep the box visible. Distances and half heights are
     /// clamped to the limits, which can leave a large box only partly in view.
-    public mutating func frame(_ bounds: AxisAlignedBox, aspectRatio: Float) throws {
+    /// `padding` is the fraction of the view kept clear around the sphere, from 0 up to
+    /// but not including 1. Zero matches a tight fit.
+    public mutating func frame(_ bounds: AxisAlignedBox, aspectRatio: Float, padding: Float = 0) throws {
         guard aspectRatio.isFinite, aspectRatio > 0 else { throw Failure.invalidAspectRatio }
+        guard padding.isFinite, (0..<1).contains(padding) else { throw Failure.invalidPadding }
         let sphere = bounds.boundingSphere
         axisTurn = nil
         let radius = Double(sphere.radius)
+        let margin = 1 - Double(padding)
         goal.target = sphere.center
         switch projection {
         case .perspective(let fieldOfView):
             let halfVertical = Double(fieldOfView) / 2
             let halfHorizontal = atan(tan(halfVertical) * Double(aspectRatio))
-            let distance = radius / sin(min(halfVertical, halfHorizontal))
+            let distance = radius / sin(min(halfVertical, halfHorizontal)) / margin
             goal.distance = clamp(Float(distance), to: limits.distance)
         case .orthographic:
-            let halfHeight = radius / min(1, Double(aspectRatio))
+            let halfHeight = radius / min(1, Double(aspectRatio)) / margin
             goal.orthographicHalfHeight = clamp(Float(halfHeight), to: limits.orthographicHalfHeight)
             goal.distance = clamp(max(goal.distance, Float(2 * radius)), to: limits.distance)
         }
@@ -367,6 +405,33 @@ public struct OrbitCameraController: Equatable, Sendable {
     public mutating func update(deltaTime: Float) throws {
         guard deltaTime.isFinite, deltaTime >= 0 else { throw Failure.invalidDeltaTime }
         guard isEnabled else { return }
+        if let duration = transitionDuration {
+            guard duration.isFinite, duration >= 0 else { throw Failure.invalidTransitionDuration }
+            if duration == 0 || pose == goal {
+                pose = goal
+                timedMove = nil
+                timedGoal = nil
+                return
+            }
+            if timedMove == nil || timedGoal != goal {
+                timedMove = TimedMove(start: pose, elapsed: 0, duration: Double(duration))
+                timedGoal = goal
+            }
+            timedMove?.elapsed += Double(deltaTime)
+            let elapsed = timedMove?.elapsed ?? 0
+            let span = timedMove?.duration ?? 1
+            let t = min(1, elapsed / span)
+            if let start = timedMove?.start {
+                pose = blend(start, toward: goal, by: t * t * (3 - 2 * t))
+            }
+            if t >= 1 {
+                pose = goal
+                timedMove = nil
+            }
+            return
+        }
+        timedMove = nil
+        timedGoal = nil
         if var turn = axisTurn {
             turn.elapsed += Double(deltaTime)
             if turn.elapsed >= turn.duration {
@@ -409,6 +474,25 @@ public struct OrbitCameraController: Equatable, Sendable {
     public mutating func settle() {
         pose = goal
         axisTurn = nil
+        timedMove = nil
+        timedGoal = nil
+    }
+
+    private func blend(_ start: Pose, toward goal: Pose, by amount: Double) -> Pose {
+        func mix(_ current: Float, _ goal: Float) -> Float {
+            Float(Double(current) + (Double(goal) - Double(current)) * amount)
+        }
+        var yawDelta = Double(goal.yaw) - Double(start.yaw)
+        if yawDelta > .pi { yawDelta -= 2 * .pi }
+        if yawDelta < -.pi { yawDelta += 2 * .pi }
+        let target = orbitDouble(start.target) + (orbitDouble(goal.target) - orbitDouble(start.target)) * amount
+        var presented = start
+        presented.target = SIMD3(Float(target.x), Float(target.y), Float(target.z))
+        presented.distance = mix(start.distance, goal.distance)
+        presented.yaw = Float(Double(start.yaw) + yawDelta * amount)
+        presented.pitch = mix(start.pitch, goal.pitch)
+        presented.orthographicHalfHeight = mix(start.orthographicHalfHeight, goal.orthographicHalfHeight)
+        return presented
     }
 
     private func visibleHalfHeight(_ pose: Pose) -> Double {
@@ -432,6 +516,8 @@ public struct OrbitCameraController: Equatable, Sendable {
         case invalidNormalizedPoint
         case invalidAspectRatio
         case invalidDeltaTime
+        case invalidTransitionDuration
+        case invalidPadding
         case unrepresentablePose
 
         public var errorDescription: String? {
@@ -450,6 +536,8 @@ public struct OrbitCameraController: Equatable, Sendable {
             case .invalidNormalizedPoint: "A zoom point must lie inside the normalized drawable."
             case .invalidAspectRatio: "The drawable aspect ratio must be positive and finite."
             case .invalidDeltaTime: "An update's elapsed time must be finite and nonnegative."
+            case .invalidTransitionDuration: "A transition duration must be nonnegative and finite."
+            case .invalidPadding: "Frame padding must be finite and in 0 up to, but not including, 1."
             case .unrepresentablePose: "The camera input moves the target outside the Float range."
             }
         }

@@ -13,7 +13,7 @@ recomputes joint palettes from the mixed graph. A damped
 | --- | --- | --- |
 | Weighted clip blending, cross-fades with warp, loop modes, time scale, additive layers, events | `AnimationMixer`, `AnimationAction`, `AnimationClip` | `AnimationMixerTests` |
 | glTF morph targets (positions, normals, tangents, sparse accessors, weights channels) and CPU application | `GLTFMeshLoader.loadScene(..., includeMorphTargets: true)`, `MeshMorphTargets` | `GLTFMorphTargetTests` |
-| Orbit, map-style pan, zoom to cursor, framing, and fly controls with frame-rate-independent damping | `OrbitCameraController`, `FlyCameraController` | `CameraControllerTests` |
+| Orbit, map-style pan, zoom to cursor, look-at, timed moves, padded framing, and fly controls | `OrbitCameraController`, `FlyCameraController` | `CameraControllerTests` |
 | BVH ray queries matching the linear scan; cached for undeformed meshes in scene picking | `MeshBVH`, `MeshGeometry.intersection(..., bvh:)` | `MeshBVHTests` |
 | Bounds and view frustum tests for forward and reversed depth | `AxisAlignedBox`, `BoundingSphere`, `ViewFrustum` | `ViewFrustumTests` |
 | Box selection, mixed viewport raycasts and grouped input | `SceneGraph.select`, `SceneGraph.raycast`, `SceneInteractionGroup` | `SceneSelectionTests`, `PrimitivePickingTests`, `BatchedMeshTests` |
