@@ -45,7 +45,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`materials-textures`](#materials-textures) | 38 | 14 | 0 | 4 | 1 | 0 | 1 | 2 | 1 |
 | [`shader-authoring`](#shader-authoring) | 26 | 17 | 5 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 22 | 3 | 0 | 7 | 0 | 2 | 1 | 1 | 1 |
-| [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 1 | 2 | 1 |
+| [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 2 | 2 | 0 |
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
 | [`loaders-assets`](#loaders-assets) | 5 | 1 | 1 | 33 | 9 | 4 | 1 | 2 | 4 |
 | [`post-processing`](#post-processing) | 7 | 4 | 1 | 29 | 5 | 0 | 6 | 7 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 8 | 3 | 1 | 3 | 1 | 4 | 2 | 3 | 2 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **197** | **60** | **12** | **121** | **22** | **25** | **32** | **33** | **22** |
+| **Total** | **197** | **60** | **12** | **121** | **22** | **25** | **33** | **33** | **21** |
 
-350 of 524 capabilities are complete, with 115 partial and 59 missing.
+351 of 524 capabilities are complete, with 115 partial and 58 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -502,7 +502,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Atmospheric sky and aerial perspective | @takram/three-atmosphere | `SkyModel`, `SkyEnvironment(queue:model:settings:)`, `AerialPerspective(environment:)` | 🟡 | Spectral sky and camera-height-dependent raster aerial perspective, with a generated environment map for path tracing. Moon, clouds, globe placement and path-traced atmosphere are open. `SkyEnvironmentTests`, `AerialPerspectiveTests`. [Sky evidence](../evidence/sky.md) |
 | HDR gain-map images | @monogrid/gainmap-js | `TextureLoader.loadHighDynamicRange(data:precision:mipmapped:)` | 🟡 | ImageIO decodes ISO 21496-1 gain-map HEIC, JPEG and AVIF into linear sRGB HDR textures. Gain-map authoring and legacy XMP-only JPEG compatibility are unverified. `HighDynamicRangeImageTests`. [Format evidence](../evidence/formats.md) |
 | One-line environments with presets | drei `<Environment preset ground>` | `EnvironmentPreset`, `EnvironmentLighting(queue:preset:)`, `EnvironmentLighting.capture(_:at:queue:)`, `GroundedSkybox` | ✅ | Daylight, sunset and night panoramas prepare split-sum lighting. `capture` records a scene cube and prepares it in one call. `GroundedSkybox` projects a panorama onto the sky and a floor. `EnvironmentPresetTests`, `GroundedSkyboxGeometryTests`, `GroundedSkyboxRasterTests`. |
-| Lightformers | drei `<Lightformer>` | — | ❌ |  |
+| Lightformers | drei `<Lightformer>` | `Lightformer.node(device:form:color:intensity:position:scale:rotation:target:segments:)` | ✅ | Rectangle, circle, ring and unit-cube emitters. Linear color in 0...1 is scaled by intensity and captured as HDR emission with tone mapping off. Flat forms are double-sided. A target turns the form the way `Object3D.lookAt` does unless a rotation is set. Place the node in the scene passed to `EnvironmentLighting.capture`. `LightformerTests`. [Lightformer evidence](../evidence/lightformer.md) |
 
 <a id="animation"></a>
 
