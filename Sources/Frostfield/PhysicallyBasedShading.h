@@ -103,7 +103,7 @@ struct PBRSurface {
 struct FrostfieldPBRExtensions {
     float4 specular;       // color factor (rgb), factor (a)
     float4 sheen;          // color (rgb), perceptual roughness (a)
-    float4 anisotropy;     // strength, cos(rotation), sin(rotation), unused
+    float4 anisotropy;     // strength, cos(rotation), sin(rotation), 1 when flat shading is on
     float4 iridescence;    // factor, film IOR, minimum and maximum thickness in nanometers
     float4 options;        // x: 1 for unlit base color, 2 for unlit graph emission; y: light-map intensity; z: retroreflectivity
     uint4 maps;            // x: bound layer maps (bit i is map 10 + i); y, z: three-bit sampler slots
@@ -1719,6 +1719,22 @@ static inline float pbrScreenDirectionalVisibility(texture2d<float, access::read
     return saturate(mix(top, bottom, fraction.y));
 }
 
+static float3 frostfieldFaceNormal(FrostfieldPBRVaryings input, float4 camera) {
+    float3 geometric = unitOr(cross(dfdx(input.worldPosition), dfdy(input.worldPosition)), float3(0, 0, 1));
+    if (dot(geometric, pbrView(camera, input.worldPosition, geometric)) < 0.0f) {
+        geometric = -geometric;
+    }
+    return geometric;
+}
+
+static void frostfieldApplyFlatShading(
+    thread PBRSurface& surface, thread float3& geometricNormal, FrostfieldPBRVaryings input, float4 camera, float flat
+) {
+    if (flat == 0.0f) { return; }
+    geometricNormal = frostfieldFaceNormal(input, camera);
+    surface.normal = geometricNormal;
+}
+
 fragment FROSTFIELD_PBR_COLOR_OUTPUT frostfield_mesh_pbr(
     FrostfieldPBRVaryings input [[stage_in]],
     bool front [[front_facing]],
@@ -1812,6 +1828,7 @@ fragment FROSTFIELD_PBR_COLOR_OUTPUT frostfield_mesh_pbr(
         opaqueBackdrop
     );
     float3 geometricNormal = unitOr(input.normal, float3(0, 0, 1)) * (front ? 1.0f : -1.0f);
+    frostfieldApplyFlatShading(surface, geometricNormal, input, camera, extensions.anisotropy.w);
     float3 visibility = float3(pbrScreenDirectionalVisibility(screenInputs.directional, screenInputs.info, input.position.xy));
     float4 color = shadePBR(
         surface, coat, transmission, layers, input.worldPosition, light, settings.z, camera, float3(visibility),
@@ -1934,6 +1951,7 @@ fragment FROSTFIELD_PBR_COLOR_OUTPUT frostfield_mesh_pbr_shadowed(
 #if !defined(FROSTFIELD_GRAPH_DIRECTIONAL_SHADOW)
     float3 geometricNormal = unitOr(input.normal, float3(0, 0, 1)) * (front ? 1.0f : -1.0f);
 #endif
+    frostfieldApplyFlatShading(surface, geometricNormal, input, camera, extensions.anisotropy.w);
     float facing = saturate(dot(geometricNormal, light.xyz));
     float3 visibility = frostfieldTransmittedShadowVisibility(
         shadowMap, shadowMoments, directionalTransmission, input.worldPosition, input.shadowLocalPosition,
@@ -2012,6 +2030,9 @@ fragment FROSTFIELD_PBR_ATTRIBUTE_OUTPUT frostfield_mesh_pbr_attributes(
     );
     if (extensions.options.x != 0.0f) {
         return FROSTFIELD_PBR_ATTRIBUTE_RESULT(frostfieldPackSurfaceAttributes(surface.normal, 1.0f, float3(0)));
+    }
+    if (extensions.anisotropy.w != 0.0f) {
+        surface.normal = frostfieldFaceNormal(input, camera);
     }
     PBRLayers layers = sampleLayers(input, texCoords, surface, extensions, layerMaps, layerSamplers);
     float3 dielectric = float3(dielectricF0(optical.y));

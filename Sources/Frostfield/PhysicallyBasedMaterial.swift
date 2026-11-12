@@ -531,6 +531,10 @@ public struct PhysicallyBasedMaterial {
     /// When false, a display pass that receives this material's exclusion mask copies the
     /// scene color without exposure or a tone curve. Defaults to true.
     public let toneMapped: Bool
+    /// Draws each triangle's edges instead of its face. Defaults to false.
+    public let wireframe: Bool
+    /// Shades with the triangle's face normal instead of the interpolated vertex normal.
+    public let flatShading: Bool
     /// Replaces the constant ambient fill with prefiltered diffuse and specular light.
     public let environment: Environment?
     public let clearcoat: Clearcoat?
@@ -688,7 +692,7 @@ public struct PhysicallyBasedMaterial {
         package var specular: SIMD4<Float>
         /// Sheen color (rgb) and perceptual roughness (a).
         package var sheen: SIMD4<Float>
-        /// Strength, cosine and sine of the rotation, unused.
+        /// Strength, cosine and sine of the rotation, then 1 when flat shading is on.
         package var anisotropy: SIMD4<Float>
         /// Factor, film index of refraction, minimum and maximum thickness in nanometers.
         package var iridescence: SIMD4<Float>
@@ -760,7 +764,9 @@ public struct PhysicallyBasedMaterial {
         lightMapIntensity: Float = 1,
         retroreflectivity: Float = 0,
         unlitUsesGraphEmission: Bool = false,
-        toneMapped: Bool = true
+        toneMapped: Bool = true,
+        wireframe: Bool = false,
+        flatShading: Bool = false
     ) throws {
         guard !unlitUsesGraphEmission || (shadingModel == .unlit && surfaceGraph?.outputs.emission != nil) else {
             throw Failure.unlitGraphEmission
@@ -827,6 +833,8 @@ public struct PhysicallyBasedMaterial {
         self.isDoubleSided = isDoubleSided && !hasVolume
         self.receivesShadows = receivesShadows
         self.toneMapped = toneMapped
+        self.wireframe = wireframe
+        self.flatShading = flatShading
         self.environment = environment
         self.clearcoat = clearcoat
         self.transmission = transmission
@@ -957,7 +965,7 @@ public struct PhysicallyBasedMaterial {
         var extensions = PackedExtensions(
             specular: SIMD4(activeSpecular?.colorFactor ?? SIMD3(repeating: 1), activeSpecular?.factor ?? 1),
             sheen: SIMD4(activeSheen?.colorFactor ?? .zero, activeSheen?.roughness ?? 0),
-            anisotropy: SIMD4(activeAnisotropy?.strength ?? 0, cos(rotation), sin(rotation), 0),
+            anisotropy: SIMD4(activeAnisotropy?.strength ?? 0, cos(rotation), sin(rotation), flatShading ? 1 : 0),
             iridescence: SIMD4(
                 activeIridescence?.factor ?? 0, activeIridescence?.indexOfRefraction ?? 1.3,
                 activeIridescence?.minimumThickness ?? 100, activeIridescence?.maximumThickness ?? 400

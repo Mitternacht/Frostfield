@@ -42,7 +42,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`scene-graph`](#scene-graph) | 13 | 4 | 0 | 2 | 0 | 0 | 0 | 3 | 0 |
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 1 | 2 | 0 |
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 0 | 5 | 1 |
-| [`materials-textures`](#materials-textures) | 34 | 18 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
+| [`materials-textures`](#materials-textures) | 35 | 17 | 0 | 2 | 2 | 1 | 1 | 2 | 1 |
 | [`shader-authoring`](#shader-authoring) | 21 | 21 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 21 | 4 | 0 | 5 | 2 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 0 | 3 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **184** | **71** | **14** | **112** | **26** | **30** | **24** | **39** | **24** |
+| **Total** | **185** | **70** | **14** | **112** | **26** | **30** | **24** | **39** | **24** |
 
-320 of 524 capabilities are complete, with 136 partial and 68 missing.
+321 of 524 capabilities are complete, with 135 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -270,7 +270,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Polygon offset | `polygonOffset` | `MeshRenderState.depthOffset`, `MeshRenderState.DepthOffset` | ✅ | Raster slope, units and clamp in forward and reversed depth. `RenderStateTests`. [Primitive evidence](../evidence/primitives.md) |
 | Alpha test, alpha hash and alpha-to-coverage | `alphaTest`, `alphaHash`, `alphaToCoverage` | `PhysicallyBasedMaterial.AlphaMode.mask(cutoff:)`, `MeshRenderState.alphaHash`, `MeshRenderState.alphaToCoverage` | 🟡 | Classic and PBR raster passes support cutoff, hash and alpha to coverage. Coverage requires MSAA and blending disabled. Shadows ignore hash, alpha maps and vertex alpha. The path tracer rejects hashed state. `RenderStateTests`. [Primitive evidence](../evidence/primitives.md) |
 | Vertex colors | `vertexColors` | `MeshVertex.color`, `MeshGeometry.hasVertexColors`, `GLTFMeshLoader`, `GLTFExporter` | 🟡 | Classic and PBR raster materials use linear RGBA. glTF imports float or normalized byte and short COLOR_0 and exports float VEC4. The path tracer uses half-precision vertex colors, with tests for both backends and stochastic BLEND coverage. Shadow passes ignore vertex alpha. Legacy and custom materials ignore vertex colors. `VertexColorTests`. [Primitive evidence](../evidence/primitives.md) |
-| Wireframe and flat shading | `wireframe`, `flatShading` | `LineGeometry.wireframe(of:color:)`, `MeshGeometry.creasedNormals(creaseAngle:)` | 🟡 | Generate wireframe geometry or bake flat normals with a zero crease angle. Runtime material switches remain open. `EdgesAndHelpersTests`, `MeshWeldingTests`. |
+| Wireframe and flat shading | `wireframe`, `flatShading` | `ClassicMaterial.wireframe`, `ClassicMaterial.flatShading`, `PhysicallyBasedMaterial.wireframe`, `PhysicallyBasedMaterial.flatShading`, `LineGeometry.wireframe(of:color:)`, `MeshGeometry.creasedNormals(creaseAngle:)` | ✅ | A classic or physically based material draws each triangle's edges, or shades with the face normal, without rebuilding the mesh. Archive version 35 stores either switch. A GPU indirect argument buffer does not select a subset of those edges. `WireframeShadingTests`, `EdgesAndHelpersTests`, `MeshWeldingTests`. |
 | Dithering | `dithering` | `HDRDisplay.Settings.dithering`, `PostProcessChain.Effect.toneMapping(_:)` on the final stage | 🟡 | Native equivalent per output stage, not per material. It adds the r187 `rand`-based shift of ±0.5/255 (+, −, +) to the final premultiplied color of an 8-bit RGBA or BGRA destination, in encoded values for sRGB formats. It is off by default and byte-identical when off. An RGBA16Float destination, a scaled or masked stage and a reduced scene capture throw. A per-material flag and meshes drawn straight into an 8-bit target remain open. `DitheringShaderTests`, `HDRDisplayDitheringTests`. [Dithering evidence](../evidence/dithering.md) |
 | Unlit basic material | `MeshBasicMaterial` | `MeshMaterial.classic(_:)`, `ClassicMaterial.Model.basic`, `PhysicallyBasedMaterial.ShadingModel.unlit` | ✅ | The raster classic material supports base, alpha, light and occlusion maps and reflection-cube blending. PBR unlit is the path-tracing option. `ClassicMaterialTests`, `MaterialExtensionsTests`. [Primitive evidence](../evidence/primitives.md) |
 | Lambert material | `MeshLambertMaterial` | `MeshMaterial.classic(_:)`, `ClassicMaterial.Model.lambert` | ✅ | Raster Lambert shading with scene lights, ambient, emission, shadows, bump and normal detail. Rectangle lights are outside this classic model. [Classic detail evidence](../evidence/classic-bump-and-normal-maps.md) |

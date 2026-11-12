@@ -58,6 +58,8 @@ struct ArchiveClassicMaterial: Codable {
     var ambient: SIMD3<Float>
     var receivesShadows: Bool
     var flatShading: Bool
+    /// Nil means filled triangles. True is stored from archive version 35.
+    var wireframe: Bool? = nil
     var depthPacking: ClassicMaterial.DepthPacking?
     var distanceOutput: ClassicMaterial.DistanceOutput?
     var bumpMap: ArchivePBR.BumpMap?

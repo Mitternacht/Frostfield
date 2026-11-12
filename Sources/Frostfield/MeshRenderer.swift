@@ -192,6 +192,9 @@ public final class MeshRenderer {
     /// How many times scene encodes have run this mesh's graph deformation.
     package var deformationEncodeCount: Int { deformation?.encodeCount ?? 0 }
     private let indices: any MTLBuffer
+    /// Line pairs for each triangle edge, when the material draws a wireframe.
+    private let wireframeIndices: (any MTLBuffer)?
+    private let wireframeIndexCount: Int
     private let dynamicGeometry: DynamicGeometryBuffers?
     private var indirectValidation: MeshIndirectDraws.Validator?
 
@@ -783,6 +786,14 @@ public final class MeshRenderer {
         }
         self.indices = try source?.indices ?? dynamicGeometry?.initial.indices
             ?? Self.makeBuffer(geometry.indices, on: device, label: "mesh indices")
+        if Self.drawsWireframe(preparedMaterial) {
+            let edges = try Self.wireframeIndices(from: geometry.indices, on: device)
+            wireframeIndices = edges.buffer
+            wireframeIndexCount = edges.count
+        } else {
+            wireframeIndices = nil
+            wireframeIndexCount = 0
+        }
         self.depthState = depthState
         self.depthMode = depthMode
         self.device = device
@@ -3393,6 +3404,7 @@ public final class MeshRenderer {
     }
 
     private func submittedTriangleCount(_ draw: PreparedDraw) -> Int {
+        guard wireframeIndices == nil else { return 0 }
         guard draw.indirect == nil else { return 0 }
         if let batch = draw.batch {
             return batch.runs.reduce(0) { $0 + ($1.indices.count / 3) * $1.instanceCount }
@@ -3403,6 +3415,10 @@ public final class MeshRenderer {
     private func drawIndices(
         _ draw: PreparedDraw, into encoder: any MTLRenderCommandEncoder, useBatchBundle: Bool = true
     ) {
+        if let edges = wireframeIndices {
+            drawWireframe(draw, edges: edges, into: encoder)
+            return
+        }
         if let indirect = draw.indirect {
             for index in 0..<indirect.count {
                 encoder.drawIndexedPrimitives(
@@ -3435,6 +3451,57 @@ public final class MeshRenderer {
             indexBufferOffset: draw.indexRange.lowerBound * MemoryLayout<UInt32>.stride,
             instanceCount: draw.instanceCount
         )
+    }
+
+    /// Each triangle becomes its three edges. GPU indirect records stay triangle counts,
+    /// so a wireframe mesh draws the prepared edges directly.
+    private func drawWireframe(
+        _ draw: PreparedDraw, edges: any MTLBuffer, into encoder: any MTLRenderCommandEncoder
+    ) {
+        if let batch = draw.batch {
+            for run in batch.runs {
+                encoder.setFrontFacing(run.mirrored ? .clockwise : .counterClockwise)
+                encoder.setVertexBufferOffset(run.firstInstance * MemoryLayout<InstanceSet.PackedInstance>.stride, index: 6)
+                let count = run.indices.count * 2
+                guard count > 0 else { continue }
+                encoder.drawIndexedPrimitives(
+                    type: .line, indexCount: count, indexType: .uint32, indexBuffer: edges,
+                    indexBufferOffset: run.indices.lowerBound * 2 * MemoryLayout<UInt32>.stride,
+                    instanceCount: run.instanceCount
+                )
+            }
+            return
+        }
+        let count = draw.indirect == nil ? draw.indexRange.count * 2 : wireframeIndexCount
+        let offset = draw.indirect == nil ? draw.indexRange.lowerBound * 2 * MemoryLayout<UInt32>.stride : 0
+        guard count > 0, draw.instanceCount > 0 else { return }
+        encoder.drawIndexedPrimitives(
+            type: .line, indexCount: count, indexType: .uint32, indexBuffer: edges,
+            indexBufferOffset: offset, instanceCount: draw.instanceCount
+        )
+    }
+
+    private static func drawsWireframe(_ material: MeshMaterial) -> Bool {
+        switch material {
+        case .physicallyBased(let material): material.wireframe
+        case .classic(let material): material.wireframe
+        default: false
+        }
+    }
+
+    private static func wireframeIndices(
+        from indices: [UInt32], on device: any MTLDevice
+    ) throws -> (buffer: any MTLBuffer, count: Int) {
+        var edges = [UInt32]()
+        edges.reserveCapacity(indices.count * 2)
+        var cursor = 0
+        while cursor + 2 < indices.count {
+            let a = indices[cursor], b = indices[cursor + 1], c = indices[cursor + 2]
+            edges.append(contentsOf: [a, b, b, c, c, a])
+            cursor += 3
+        }
+        let stored = edges.isEmpty ? [UInt32(0)] : edges
+        return (try makeBuffer(stored, on: device, label: "mesh wireframe"), edges.count)
     }
 
     private struct ToonOutlinePipeline {
