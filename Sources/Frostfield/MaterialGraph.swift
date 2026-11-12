@@ -308,6 +308,10 @@ public struct MaterialGraph: Sendable {
         /// The selected mesh UV set and affine placement carry a local sample footprint.
         case bumpMap(slot: Int, coordinateSet: MeshTextureCoordinateSet,
                      transform: PhysicallyBasedMaterial.TextureTransform, scale: NodeID)
+        /// A tangent-space normal from a scalar height. The renderer evaluates the height
+        /// at the shading point and at the ends of the pixel or ray footprint in UV0, UV1,
+        /// and world position. Connect it to the surface graph's normal output.
+        case bumpHeight(height: NodeID, scale: NodeID)
 
         // MARK: Derivatives, bits and dithering
 

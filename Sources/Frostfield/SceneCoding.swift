@@ -621,6 +621,9 @@ extension MaterialGraph.Node: Codable {
                 slot: try container.decode(Int.self, forKey: .index), coordinates: x[0], view: x[1], depth: x[2],
                 steps: try container.decode(Int.self, forKey: .count)
             )
+        case "bumpHeight":
+            let x = try operands(2)
+            self = .bumpHeight(height: x[0], scale: x[1])
         case "bumpMap":
             self = .bumpMap(
                 slot: try container.decode(Int.self, forKey: .index),
@@ -767,6 +770,7 @@ extension MaterialGraph.Node: Codable {
             try write("parallaxOcclusion", [coordinates, view, depth])
             try container.encode(slot, forKey: .index)
             try container.encode(steps, forKey: .count)
+        case .bumpHeight(let height, let scale): try write("bumpHeight", [height, scale])
         case .bumpMap(let slot, let set, let transform, let scale):
             try write("bumpMap", [scale])
             try container.encode(slot, forKey: .index)

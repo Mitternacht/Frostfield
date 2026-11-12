@@ -28,7 +28,7 @@ import simd
 public struct SceneArchive: Sendable, Equatable {
     /// The newest manifest version this build reads and writes. Captures use the
     /// earliest version that can store the scene.
-    public static let formatVersion = 40
+    public static let formatVersion = 41
     /// Maximum root-to-leaf node count. Keeps nested scene values safe to release
     /// on a Swift task stack even though archive traversal itself is iterative.
     public static let maximumHierarchyDepth = 1_024
@@ -827,7 +827,8 @@ private struct ArchiveCapture {
         let needsVersion2 = clips.contains { $0.propertyTracks != nil } || materials.contains { $0.liveFactors != nil }
         let rig = photometry.rig(lightRig, writer: &writer)
         let lighting = photometry.record
-        let version = if graphs.contains(where: \.readsMaterialScalar) { 40 }
+        let version = if graphs.contains(where: \.readsScalarBump) { 41 }
+        else if graphs.contains(where: \.readsMaterialScalar) { 40 }
         else if nodes.contains(where: { $0.depthMesh != nil }) { 39 }
         else if materials.contains(where: {
             $0.classic?.dithering == true || $0.physicallyBased?.dithering == true

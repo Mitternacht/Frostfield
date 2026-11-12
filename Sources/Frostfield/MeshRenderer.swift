@@ -4156,6 +4156,35 @@ public final class MeshRenderer {
         float3 bumped = frostfieldBumpNormal(input.vertexNormal, dfdx(input.worldPosition), dfdy(input.worldPosition), scale * delta);
         return frostfield_graph_to_tangent(input, bumped);
     }
+
+    static inline FrostfieldSurfaceInput frostfield_graph_bump_shift(
+        thread const FrostfieldSurfaceInput& input, thread const FrostfieldGraphResources& resources, uint axis
+    ) {
+        (void)resources;
+        FrostfieldSurfaceInput shifted = input;
+        if (axis == 0u) {
+            shifted.uv0 += dfdx(input.uv0);
+            shifted.uv1 += dfdx(input.uv1);
+            shifted.worldPosition += dfdx(input.worldPosition);
+        } else {
+            shifted.uv0 += dfdy(input.uv0);
+            shifted.uv1 += dfdy(input.uv1);
+            shifted.worldPosition += dfdy(input.worldPosition);
+        }
+        return shifted;
+    }
+
+    static inline float3 frostfield_graph_bump_height(
+        thread const FrostfieldSurfaceInput& input, thread const FrostfieldGraphResources& resources,
+        float height, float heightX, float heightY, float scale
+    ) {
+        (void)resources;
+        float3 bumped = frostfieldBumpNormal(
+            input.vertexNormal, dfdx(input.worldPosition), dfdy(input.worldPosition),
+            scale * float2(heightX - height, heightY - height)
+        );
+        return frostfield_graph_to_tangent(input, bumped);
+    }
     """
 
     private static func makePipeline(

@@ -1804,6 +1804,33 @@ public final class PathTracingScene {
         float3 bumped = frostfieldBumpNormal(input.vertexNormal, resources.footprintX, resources.footprintY, scale * delta);
         return frostfield_graph_to_tangent(input, bumped);
     }
+
+    static inline FrostfieldSurfaceInput frostfield_graph_bump_shift(
+        thread const FrostfieldSurfaceInput& input, thread const FrostfieldGraphResources& resources, uint axis
+    ) {
+        FrostfieldSurfaceInput shifted = input;
+        if (axis == 0u) {
+            shifted.uv0 += resources.gradients[0].xy;
+            shifted.uv1 += resources.gradients[1].xy;
+            shifted.worldPosition += resources.footprintX;
+        } else {
+            shifted.uv0 += resources.gradients[0].zw;
+            shifted.uv1 += resources.gradients[1].zw;
+            shifted.worldPosition += resources.footprintY;
+        }
+        return shifted;
+    }
+
+    static inline float3 frostfield_graph_bump_height(
+        thread const FrostfieldSurfaceInput& input, thread const FrostfieldGraphResources& resources,
+        float height, float heightX, float heightY, float scale
+    ) {
+        float3 bumped = frostfieldBumpNormal(
+            input.vertexNormal, resources.footprintX, resources.footprintY,
+            scale * float2(heightX - height, heightY - height)
+        );
+        return frostfield_graph_to_tangent(input, bumped);
+    }
     """
 
     static func compileSurfaceLibrary(

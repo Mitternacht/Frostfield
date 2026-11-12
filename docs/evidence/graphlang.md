@@ -245,6 +245,7 @@ GPU shades with the same pattern.
 | `attribute()`, `varying()`, custom vertex attributes | Not provided | Missing |
 | `instanceIndex` | Not provided | Missing |
 | `materialReference`, `reference` | `reference(_:)`, `referenceColor(_:)`, `referenceVector(_:)` | Named reads of sampled base color, metallic, roughness, emission and opacity, the parameter vector, and the authored index of refraction, transmission and thickness. Unknown names throw. Factor textures are not folded into the refraction, transmission or thickness reads |
+| `bumpMap` | `ShaderTexture.bumpMap(coordinateSet:transform:scale:)`, `ShaderGraphBuilder.bump(height:scale:)` | The texture node reads the linear red channel. A scalar height is evaluated at the shading point and at the footprint ends in UV0, UV1, and world position. A height that does not change with those stays flat |
 | Node labels | `named(_:)`, `labels` | Match |
 
 ## Limits

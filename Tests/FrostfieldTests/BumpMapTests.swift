@@ -256,6 +256,42 @@ struct BumpMapTests {
         }
     }
 
+    @Test("A scalar height follows the same footprint as a red-channel bump")
+    func scalarHeight() throws {
+        let graph = try SurfaceShaderGraph { s in
+            .init(normal: s.bump(height: s.uv1.x, scale: s.constant(Float(strength))))
+        }
+        let material = try PhysicallyBasedMaterial(alphaMode: .opaque, surfaceGraph: graph)
+        let bumped = try scene(material: material, usesGraphFrame: true)
+        let expected = expectedNormal(scale: strength)
+        let raster = try gpu.rasterSurfaceNormal(bumped, side: side)
+        #expect(simd_distance(raster, expected) < 0.003, "\(raster)")
+        let traced = try pathNormal(bumped)
+        #expect(simd_distance(traced, SIMD4(expected, 1)) < 0.005, "\(traced)")
+
+        let flatGraph = try SurfaceShaderGraph { s in
+            .init(normal: s.bump(height: s.constant(Float(0.4)), scale: s.constant(Float(strength))))
+        }
+        let flat = try scene(
+            material: try PhysicallyBasedMaterial(alphaMode: .opaque, surfaceGraph: flatGraph), usesGraphFrame: true
+        )
+        #expect(try gpu.rasterSurfaceNormal(flat, side: side) == SIMD3(0, 0, 1))
+
+        let archive = try SceneArchive(capturing: bumped, commandQueue: gpu.queue)
+        let json = try #require(JSONSerialization.jsonObject(with: archive.manifest) as? [String: Any])
+        #expect(json["version"] as? Int == 41)
+        let restored = try archive.load(device: gpu.device, commandQueue: gpu.queue).graph
+        #expect(try gpu.rasterSurfaceNormal(restored, side: side) == raster)
+
+        #expect(throws: MaterialGraph.Failure.invalidDeclaration(
+            "A scalar bump height cannot read derivatives, coverage, or the frame."
+        )) {
+            try SurfaceShaderGraph { s in
+                .init(normal: s.bump(height: s.uv1.x.dFdx()))
+            }
+        }
+    }
+
     @Test("A graph bump node requires a data texture and authored secondary coordinates")
     func graphValidation() throws {
         #expect(throws: MaterialGraph.Failure.invalidDeclaration("A bump map needs a linear data texture.")) {

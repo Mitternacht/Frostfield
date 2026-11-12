@@ -122,7 +122,7 @@ struct ShaderSchedule {
         var bodyIsUniform: Set<NodeID> = []
         for id in order {
             switch nodes[id] {
-            case .sampleTexture, .triplanarSample, .parallaxOcclusion, .bumpMap, .derivative: uniform[id] = true
+            case .sampleTexture, .triplanarSample, .parallaxOcclusion, .bumpMap, .bumpHeight, .derivative: uniform[id] = true
             case .function(let index, _): uniform[id] = quadFunctions.indices.contains(index) && quadFunctions[index]
             case .loop: uniform[id] = bodyIsUniform.contains(id)
             default: break

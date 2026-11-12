@@ -43,7 +43,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`cameras-controls`](#cameras-controls) | 8 | 1 | 0 | 3 | 1 | 0 | 2 | 1 | 0 |
 | [`geometry`](#geometry) | 21 | 2 | 0 | 15 | 1 | 0 | 2 | 3 | 1 |
 | [`materials-textures`](#materials-textures) | 38 | 14 | 0 | 3 | 1 | 1 | 1 | 2 | 1 |
-| [`shader-authoring`](#shader-authoring) | 24 | 18 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
+| [`shader-authoring`](#shader-authoring) | 25 | 17 | 6 | 3 | 0 | 3 | 1 | 1 | 1 |
 | [`lights-shadows`](#lights-shadows) | 22 | 3 | 0 | 7 | 0 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 1 | 2 | 1 |
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
@@ -54,9 +54,9 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 1 | 1 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **194** | **61** | **14** | **116** | **22** | **30** | **30** | **33** | **24** |
+| **Total** | **195** | **60** | **14** | **116** | **22** | **30** | **30** | **33** | **24** |
 
-340 of 524 capabilities are complete, with 116 partial and 68 missing.
+341 of 524 capabilities are complete, with 115 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -379,7 +379,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | Color utility nodes | `luminance`, `hue`, `saturation`, `convertColorSpace` | `MaterialGraph.UnaryOperation.luminance`, `MaterialGraph.UnaryOperation.hsvToRGB`, `MaterialGraph.UnaryOperation.srgbToLinear` | ✅ | HSV and sRGB round trips GPU-tested; luminance untested; `ShaderGraphLanguageTests` |
 | Blend-mode and tone-mapping nodes | `blendScreen`, `blendOverlay`, `acesFilmicToneMapping`, `posterize`, `cdl` | `ShaderGraphBuilder.blendScreen`, `blendOverlay`, `acesFilmicToneMapping`, `posterize`, `cdl` | ✅ | Typed screen and overlay blends, exposed linear-sRGB ACES, scalar and per-channel posterization, and alpha-preserving color decisions. [Graph color evidence](../evidence/shader-graph-color.md) |
 | UV utility nodes | `rotateUV`, `equirectUV`, `matcapUV`, `spritesheetUV` | `ShaderGraphBuilder.rotateUV`, `equirectUV`, `matcapUV`, `spritesheetUV`, `spherizeUV`, `polar` | ✅ | Native top-left coordinates, explicit panorama directions, camera-aware matcap and wrapped sprite frames. [UV helper evidence](../evidence/shader-graph-uv.md) |
-| Normal and bump map nodes | `normalMap()`, `bumpMap()` | `ShaderTexture.sampleNormal(_:strength:)`, `ShaderTexture.bumpMap(coordinateSet:transform:scale:)` | 🟡 | Tangent-space normal maps and a linear height bump feed the graph `normal` output in raster and path tracing, including a second UV set, an affine transform, and a live strength. The height is the texture's red channel. `ShaderGraphRenderingTests`, `BumpMapTests`. |
+| Normal and bump map nodes | `normalMap()`, `bumpMap()` | `ShaderTexture.sampleNormal(_:strength:)`, `ShaderTexture.bumpMap(coordinateSet:transform:scale:)`, `ShaderGraphBuilder.bump(height:scale:)` | ✅ | Tangent-space normal maps, a red-channel height texture, and a scalar height feed the graph normal output in raster and path tracing. The texture bump keeps a second UV set, an affine transform, and a live strength. A scalar height is evaluated at the shading point and at the ends of the pixel or ray footprint in UV0, UV1, and world position. A height that does not change with those stays flat. The scalar cannot read derivatives, coverage, the frame, or screen inputs. An archive that stores a scalar bump is version 41. `BumpMapTests`. |
 | Native code injection | `wgslFn()`, `glslFn()`, `code()` | `ShaderFunction(name:parameters:returns:body:)`, `ShaderGraphBuilder.function(_:returns:parameters:body:)`, `MaterialGraph.Node.function(_:arguments:)` | ✅ | Typed MSL functions (≤ 16, ≤ 16 KiB body); errors report the generated line; `ShaderGraphLanguageTests`, `ComputeShaderGraphTests` |
 | Custom lighting models | `LightingModel`, `setupLightingModel`, BRDF nodes | — | ❌ | BRDF helpers are internal MSL |
 | Node labels and isolation | `label()`, `setName()`, `context()`, `isolate()` | `ShaderValue.named(_:)`, `SurfaceShaderGraph.labels` | 🟡 | Labels appear in generated MSL comments and diagnostics; no context or isolate |
@@ -947,10 +947,10 @@ Typed graphs drive raster PBR, the path tracer, vertex deformation, post-process
   - ✅ Control flow (`shader-authoring`, core)
   - 🟡 Node material family (`shader-authoring`, core)
   - 🟡 Custom shader material (`shader-authoring`, core)
-- **Textures, vector math, normals and displacement, editable uniforms** (7 of 12 ✅)
+- **Textures, vector math, normals and displacement, editable uniforms** (8 of 12 ✅)
   - 🟡 Texture sampling nodes (`shader-authoring`, core)
   - ✅ Uniform nodes and update events (`shader-authoring`, core)
-  - 🟡 Normal and bump map nodes (`shader-authoring`, core)
+  - ✅ Normal and bump map nodes (`shader-authoring`, core)
   - ✅ Vector math nodes (`shader-authoring`, core)
   - ✅ Derivatives (`shader-authoring`, core)
   - 🟡 Matrix, integer and bit operations (`shader-authoring`, core)

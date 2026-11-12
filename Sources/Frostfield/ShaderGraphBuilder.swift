@@ -205,6 +205,15 @@ public final class ShaderGraphBuilder {
     public var metallic: ShaderValue<Float> { input(.metallic) }
     public var roughness: ShaderValue<Float> { input(.roughness) }
 
+    /// A tangent-space normal from a scalar height. The height is evaluated again at the
+    /// ends of the raster pixel or path ray footprint, shifted in UV0, UV1, and world
+    /// position. A height that does not change with those stays flat. Connect the result
+    /// to the surface graph's normal output. The output uses the UV0 tangent frame.
+    public func bump(height: ShaderValue<Float>, scale: ShaderValue<Float>? = nil) -> ShaderValue<SIMD3<Float>> {
+        let amount = scale ?? constant(Float(1))
+        return add(.bumpHeight(height: height.id, scale: amount.id), operands: [height, amount])
+    }
+
     /// Reads an authored scalar by name: `metallic`, `metalness`, `roughness`,
     /// `opacity`, `ior`, `indexOfRefraction`, `transmission`, or `thickness`.
     /// Colors use ``referenceColor(_:)`` and the parameter vector uses ``referenceVector(_:)``.

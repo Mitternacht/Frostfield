@@ -302,7 +302,28 @@ struct ShaderProgram: Hashable, Sendable {
             }
         }
         let procedural = hasProceduralNoise ? [Self.proceduralNoiseFunctions(prefix: prefix)] : []
-        return (structDefinitions() + aliases + procedural + declared + parallax).filter { !$0.isEmpty }.joined(separator: "\n\n")
+        return (structDefinitions() + aliases + procedural + declared + parallax + bumpHeightHelpers(prefix: prefix))
+            .filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
+
+    /// Re-evaluates each scalar bump's height at the shading point and at two footprint offsets.
+    private func bumpHeightHelpers(prefix: String) -> [String] {
+        nodes.indices.compactMap { id in
+            guard case .bumpHeight(let height, _) = nodes[id] else { return nil }
+            let body: String
+            do {
+                body = try statements(for: [height], prefix: prefix)
+            } catch {
+                body = "    float n\(height) = 0.0f; // \(error)"
+            }
+            return """
+            static inline float \(prefix)_bump_height_\(id)(thread const FrostfieldSurfaceInput& input, thread const FrostfieldGraphResources& resources) {
+                (void)resources;
+            \(body)
+                return n\(height);
+            }
+            """
+        }
     }
 
     /// The Metal type of a function parameter or return value, including a declared struct.
@@ -837,6 +858,27 @@ struct ShaderProgram: Hashable, Sendable {
             }
             try require(scale, .scalar)
             return .vector3
+        case .bumpHeight(let height, let scale):
+            try require(height, .scalar)
+            try require(scale, .scalar)
+            var pending = [height]
+            var seen = Set<NodeID>()
+            while let dependency = pending.popLast() {
+                guard seen.insert(dependency).inserted, nodes.indices.contains(dependency) else { continue }
+                switch nodes[dependency] {
+                case .derivative, .sampleScene, .sampleSceneLevel, .sampleDepth, .viewportSafeUV,
+                     .softParticleOpacity, .viewPositionFromDepth, .normalFromDepth, .denoise, .linearDepth, .discard:
+                    throw Failure.invalidDeclaration(
+                        "A scalar bump height cannot read derivatives, coverage, or the frame."
+                    )
+                case .input(let input) where input.isScreenSpace:
+                    throw Failure.invalidDeclaration("A scalar bump height cannot read screen inputs.")
+                default:
+                    break
+                }
+                pending.append(contentsOf: Self.inputs(of: nodes[dependency]))
+            }
+            return .vector3
         case .bits(_, let a, let b):
             try require(a, .scalar)
             try require(b, .scalar)
@@ -996,6 +1038,8 @@ struct ShaderProgram: Hashable, Sendable {
              .interleavedGradientNoise(let a), .matrixUnary(_, let a), .matrixColumn(let a, _),
              .bumpMap(_, _, _, let a):
             [a]
+        case .bumpHeight(let height, let scale):
+            [height, scale]
         case .circle(let uv, let center, let radius):
             [uv, center, radius]
         case .polar(let a, let b), .triplanarWeights(let a, let b), .bits(_, let a, let b), .matrixMultiply(let a, let b),
@@ -1022,7 +1066,7 @@ struct ShaderProgram: Hashable, Sendable {
             return stage == .postProcess
         case .derivative: return stage == .surface || stage == .postProcess
         case .discard: return stage == .surface
-        case .bumpMap: return stage == .surface && provides(.tangent)
+        case .bumpMap, .bumpHeight: return stage == .surface && provides(.tangent)
         default: return true
         }
     }
@@ -1254,6 +1298,11 @@ struct ShaderProgram: Hashable, Sendable {
             }
             return "frostfield_graph_bump(input, resources, \(slot)u, \(texture.addressing.code)u, "
                 + "\(texture.filtering.code)u, \(set.rawValue)u, \(metalRow(row0)), \(metalRow(row1)), \(n(scale)))"
+        case .bumpHeight(_, let scale):
+            let height = "\(prefix)_bump_height_\(id)"
+            return "frostfield_graph_bump_height(input, resources, \(height)(input, resources), "
+                + "\(height)(frostfield_graph_bump_shift(input, resources, 0u), resources), "
+                + "\(height)(frostfield_graph_bump_shift(input, resources, 1u), resources), \(n(scale)))"
         case .derivative(let kind, let input):
             switch kind {
             case .dx: return "dfdx(\(n(input)))"

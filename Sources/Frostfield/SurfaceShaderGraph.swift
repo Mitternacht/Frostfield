@@ -223,6 +223,11 @@ public struct SurfaceShaderGraph: Hashable, Sendable {
     }
     var hasCastShadowOutput: Bool { outputs.castShadowColor != nil }
 
+    /// The graph builds a normal from a scalar height rather than a texture's red channel.
+    var readsScalarBump: Bool {
+        nodes.contains { if case .bumpHeight = $0 { true } else { false } }
+    }
+
     /// The graph reads opacity, index of refraction, transmission, or thickness by name.
     var readsMaterialScalar: Bool {
         nodes.contains { if case .input(.materialScalar) = $0 { true } else { false } }
