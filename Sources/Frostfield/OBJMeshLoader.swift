@@ -1,29 +1,54 @@
 import Foundation
 import simd
 
-/// Imports Wavefront OBJ polygon geometry. Faces may contain up to 256 corners
-/// and must be simple, planar, and strictly convex. Each face occupies one line.
-/// Positions, UVs, and normals must be declared before the faces that use them.
-/// Optional normalized sRGB vertex colors use the XYZRGB or XYZRGBA extension.
-/// Materials, smoothing groups, and nonpolygon records are ignored.
+/// Imports Wavefront OBJ polygon, line and point geometry. Faces may contain up
+/// to 256 corners and must be simple, planar, and strictly convex. Each face,
+/// polyline or point record occupies one line. Positions, UVs, and normals must
+/// be declared before the records that use them. Optional normalized sRGB vertex
+/// colors use the XYZRGB or XYZRGBA extension. Materials and smoothing groups
+/// are ignored.
 public enum OBJMeshLoader {
+    /// Polygons, one polyline per `l` record, and every `p` record in one cloud.
+    public struct Document: Sendable {
+        public var mesh: MeshGeometry?
+        public var lines: [LineGeometry]
+        public var points: PointCloud?
+    }
+
     public static func load(_ source: String) throws -> MeshGeometry {
-        var parser = Parser()
-        let text = source.first == "\u{FEFF}" ? source.dropFirst() : source[...]
-        for (offset, rawLine) in text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).enumerated() {
-            try parser.read(rawLine, line: offset + 1)
+        let document: Document
+        do {
+            document = try loadDocument(source)
+        } catch Failure.noGeometry {
+            throw Failure.noFaces
         }
-        guard !parser.indices.isEmpty else { throw Failure.noFaces }
-        return try MeshGeometry(vertices: parser.vertices, indices: parser.indices)
+        guard let mesh = document.mesh else { throw Failure.noFaces }
+        return mesh
     }
 
     public static func load(contentsOf url: URL) throws -> MeshGeometry {
         try load(String(contentsOf: url, encoding: .utf8))
     }
 
+    /// Reads polygons, polylines and points. A closing line index makes a loop.
+    /// Throws when the file has none of the three.
+    public static func loadDocument(_ source: String) throws -> Document {
+        var parser = Parser()
+        let text = source.first == "\u{FEFF}" ? source.dropFirst() : source[...]
+        for (offset, rawLine) in text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).enumerated() {
+            try parser.read(rawLine, line: offset + 1)
+        }
+        return try parser.document()
+    }
+
+    public static func loadDocument(contentsOf url: URL) throws -> Document {
+        try loadDocument(String(contentsOf: url, encoding: .utf8))
+    }
+
     public enum Failure: LocalizedError, Equatable {
         case invalidLine(Int, String)
         case noFaces
+        case noGeometry
 
         public var errorDescription: String? {
             switch self {
@@ -31,6 +56,8 @@ public enum OBJMeshLoader {
                 "OBJ line \(line): \(reason)"
             case .noFaces:
                 "The OBJ contains no polygon faces."
+            case .noGeometry:
+                "The OBJ contains no polygons, lines or points."
             }
         }
     }
@@ -53,6 +80,8 @@ public enum OBJMeshLoader {
         var indices: [UInt32] = []
         private var positions: [SIMD3<Float>] = []
         private var colors: [Int: SIMD4<Float>] = [:]
+        private var lineRecords: [(indices: [Int], line: Int)] = []
+        private var pointRecords: [(index: Int, line: Int)] = []
         private var textureCoordinates: [SIMD2<Float>] = []
         private var normals: [SIMD3<Float>] = []
         private var indexByVertex: [VertexKey: UInt32] = [:]
@@ -99,9 +128,45 @@ public enum OBJMeshLoader {
                 normals.append(simd_normalize(normal / scale))
             case "f":
                 try appendFace(values, line: line)
+            case "l":
+                guard values.count >= 2 else {
+                    throw Failure.invalidLine(line, "A line requires at least two vertices.")
+                }
+                lineRecords.append((try values.map { try corner($0, line: line).position }, line))
+            case "p":
+                guard !values.isEmpty else { throw Failure.invalidLine(line, "A point requires a vertex index.") }
+                pointRecords.append(contentsOf: try values.map { (try corner($0, line: line).position, line) })
             default:
                 break
             }
+        }
+
+        func document() throws -> OBJMeshLoader.Document {
+            let mesh = indices.isEmpty ? nil : try MeshGeometry(vertices: vertices, indices: indices)
+            let lines = try lineRecords.map { record in
+                let loop = record.indices.count >= 4 && record.indices.first == record.indices.last
+                let indices = loop ? Array(record.indices.dropLast()) : record.indices
+                return try LineGeometry(
+                    positions: indices.map { positions[$0] },
+                    colors: try attributeColors(indices, line: record.line),
+                    topology: loop ? .loop : .strip
+                )
+            }
+            let points = pointRecords.isEmpty ? nil : try PointCloud(
+                positions: pointRecords.map { positions[$0.index] },
+                colors: try attributeColors(pointRecords.map(\.index), line: pointRecords[0].line)
+            )
+            guard mesh != nil || !lines.isEmpty || points != nil else { throw Failure.noGeometry }
+            return OBJMeshLoader.Document(mesh: mesh, lines: lines, points: points)
+        }
+
+        private func attributeColors(_ indices: [Int], line: Int) throws -> [SIMD4<Float>]? {
+            let values = indices.map { colors[$0] }
+            if values.allSatisfy({ $0 == nil }) { return nil }
+            guard values.allSatisfy({ $0 != nil }) else {
+                throw Failure.invalidLine(line, "Color every vertex of a line or point set, or none of them.")
+            }
+            return values.map { $0! }
         }
 
         private mutating func appendFace(_ fields: ArraySlice<Substring>, line: Int) throws {

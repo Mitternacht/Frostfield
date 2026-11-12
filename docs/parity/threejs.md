@@ -47,16 +47,16 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | [`lights-shadows`](#lights-shadows) | 21 | 4 | 0 | 5 | 2 | 2 | 1 | 1 | 1 |
 | [`environment-ibl`](#environment-ibl) | 9 | 0 | 1 | 4 | 0 | 0 | 0 | 3 | 1 |
 | [`animation`](#animation) | 14 | 4 | 0 | 5 | 0 | 1 | 1 | 1 | 1 |
-| [`loaders-assets`](#loaders-assets) | 5 | 1 | 1 | 31 | 10 | 5 | 1 | 2 | 4 |
+| [`loaders-assets`](#loaders-assets) | 5 | 1 | 1 | 32 | 9 | 5 | 1 | 2 | 4 |
 | [`post-processing`](#post-processing) | 7 | 4 | 1 | 29 | 5 | 0 | 5 | 7 | 2 |
 | [`effects-misc`](#effects-misc) | 2 | 2 | 0 | 6 | 2 | 2 | 0 | 2 | 6 |
 | [`path-tracing`](#path-tracing) | 0 | 0 | 0 | 1 | 0 | 1 | 12 | 4 | 0 |
 | [`interaction-tools`](#interaction-tools) | 4 | 1 | 0 | 4 | 2 | 2 | 0 | 2 | 1 |
 | [`performance-scale`](#performance-scale) | 7 | 3 | 2 | 1 | 1 | 6 | 1 | 3 | 3 |
 | [`xr-platform`](#xr-platform) | 0 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 |
-| **Total** | **187** | **68** | **14** | **112** | **26** | **30** | **25** | **38** | **24** |
+| **Total** | **187** | **68** | **14** | **113** | **25** | **30** | **25** | **38** | **24** |
 
-324 of 524 capabilities are complete, with 132 partial and 68 missing.
+325 of 524 capabilities are complete, with 131 partial and 68 missing.
 
 10 further rows are marked 🌐 inside the area tables, and the platform table lists the browser-only features.
 
@@ -599,7 +599,7 @@ Rows say whether a feature works in the raster renderer, the path tracer, or bot
 | EXT_materials_bump | `bumpMap` | `GLTFScene.Material.BumpMap`, `PhysicallyBasedMaterial.BumpMap` | ✅ | Import reads `bumpFactor` and `bumpTexture` into the red-channel height map that raster and path tracing already evaluate. A normal texture still wins. `GLTFMaterialExtensionTests`, `BumpMapTests` |
 | Gaussian splats (KHR_gaussian_splatting, .ply, .splat, .ksplat, .spz) | `GLTFGaussianSplatLoaderExtension`, `SPLATLoader`, `SPZLoader` | — | ❌ |  |
 | FBX import | `FBXLoader` | — | ❌ |  |
-| OBJ import | `OBJLoader` | `OBJMeshLoader.load(contentsOf:)`, `ModelIOSceneLoader.load(contentsOf:options:)` | 🟡 | ModelIO keeps hierarchy and submeshes, triangulates concave faces and reads MTL factors and maps. The direct mesh parser retains normalized RGB and RGBA vertex colors. Non-triangle primitive import remains open. `OBJMeshLoaderTests`, `MeshFileExporterTests`, `ModelIOSceneLoaderTests`. [Format evidence](../evidence/formats.md) |
+| OBJ import | `OBJLoader` | `OBJMeshLoader.loadDocument(_:)`, `OBJMeshLoader.load(contentsOf:)`, `ModelIOSceneLoader.load(contentsOf:options:)` | ✅ | ModelIO keeps hierarchy and submeshes, triangulates concave faces and reads MTL factors and maps. The direct parser retains normalized RGB and RGBA vertex colors, one polyline per `l` record (a repeated closing index is a loop), and every `p` record in one point cloud. `load` still returns polygons only. `OBJMeshLoaderTests`, `MeshFileExporterTests`, `ModelIOSceneLoaderTests`. [Format evidence](../evidence/formats.md) |
 | MTL materials | `MTLLoader` | `MTLLoader.load(contentsOf:)`, `GLTFScene.Material.prepare(device:)` | 🟡 | Standalone named PBR conversion with local maps, dissolve, transforms, shininess-to-roughness and PBR extensions. Scalar bump maps preserve signed strength and sampling options through OBJ preparation. Phong specular color, specular and displacement maps, and other MTL shading options remain open. [Format evidence](../evidence/formats.md#modelio-import) · [Wavefront bump evidence](../evidence/mtl-bump-maps.md) |
 | USD and USDZ import | `USDLoader` | `ModelIOSceneLoader.load(contentsOf:options:)` | 🟡 | Imports USD, USDA, USDC and USDZ meshes, transforms, perspective cameras, selected UsdPreviewSurface inputs and sampled transform animation. ModelIO omits UsdLux and some material data, including UV transforms. `ModelIOSceneLoaderTests`. [Format evidence](../evidence/formats.md) |
 | PLY and STL import | `PLYLoader`, `STLLoader` | `PLYLoader.load(_:options:)`, `STLLoader.load(_:)` | ✅ | PLY triangle and quad meshes and point clouds support ASCII and both binary byte orders, corner UVs and RGB, property aliases, and typed custom columns exposed as CPU arrays. STL preserves ASCII solid groups, binary Magics colors and alpha, and authored facet normals. All eleven bundled r187 fixtures matched positions and topology. [PLY evidence](../evidence/ply-import.md) · [STL evidence](../evidence/stl-import.md) |

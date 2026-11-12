@@ -107,4 +107,38 @@ struct OBJMeshLoaderTests {
             try OBJMeshLoader.load("v 0 0 0\n" + face)
         }
     }
+
+    @Test("Lines and points import beside polygon faces")
+    func linesAndPoints() throws {
+        let source = """
+        v 0 0 0
+        v 1 0 0
+        v 1 1 0
+        v 0 0 1 1 0 0
+        f 1 2 3
+        l -4 -3 -2
+        l 1 2 3 1
+        p 4
+        """
+        let document = try OBJMeshLoader.loadDocument(source)
+        let mesh = try #require(document.mesh)
+        #expect(mesh.indices == [0, 1, 2])
+        try #require(document.lines.count == 2)
+        #expect(document.lines[0].topology == .strip)
+        #expect(document.lines[0].positions == [SIMD3<Float>(0, 0, 0), SIMD3(1, 0, 0), SIMD3(1, 1, 0)])
+        #expect(document.lines[1].topology == .loop)
+        #expect(document.lines[1].positions.count == 3)
+        let points = try #require(document.points)
+        #expect(points.positions == [SIMD3<Float>(0, 0, 1)])
+        #expect(points.colors == [SIMD4<Float>(1, 0, 0, 1)])
+        #expect(throws: OBJMeshLoader.Failure.noFaces) {
+            try OBJMeshLoader.load("v 0 0 0\nv 1 0 0\nl 1 2")
+        }
+        let onlyLines = try OBJMeshLoader.loadDocument("v 0 0 0\nv 1 0 0\nl 1 2")
+        #expect(onlyLines.mesh == nil)
+        #expect(onlyLines.lines.count == 1)
+        #expect(throws: OBJMeshLoader.Failure.noGeometry) {
+            try OBJMeshLoader.loadDocument("v 0 0 0")
+        }
+    }
 }
